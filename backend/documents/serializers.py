@@ -10,4 +10,4 @@ class UserDocumentSerializer(serializers.ModelSerializer):
             'verification_status', 'verified_by', 'verification_notes',
             'uploaded_at', 'verified_at'
         ]
-        read_only_fields = ['id', 'uploaded_at', 'verified_at', 'verified_by']
+        read_only_fields = ['id', 'user', 'uploaded_at', 'verified_at', 'verified_by']

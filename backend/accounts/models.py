@@ -195,7 +195,7 @@ class UserInvitation(models.Model):
     )
     
     created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
+    expires_at = models.DateTimeField(null=True, blank=True)
     accepted_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
@@ -203,3 +203,82 @@ class UserInvitation(models.Model):
     
     def __str__(self):
         return f"Invitation to {self.email} - {self.get_status_display()}"
+
+class UserFirmRole(models.Model):
+    """Mapping of users to law firms with specific roles"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='firm_memberships')
+    firm = models.ForeignKey('firms.Firm', on_delete=models.CASCADE, related_name='firm_members')
+    branch = models.ForeignKey('firms.Branch', on_delete=models.SET_NULL, null=True, blank=True, related_name='branch_members')
+    user_type = models.CharField(max_length=20, choices=CustomUser.USER_TYPE_CHOICES)
+    is_active = models.BooleanField(default=True)
+    
+    # Selection flag for the "current" active firm in a session
+    is_last_active = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('user', 'firm')
+        indexes = [
+            models.Index(fields=['user', 'firm']),
+            models.Index(fields=['is_active']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.email} - {self.firm.firm_name} ({self.get_user_type_display()})"
+
+class GlobalConfiguration(models.Model):
+    """System-wide configuration settings"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    is_free_trial_enabled = models.BooleanField(
+        default=True, 
+        help_text="Allow Super Admins to self-register with a free trial"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name_plural = "Global Configuration"
+    
+    def __str__(self):
+        return "Global Configuration"
+
+    @classmethod
+    def get_settings(cls):
+        obj = cls.objects.first()
+        if not obj:
+            obj = cls.objects.create(is_free_trial_enabled=True)
+        return obj
+
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+
+@receiver(post_save, sender=CustomUser)
+def sync_user_firm_role(sender, instance, created, **kwargs):
+    """Sync CustomUser.firm/user_type with UserFirmRole for backward compatibility"""
+    # Simple check to prevent infinite recursion
+    if getattr(instance, '_syncing_role', False):
+        return
+    
+    if instance.firm:
+        instance._syncing_role = True
+        # Check if mapping already exists
+        role, created_role = UserFirmRole.objects.get_or_create(
+            user=instance,
+            firm=instance.firm,
+            defaults={'user_type': instance.user_type, 'is_last_active': True}
+        )
+        if not created_role:
+            # Update role if it changed on the user model directly
+            if role.user_type != instance.user_type:
+                role.user_type = instance.user_type
+                role.save()
+            if not role.is_last_active:
+                # If this firm is now set on the user model, mark it as last active
+                instance.firm_memberships.update(is_last_active=False)
+                role.is_last_active = True
+                role.save()
+        instance._syncing_role = False

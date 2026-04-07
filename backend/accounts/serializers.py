@@ -1,10 +1,25 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation
+from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, GlobalConfiguration, UserFirmRole
+from firms.models import Firm
+import random
+import string
+
+
+
+class UserFirmRoleSerializer(serializers.ModelSerializer):
+    firm_name = serializers.CharField(source='firm.firm_name', read_only=True)
+    branch_name = serializers.CharField(source='branch.branch_name', read_only=True)
+    
+    class Meta:
+        model = UserFirmRole
+        fields = ['id', 'firm', 'firm_name', 'branch', 'branch_name', 'user_type', 'is_active', 'is_last_active']
+        read_only_fields = ['id', 'is_last_active']
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
     firm_name = serializers.CharField(source='firm.firm_name', read_only=True)
+    available_firms = UserFirmRoleSerializer(source='firm_memberships', many=True, read_only=True)
     
     class Meta:
         model = CustomUser
@@ -12,52 +27,126 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'phone_number', 'first_name', 'last_name',
             'user_type', 'date_of_birth', 'gender', 'address_line_1', 'address_line_2',
             'city', 'state', 'country', 'postal_code', 'firm', 'firm_name',
+            'available_firms',
             'aadhar_number', 'pan_number', 'bar_council_registration', 'bar_council_state',
             'is_phone_verified', 'is_email_verified', 'is_document_verified',
             'is_active', 'created_at', 'updated_at', 'password_set'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_phone_verified', 
-                           'is_email_verified', 'is_document_verified']
+                           'is_email_verified', 'is_document_verified', 'user_type', 'firm']
         extra_kwargs = {
             'password': {'write_only': True}
         }
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    """For client self-registration"""
+    """For client and super_admin self-registration"""
     password = serializers.CharField(write_only=True, min_length=8)
     password_confirm = serializers.CharField(write_only=True, min_length=8)
+    
+    # Firm details for Super Admin signup
+    firm_name = serializers.CharField(required=False)
+    firm_address = serializers.CharField(required=False)
+    branch_id = serializers.UUIDField(required=False)
     
     class Meta:
         model = CustomUser
         fields = [
             'email', 'phone_number', 'first_name', 'last_name', 'password',
             'password_confirm', 'date_of_birth', 'gender', 'address_line_1',
-            'address_line_2', 'city', 'state', 'country', 'postal_code'
+            'address_line_2', 'city', 'state', 'country', 'postal_code',
+            'firm_name', 'firm_address', 'branch_id'
         ]
     
     def validate(self, data):
         if data['password'] != data.pop('password_confirm'):
             raise serializers.ValidationError({'password': 'Passwords do not match'})
+        
+        # Check uniqueness
+        email = data.get('email')
+        phone_number = data.get('phone_number')
+        
+        if CustomUser.objects.filter(email=email).exists():
+            raise serializers.ValidationError({'email': 'A user with this email already exists.'})
+        if CustomUser.objects.filter(phone_number=phone_number).exists():
+            raise serializers.ValidationError({'phone_number': 'A user with this phone number already exists.'})
+
+        # Check if firm signup is attempted
+        firm_name = data.get('firm_name')
+        if firm_name:
+            settings = GlobalConfiguration.get_settings()
+            if not settings.is_free_trial_enabled:
+                raise serializers.ValidationError({
+                    'firm_name': 'Self-registration for firms is currently disabled. Please contact the platform owner.'
+                })
+        
+        # Check branch if provided
+        branch_id = data.get('branch_id')
+        if branch_id:
+            from firms.models import Branch
+            if not Branch.objects.filter(id=branch_id).exists():
+                raise serializers.ValidationError({'branch_id': 'Invalid branch ID.'})
+        
         return data
     
     def create(self, validated_data):
+        firm_name = validated_data.pop('firm_name', None)
+        firm_address = validated_data.pop('firm_address', '')
+        
+        user_type = 'client'
+        firm = None
+        
+        if firm_name:
+            user_type = 'super_admin'
+            # Create the Firm
+            firm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+            firm = Firm.objects.create(
+                firm_name=firm_name,
+                firm_code=firm_code,
+                city=validated_data.get('city', ''),
+                state=validated_data.get('state', ''),
+                country=validated_data.get('country', 'India'),
+                address=firm_address,
+                postal_code=validated_data.get('postal_code', ''),
+                phone_number=validated_data['phone_number'],
+                email=validated_data['email'],
+                subscription_type='trial'
+            )
+        
         user = CustomUser.objects.create_user(
             username=validated_data['email'],
             email=validated_data['email'],
             phone_number=validated_data['phone_number'],
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
-            user_type='client',
+            user_type=user_type,
+            firm=firm,
             password=validated_data['password'],
             **{k: v for k, v in validated_data.items() 
                if k not in ['email', 'phone_number', 'first_name', 'last_name', 'password']}
         )
         
+        # Create login credential
         LoginCredential.objects.create(
             user=user,
             username=validated_data['email']
         )
+        
+        # Create UserFirmRole mapping if firm was created
+        if firm:
+            branch_id = validated_data.pop('branch_id', None)
+            branch = None
+            if branch_id:
+                from firms.models import Branch
+                branch = Branch.objects.filter(id=branch_id, firm=firm).first()
+                
+            UserFirmRole.objects.create(
+                user=user,
+                firm=firm,
+                branch=branch,
+                user_type=user_type,
+                is_last_active=True
+            )
         
         return user
 

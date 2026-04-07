@@ -24,6 +24,11 @@ class AuditLog(models.Model):
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
     
+    # Context
+    resource_type = models.CharField(max_length=50, blank=True, null=True)
+    resource_id = models.CharField(max_length=255, blank=True, null=True)
+    firm = models.ForeignKey('firms.Firm', on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:

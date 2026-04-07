@@ -9,13 +9,15 @@ import random
 import string
 from datetime import timedelta
 
-from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation
+from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, UserFirmRole
+from firms.models import Firm, Branch
 from .serializers import (
     CustomUserSerializer, LoginCredentialSerializer,
     OTPVerificationSerializer, UserInvitationSerializer,
     UserRegistrationSerializer, UsernamePasswordLoginSerializer,
     PhoneOTPLoginSerializer, EmailOTPLoginSerializer,
-    OTPVerifySerializer, SetPasswordSerializer, ChangePasswordSerializer
+    OTPVerifySerializer, SetPasswordSerializer, ChangePasswordSerializer,
+    UserFirmRoleSerializer
 )
 from audit.models import AuditLog
 
@@ -59,25 +61,39 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.user_type == 'platform_owner':
             return CustomUser.objects.all()
-        elif user.user_type in ['super_admin', 'admin']:
+        elif user.user_type in ['super_admin', 'admin', 'advocate', 'paralegal']:
             return CustomUser.objects.filter(firm=user.firm)
         return CustomUser.objects.filter(id=user.id)
     
-    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def get_object(self):
+        """Return 403 instead of 404 when object exists but user lacks permission"""
+        from rest_framework.exceptions import PermissionDenied as DRFPermDenied
+        pk = self.kwargs.get('pk')
+        try:
+            obj = CustomUser.objects.get(pk=pk)
+        except CustomUser.DoesNotExist:
+            from django.http import Http404
+            raise Http404
+        if not self.get_queryset().filter(pk=pk).exists():
+            raise DRFPermDenied("You do not have permission to access this resource.")
+        return obj
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny], url_name='register')
     def register(self, request):
         """Client self-registration"""
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
             token, _ = Token.objects.get_or_create(user=user)
-            log_audit(user, 'create_user', 'Client self-registered')
+            reg_type = "Super Admin (Firm)" if user.user_type == 'super_admin' else "Client"
+            log_audit(user, 'create_user', f'{reg_type} self-registered')
             return Response({
                 'user': CustomUserSerializer(user).data,
                 'token': token.key
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_name='add_user')
     def add_user(self, request):
         """Add user with role-based hierarchy"""
         user = request.user
@@ -88,19 +104,24 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         # ROLE-BASED USER CREATION HIERARCHY
         # ============================================================================
         
-        # PLATFORM OWNER can only add PARTNER_MANAGER
+        # PLATFORM OWNER can add PARTNER_MANAGER or SUPER_ADMIN
         if user.user_type == 'platform_owner':
-            if user_type_to_add != 'partner_manager':
+            allowed_types = ['partner_manager', 'super_admin']
+            if user_type_to_add not in allowed_types:
                 return Response(
-                    {'error': 'Platform Owner can only add Partner Manager users'},
+                    {'error': f'Platform Owner can only add: {", ".join(allowed_types)}'},
                     status=status.HTTP_403_FORBIDDEN
                 )
             firm = data.get('firm')
-            if not firm:
+            if user_type_to_add == 'super_admin' and not firm:
                 return Response(
-                    {'error': 'Firm is required for Partner Manager'},
+                    {'error': 'Firm is required for Super Admin'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            # If partner_manager, firm can be optional or handled if firm creation happened
+            if user_type_to_add == 'partner_manager' and not firm:
+                # Assuming firm is linked to partner manager in some cases
+                pass
         
         # PARTNER_MANAGER can add SUPER_ADMIN (within their firm) and create firms
         elif user.user_type == 'partner_manager':
@@ -111,10 +132,27 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 )
             firm = data.get('firm')
             if not firm:
-                return Response(
-                    {'error': 'Firm is required for Super Admin'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                # Check if firm_name is provided to create on the fly
+                firm_name = data.get('firm_name')
+                if firm_name:
+                    import random
+                    import string
+                    firm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                    firm = Firm.objects.create(
+                        firm_name=firm_name,
+                        firm_code=firm_code,
+                        # other fields...
+                        city=data.get('city', ''),
+                        state=data.get('state', ''),
+                        country=data.get('country', 'India'),
+                        phone_number=data.get('phone_number', ''),
+                        email=data.get('email', '')
+                    )
+                else:
+                    return Response(
+                        {'error': 'Firm or firm_name is required for Super Admin'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
         
         # SUPER_ADMIN can add: ADMIN, ADVOCATE, PARALEGAL, CLIENT, SUPER_ADMIN (within their firm)
         elif user.user_type == 'super_admin':
@@ -154,19 +192,45 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             )
         
         # ============================================================================
-        # CREATE NEW USER
+        # CREATE OR LINK USER
         # ============================================================================
+        
+        # Resolve firm to Firm object if it's a string/UUID
+        if firm and not isinstance(firm, Firm):
+            try:
+                firm = Firm.objects.get(pk=firm)
+            except Firm.DoesNotExist:
+                return Response(
+                    {'error': 'Invalid firm ID'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        email = data.get('email')
+        phone_number = data.get('phone_number')
+        
+        # Check if user already exists - reject duplicate
+        if CustomUser.objects.filter(email=email).exists():
+            return Response(
+                {'error': 'A user with this email already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         try:
             new_user = CustomUser.objects.create_user(
-                username=data.get('email'),
-                email=data.get('email'),
-                phone_number=data.get('phone_number'),
+                username=email,
+                email=email,
+                phone_number=phone_number,
                 first_name=data.get('first_name', ''),
                 last_name=data.get('last_name', ''),
                 user_type=user_type_to_add,
                 firm=firm,
                 password_set=False
+            )
+            
+            # Create login credential
+            LoginCredential.objects.create(
+                user=new_user,
+                username=email
             )
         except Exception as e:
             return Response(
@@ -174,44 +238,110 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Create login credential
-        LoginCredential.objects.create(
+        # Create UserFirmRole mapping (or update if exists)
+        branch_id = data.get('branch_id')
+        branch = None
+        if branch_id:
+            branch = Branch.objects.filter(id=branch_id, firm=firm).first()
+
+        membership, created = UserFirmRole.objects.get_or_create(
             user=new_user,
-            username=data.get('email')
+            firm=firm,
+            defaults={'user_type': user_type_to_add, 'branch': branch}
         )
         
-        # Create invitation
+        if not created:
+            if membership.user_type != user_type_to_add or membership.branch != branch:
+                membership.user_type = user_type_to_add
+                membership.branch = branch
+                membership.save()
+        
+        # Set as active if it's their only firm or first one added
+        if new_user.firm_memberships.count() == 1:
+            membership.is_last_active = True
+            membership.save()
+            new_user.firm = firm
+            new_user.user_type = user_type_to_add
+            new_user.save()
+
+        # Create invitation (only if new or new to this firm)
         invitation = UserInvitation.objects.create(
             invited_by=user,
             invited_user=new_user,
             email=new_user.email,
             phone_number=new_user.phone_number,
-            user_type=new_user.user_type,
-            firm=new_user.firm,
+            user_type=user_type_to_add,
+            firm=firm,
             expires_at=timezone.now() + timedelta(days=7)
         )
         
         # Send notification
         send_otp_email(
             new_user.email,
-            f'You have been added as {new_user.get_user_type_display()} in {firm.firm_name}. '
-            f'Please set your password using your phone number: {new_user.phone_number}'
+            f'You have been added as {membership.get_user_type_display()} in {firm.firm_name}. '
+            f'Please use your existing account or set your password if you are new.'
         )
         
         # Log audit
         log_audit(
             user, 
             'create_user', 
-            f'Added {new_user.get_user_type_display()}: {new_user.get_full_name()} to {firm.firm_name}'
+            f'Added {membership.get_user_type_display()}: {new_user.get_full_name()} to {firm.firm_name}'
         )
         
         return Response({
             'user': CustomUserSerializer(new_user).data,
             'invitation': UserInvitationSerializer(invitation).data,
-            'message': f'{new_user.get_user_type_display()} added successfully. Invitation sent to {new_user.email}.'
+            'membership': UserFirmRoleSerializer(membership).data,
+            'message': f'User added to {firm.firm_name} successfully.'
         }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_name='switch_firm')
+    def switch_firm(self, request):
+        """Switch active firm and branch context"""
+        firm_id = request.data.get('firm_id')
+        branch_id = request.data.get('branch_id')
+        
+        if not firm_id:
+            return Response({'error': 'firm_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            membership = UserFirmRole.objects.get(user=request.user, firm_id=firm_id, is_active=True)
+            
+            # Deactivate all other last_active flags
+            request.user.firm_memberships.update(is_last_active=False)
+            
+            # Activate this one
+            membership.is_last_active = True
+            
+            # Update branch if provided
+            if branch_id:
+
+                try:
+                    branch = Branch.objects.get(id=branch_id, firm_id=firm_id)
+                    membership.branch = branch
+                except Branch.DoesNotExist:
+                    return Response({'error': 'Branch not found in this firm'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            membership.save()
+            
+            # Sync to CustomUser for backward compatibility
+            request.user.firm = membership.firm
+            request.user.user_type = membership.user_type
+            request.user.save()
+            
+            branch_info = f" (Branch: {membership.branch.branch_name})" if membership.branch else ""
+            log_audit(request.user, 'switch_firm', f'Switched active firm to {membership.firm.firm_name}{branch_info}')
+            
+            return Response({
+                'message': f'Switched to {membership.firm.firm_name}{branch_info}',
+                'user': CustomUserSerializer(request.user).data
+            })
+            
+        except UserFirmRole.DoesNotExist:
+            return Response({'error': 'You are not an active member of this firm'}, status=status.HTTP_403_FORBIDDEN)
     
-    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_name='change_password')
     def change_password(self, request):
         """Change password for logged-in user"""
         serializer = ChangePasswordSerializer(data=request.data)
@@ -234,7 +364,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
 class AuthenticationViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_name='login_username_password')
     def login_username_password(self, request):
         """Login with username/email and password"""
         serializer = UsernamePasswordLoginSerializer(data=request.data)
@@ -253,7 +383,7 @@ class AuthenticationViewSet(viewsets.ViewSet):
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_name='request_phone_otp')
     def request_phone_otp(self, request):
         """Request OTP for phone login"""
         serializer = PhoneOTPLoginSerializer(data=request.data)
@@ -281,7 +411,7 @@ class AuthenticationViewSet(viewsets.ViewSet):
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_name='request_email_otp')
     def request_email_otp(self, request):
         """Request OTP for email login"""
         serializer = EmailOTPLoginSerializer(data=request.data)
@@ -309,7 +439,7 @@ class AuthenticationViewSet(viewsets.ViewSet):
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_name='verify_otp')
     def verify_otp(self, request):
         """Verify OTP and login"""
         serializer = OTPVerifySerializer(data=request.data)
@@ -380,7 +510,7 @@ class AuthenticationViewSet(viewsets.ViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_name='set_password')
     def set_password(self, request):
         """Set password for users added by admin"""
         serializer = SetPasswordSerializer(data=request.data)
@@ -400,7 +530,7 @@ class AuthenticationViewSet(viewsets.ViewSet):
             return Response({'message': 'Password set successfully'})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_name='logout')
     def logout(self, request):
         """Logout user"""
         user = request.user
@@ -412,3 +542,29 @@ class AuthenticationViewSet(viewsets.ViewSet):
             pass
         
         return Response({'message': 'Logged out successfully'})
+
+class UserInvitationViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing user invitations"""
+    queryset = UserInvitation.objects.all()
+    serializer_class = UserInvitationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.user_type == 'platform_owner':
+            return UserInvitation.objects.all()
+        elif user.user_type in ['super_admin', 'admin']:
+            return UserInvitation.objects.filter(firm=user.firm)
+        return UserInvitation.objects.filter(invited_user=user)
+    
+    def get_object(self):
+        from rest_framework.exceptions import PermissionDenied as DRFPermDenied
+        pk = self.kwargs.get('pk')
+        try:
+            obj = UserInvitation.objects.get(pk=pk)
+        except UserInvitation.DoesNotExist:
+            from django.http import Http404
+            raise Http404
+        if not self.get_queryset().filter(pk=pk).exists():
+            raise DRFPermDenied("You do not have permission to access this resource.")
+        return obj

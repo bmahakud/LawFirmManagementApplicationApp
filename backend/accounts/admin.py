@@ -1,6 +1,12 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation
+from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, GlobalConfiguration, UserFirmRole
+# ...
+@admin.register(UserFirmRole)
+class UserFirmRoleAdmin(admin.ModelAdmin):
+    list_display = ['user', 'firm', 'user_type', 'is_active', 'is_last_active']
+    list_filter = ['user_type', 'is_active', 'is_last_active', 'firm']
+    search_fields = ['user__email', 'firm__firm_name']
 
 
 @admin.register(CustomUser)
@@ -44,3 +50,18 @@ class UserInvitationAdmin(admin.ModelAdmin):
     list_filter = ['user_type', 'status', 'created_at']
     search_fields = ['email', 'phone_number']
     readonly_fields = ['id', 'created_at']
+
+
+@admin.register(GlobalConfiguration)
+class GlobalConfigurationAdmin(admin.ModelAdmin):
+    list_display = ['is_free_trial_enabled', 'updated_at']
+    readonly_fields = ['id', 'updated_at']
+    
+    def has_add_permission(self, request):
+        # Only allow one instance
+        if self.model.objects.exists():
+            return False
+        return True
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -48,3 +48,30 @@ class Firm(models.Model):
     
     def __str__(self):
         return self.firm_name
+
+class Branch(models.Model):
+    """Branch within a law firm"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    firm = models.ForeignKey(Firm, on_delete=models.CASCADE, related_name='branches')
+    branch_name = models.CharField(max_length=255)
+    branch_code = models.CharField(max_length=50, blank=True)
+    
+    # Location Info
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=100)
+    address = models.TextField(blank=True)
+    
+    # Contact Info
+    phone_number = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(blank=True)
+    
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('firm', 'branch_name')
+        ordering = ['branch_name']
+        
+    def __str__(self):
+        return f"{self.firm.firm_name} - {self.branch_name}"
