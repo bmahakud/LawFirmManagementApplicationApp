@@ -32,6 +32,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
+  const [loginMode, setLoginMode] = useState<'password' | 'code'>('password');
 
   // Replace with your actual auth hook
   // const { login, deviceConflict, setDeviceConflict } = useAuthContext();
@@ -251,7 +252,6 @@ export default function LoginPage() {
           {/* Header */}
           <div className="text-center lg:text-left">
             <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Welcome back</h2>
-            <p className="mt-2 text-sm text-slate-500">Sign in to access your law firm dashboard</p>
           </div>
 
           {/* Error Message */}
@@ -300,53 +300,105 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Password Input */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-                  Password
-                </label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs font-medium text-[#1e3a5f] hover:text-[#0f2b44] transition-colors"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <div className={`relative group rounded-lg transition-all duration-200 ${focusedField === 'password' ? 'ring-2 ring-[#1e3a5f]/20' : ''
-                }`}>
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className={`w-4 h-4 transition-colors ${focusedField === 'password' ? 'text-[#1e3a5f]' : 'text-slate-400'
-                    }`} />
+            {/* Password Input OR OTP Message */}
+            {loginMode === 'password' ? (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <Link
+                    href="/forgot-password"
+                    className="text-xs font-medium text-[#1e3a5f] hover:text-[#0f2b44] transition-colors"
+                  >
+                    Forgot password?
+                  </Link>
                 </div>
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  required
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  onFocus={() => setFocusedField('password')}
-                  onBlur={() => setFocusedField(null)}
-                  className="block w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#1e3a5f] transition-all text-sm"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4 text-slate-400 hover:text-slate-600 transition-colors" />
-                  ) : (
-                    <Eye className="w-4 h-4 text-slate-400 hover:text-slate-600 transition-colors" />
-                  )}
-                </button>
+                <div className={`relative group rounded-lg transition-all duration-200 ${focusedField === 'password' ? 'ring-2 ring-[#1e3a5f]/20' : ''}`}>
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className={`w-4 h-4 transition-colors ${focusedField === 'password' ? 'text-[#1e3a5f]' : 'text-slate-400'}`} />
+                  </div>
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    required={loginMode === 'password'}
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    onFocus={() => setFocusedField('password')}
+                    onBlur={() => setFocusedField(null)}
+                    className="block w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#1e3a5f] transition-all text-sm"
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4 text-slate-400 hover:text-slate-600 transition-colors" />
+                    ) : (
+                      <Eye className="w-4 h-4 text-slate-400 hover:text-slate-600 transition-colors" />
+                    )}
+                  </button>
+                </div>
               </div>
+            ) : (
+              <div className="text-sm text-slate-600 font-medium pb-2 text-center">
+                Message and data rates may apply
+              </div>
+            )}
+
+            {/* Primary Submit Button */}
+            <div>
+              <motion.button
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.99 }}
+                type="submit"
+                disabled={loading}
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Signing in...
+                  </div>
+                ) : (
+                  loginMode === 'password' ? 'Sign in' : 'Send sign-in code'
+                )}
+              </motion.button>
             </div>
 
-            {/* Remember Me */}
+            {/* Divider */}
+            <div className="relative flex items-center py-2">
+              <div className="flex-grow border-t border-slate-200"></div>
+              <span className="flex-shrink-0 mx-4 text-slate-500 text-sm font-medium">OR</span>
+              <div className="flex-grow border-t border-slate-200"></div>
+            </div>
+
+            {/* Secondary Toggle Button */}
+            <div>
+              <button
+                type="button"
+                className="w-full flex justify-center py-3 px-4 border border-transparent bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-semibold text-slate-700 transition-colors"
+                onClick={() => setLoginMode(loginMode === 'password' ? 'code' : 'password')}
+              >
+                {loginMode === 'password' ? 'Use a sign-in code' : 'Use password'}
+              </button>
+            </div>
+          </form>
+
+          {/* Contextual Secondary Links & Layout */}
+          <div className="mt-6 flex flex-col items-center sm:items-start gap-4">
+            {loginMode === 'code' && (
+              <div className="w-full text-center">
+                <Link href="/forgot-email" className="text-sm font-medium text-slate-600 hover:text-slate-800 hover:underline transition-colors">
+                  Forgot email or phone number?
+                </Link>
+              </div>
+            )}
+
             <div className="flex items-center">
               <input
                 id="remember-me"
@@ -354,61 +406,23 @@ export default function LoginPage() {
                 type="checkbox"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 text-[#1e3a5f] focus:ring-[#1e3a5f] border-slate-300 rounded cursor-pointer"
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
               />
               <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-600 cursor-pointer">
                 Remember me
               </label>
             </div>
 
-            {/* Submit Button */}
-            <div>
-              <motion.button
-                whileHover={{ y: -1 }}
-                whileTap={{ scale: 0.99 }}
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-[#1e3a5f] hover:bg-[#0f2b44] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1e3a5f] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Signing in...
-                  </div>
-                ) : (
-                  'Sign in to Dashboard'
-                )}
-              </motion.button>
-            </div>
-
-            <div>
-              <motion.button
-                whileHover={{ y: -1 }}
-                whileTap={{ scale: 0.99 }}
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-[#1e3a5f] hover:bg-[#0f2b44] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1e3a5f] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Signing in...
-                  </div>
-                ) : (
-                  'Sign in using OTP'
-                )}
-              </motion.button>
-            </div>
-          </form>
-
-          {/* Sign Up Link */}
-          <div className="text-center mt-6">
-            <p className="text-sm text-slate-500">
-              Don't have an account?{' '}
-              <Link href="/register" className="font-semibold text-[#1e3a5f] hover:text-[#0f2b44] transition-colors">
-                Request a demo
+            <div className="text-sm text-slate-600 mt-2">
+              New to Nyaya Setu?{' '}
+              <Link href="/register" className="font-semibold text-slate-900 hover:underline transition-colors">
+                Sign up now.
               </Link>
-            </p>
+            </div>
+
+            <div className="text-xs text-slate-400 max-w-sm leading-relaxed mt-2">
+              This page is protected by Google reCAPTCHA to ensure you're not a bot.
+            </div>
           </div>
         </motion.div>
 

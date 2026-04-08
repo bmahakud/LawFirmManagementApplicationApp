@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Scale, LayoutDashboard, Users,
-  Settings, ChevronRight, LogOut, Briefcase, FileText, CreditCard, BarChart2, ChevronDown, UserCheck
+  Settings, ChevronRight, LogOut, Briefcase, FileText, CreditCard, BarChart2, ChevronDown, UserCheck, Store
 } from 'lucide-react';
 
 const topNavItems = [
@@ -26,20 +26,32 @@ const bottomNavItems = [
   { label: 'Settings',  path: '/super-admin/settings',  icon: Settings        },
 ];
 
+const mockFirmBranches = [
+  { id: 'branch-1', name: 'Downtown Branch' },
+  { id: 'branch-2', name: 'Uptown Branch' },
+];
+
 export default function SuperAdminSidebar() {
   const pathname = usePathname();
   const [userMenuOpen, setUserMenuOpen] = useState(
     () => pathname.startsWith('/super-admin/users')
+  );
+  const [firmMenuOpen, setFirmMenuOpen] = useState(
+    () => pathname.startsWith('/super-admin/my-firms')
   );
 
   useEffect(() => {
     if (pathname.startsWith('/super-admin/users')) {
       setUserMenuOpen(true);
     }
+    if (pathname.startsWith('/super-admin/my-firms')) {
+      setFirmMenuOpen(true);
+    }
   }, [pathname]);
 
   const isActive = (path: string) => pathname.startsWith(path);
   const userSectionActive = pathname.startsWith('/super-admin/users');
+  const myFirmsActive = pathname.startsWith('/super-admin/my-firms');
 
   const navRow = (active: boolean) =>
     `group relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer ${
@@ -86,6 +98,48 @@ export default function SuperAdminSidebar() {
             </Link>
           );
         })}
+
+        {/* My Firms */}
+        <div>
+          <div className={navRow(myFirmsActive) + ' w-full'}>
+            {myFirmsActive && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#984c1f]" />
+            )}
+            <Link href="/super-admin/my-firms" className="flex items-center gap-3 flex-1 py-1">
+              <div className={iconBox(myFirmsActive)}>
+                <Store className={iconColor(myFirmsActive)} />
+              </div>
+              <span className="text-sm font-semibold">My Firms</span>
+            </Link>
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); setFirmMenuOpen((o) => !o); }}
+              className="p-1 px-2"
+            >
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${firmMenuOpen ? 'rotate-180 text-[#984c1f]' : 'text-gray-300'}`} />
+            </button>
+          </div>
+
+          <div className={`overflow-hidden transition-all duration-300 ease-in-out ${firmMenuOpen ? 'max-h-52 opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="ml-[22px] mt-1 mb-1 border-l-2 border-[#984c1f]/15 pl-3.5 space-y-0.5">
+              {mockFirmBranches.map((branch) => {
+                const path = `/super-admin/my-firms/${branch.id}/overview`;
+                const active = pathname.startsWith(`/super-admin/my-firms/${branch.id}`);
+                return (
+                  <Link key={branch.id} href={path}>
+                    <div className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 cursor-pointer ${
+                      active ? 'bg-[#984c1f]/10 text-[#984c1f]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                    }`}>
+                      <Store className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[#984c1f]' : 'text-gray-300 group-hover:text-gray-500'}`} />
+                      <span className={`text-[13px] font-semibold ${active ? 'text-[#984c1f]' : ''}`}>{branch.name}</span>
+                      {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#984c1f]" />}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
 
         {/* User Management */}
         <div>

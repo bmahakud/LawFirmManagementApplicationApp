@@ -12,16 +12,16 @@ interface Field {
 }
 
 const fields: Field[] = [
-  { key: 'firmName',  label: 'Firm Name',    placeholder: 'e.g. Chen & Associates' },
-  { key: 'firmCode',  label: 'Firm Code',    placeholder: 'e.g. CHEN2024' },
-  { key: 'ownerName', label: 'Owner Name',   placeholder: 'Full name' },
-  { key: 'email',     label: 'Email',        placeholder: 'owner@example.com', type: 'email' },
-  { key: 'phone',     label: 'Phone',        placeholder: '+91 98765 43210', type: 'tel' },
-  { key: 'username',  label: 'Username',     placeholder: 'login username' },
-  { key: 'password',  label: 'Password',     placeholder: '••••••••', type: 'password' },
-  { key: 'city',      label: 'City',         placeholder: 'Mumbai' },
-  { key: 'state',     label: 'State',        placeholder: 'Maharashtra' },
-  { key: 'country',   label: 'Country',      placeholder: 'India' },
+  { key: 'firmName', label: 'Firm Name', placeholder: 'e.g. Chen & Associates' },
+  { key: 'firmCode', label: 'Firm Code', placeholder: 'e.g. CHEN2024' },
+  { key: 'ownerName', label: 'Owner Name', placeholder: 'Full name' },
+  { key: 'email', label: 'Email', placeholder: 'owner@example.com', type: 'email' },
+  { key: 'phone', label: 'Phone', placeholder: '+91 98765 43210', type: 'tel' },
+  { key: 'username', label: 'Username', placeholder: 'login username' },
+  { key: 'password', label: 'Password', placeholder: '••••••••', type: 'password' },
+  { key: 'city', label: 'City', placeholder: 'Mumbai' },
+  { key: 'state', label: 'State', placeholder: 'Maharashtra' },
+  { key: 'country', label: 'Country', placeholder: 'India' },
 ];
 
 const empty = Object.fromEntries(fields.map((f) => [f.key, '']));
@@ -53,7 +53,7 @@ export default function CreateFirmForm() {
             <Building2 className="w-4.5 h-4.5 text-white" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-[#0e2340]">Create New Firm</h2>
+            <h2 className="text-sm font-bold text-[#0e2340]">Create New</h2>
             <p className="text-xs text-gray-400">Fill in the details to register a new law firm</p>
           </div>
         </div>

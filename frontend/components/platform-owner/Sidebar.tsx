@@ -10,30 +10,29 @@ import {
 } from 'lucide-react';
 
 const userSubItems = [
-  { label: 'Law Firms',       path: '/platform-owner/firms',    icon: Building2  },
-  { label: 'Partner Managers',path: '/platform-owner/partners', icon: UserCheck  },
-  { label: 'Sales Persons',   path: '/platform-owner/sales',    icon: TrendingUp },
+  { label: 'Law Firms', path: '/platform-owner/firms', icon: Building2 },
+  { label: 'Partner Managers', path: '/platform-owner/partners', icon: UserCheck },
+  { label: 'Sales Persons', path: '/platform-owner/sales', icon: TrendingUp },
 ];
 
 const navItems = [
-  { label: 'Dashboard',  path: '/platform-owner',           icon: LayoutDashboard },
-  { label: 'Analytics',  path: '/platform-owner/analytics', icon: BarChart3       },
-  { label: 'Billing',    path: '/platform-owner/billing',   icon: CreditCard      },
-  { label: 'Settings',   path: '/platform-owner/settings',  icon: Settings        },
+  { label: 'Dashboard', path: '/platform-owner', icon: LayoutDashboard },
+  { label: 'Billing', path: '/platform-owner/billing', icon: CreditCard },
+  { label: 'Settings', path: '/platform-owner/settings', icon: Settings },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [userMenuOpen, setUserMenuOpen] = useState(
     () => pathname.startsWith('/platform-owner/firms') ||
-          pathname.startsWith('/platform-owner/partners') ||
-          pathname.startsWith('/platform-owner/sales')
+      pathname.startsWith('/platform-owner/partners') ||
+      pathname.startsWith('/platform-owner/sales')
   );
 
   useEffect(() => {
     if (pathname.startsWith('/platform-owner/firms') ||
-        pathname.startsWith('/platform-owner/partners') ||
-        pathname.startsWith('/platform-owner/sales')) {
+      pathname.startsWith('/platform-owner/partners') ||
+      pathname.startsWith('/platform-owner/sales')) {
       setUserMenuOpen(true);
     }
   }, [pathname]);
@@ -47,12 +46,10 @@ export default function Sidebar() {
     pathname.startsWith('/platform-owner/sales');
 
   const navRow = (active: boolean) =>
-    `group relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer ${
-      active ? 'bg-[#0e2340]/8 text-[#0e2340]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+    `group relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer ${active ? 'bg-[#0e2340]/8 text-[#0e2340]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
     }`;
   const iconBox = (active: boolean) =>
-    `w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-      active ? 'bg-[#0e2340]/10' : 'bg-gray-100 group-hover:bg-gray-200'
+    `w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${active ? 'bg-[#0e2340]/10' : 'bg-gray-100 group-hover:bg-gray-200'
     }`;
   const iconColor = (active: boolean) =>
     `w-4 h-4 ${active ? 'text-[#0e2340]' : 'text-gray-400 group-hover:text-gray-600'}`;
@@ -123,9 +120,8 @@ export default function Sidebar() {
                 const active = pathname.startsWith(path);
                 return (
                   <Link key={path} href={path}>
-                    <div className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 cursor-pointer ${
-                      active ? 'bg-[#0e2340]/8 text-[#0e2340]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
-                    }`}>
+                    <div className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 cursor-pointer ${active ? 'bg-[#0e2340]/8 text-[#0e2340]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                      }`}>
                       <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[#0e2340]' : 'text-gray-300 group-hover:text-gray-500'}`} />
                       <span className={`text-[13px] font-semibold ${active ? 'text-[#0e2340]' : ''}`}>{label}</span>
                       {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#0e2340]" />}

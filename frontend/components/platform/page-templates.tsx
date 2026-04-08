@@ -223,28 +223,28 @@ const caseRows = [
 export function PlatformFirmsHub({ accent, limited }: AccentProps & { limited?: boolean }) {
   const metrics = limited
     ? [
-        { label: 'Assigned Firms', value: '18', hint: '9 active this week' },
-        { label: 'Pending Onboarding', value: '4', hint: 'Awaiting owner confirmation' },
-        { label: 'Renewals Due', value: '6', hint: 'Next 30 days' },
-        { label: 'Partner Notes', value: '12', hint: 'Internal follow-ups open' },
-      ]
+      { label: 'Assigned Firms', value: '18', hint: '9 active this week' },
+      { label: 'Pending Onboarding', value: '4', hint: 'Awaiting owner confirmation' },
+      { label: 'Renewals Due', value: '6', hint: 'Next 30 days' },
+      { label: 'Partner Notes', value: '12', hint: 'Internal follow-ups open' },
+    ]
     : [
-        { label: 'Total Firms', value: '148', hint: '22 onboarded this month' },
-        { label: 'Active Users', value: '1,264', hint: 'Across all law firms' },
-        { label: 'Pending Bills', value: 'Rs. 8.2L', hint: 'Platform-wide receivables' },
-        { label: 'Login Audits', value: '4,920', hint: 'Last 30 days' },
-      ];
+      { label: 'Total Firms', value: '148', hint: '22 onboarded this month' },
+      { label: 'Active Users', value: '1,264', hint: 'Across all law firms' },
+      { label: 'Pending Bills', value: 'Rs. 8.2L', hint: 'Platform-wide receivables' },
+      { label: 'Login Audits', value: '4,920', hint: 'Last 30 days' },
+    ];
 
   const rows = limited
     ? [
-        { firm: 'Legal Experts LLP', owner: 'Arjun Sharma', plan: 'Growth', status: 'Active', renewal: '18 Apr 2026', activity: 'Case sync yesterday' },
-        { firm: 'Mehra Chambers', owner: 'K. Mehra', plan: 'Trial', status: 'Pending', renewal: '05 Apr 2026', activity: 'OTP pending' },
-      ]
+      { firm: 'Legal Experts LLP', owner: 'Arjun Sharma', plan: 'Growth', status: 'Active', renewal: '18 Apr 2026', activity: 'Case sync yesterday' },
+      { firm: 'Mehra Chambers', owner: 'K. Mehra', plan: 'Trial', status: 'Pending', renewal: '05 Apr 2026', activity: 'OTP pending' },
+    ]
     : [
-        { firm: 'Chen & Associates', owner: 'Sarah Chen', plan: 'Enterprise', status: 'Active', renewal: '15 Apr 2026', activity: '144 sign-ins this week' },
-        { firm: 'Torres Law Group', owner: 'Michael Torres', plan: 'Growth', status: 'Active', renewal: '30 Apr 2026', activity: '12 new matters' },
-        { firm: 'Davis Legal', owner: 'Emily Davis', plan: 'Trial', status: 'Suspended', renewal: 'Expired', activity: 'Payment failed twice' },
-      ];
+      { firm: 'Chen & Associates', owner: 'Sarah Chen', plan: 'Enterprise', status: 'Active', renewal: '15 Apr 2026', activity: '144 sign-ins this week' },
+      { firm: 'Torres Law Group', owner: 'Michael Torres', plan: 'Growth', status: 'Active', renewal: '30 Apr 2026', activity: '12 new matters' },
+      { firm: 'Davis Legal', owner: 'Emily Davis', plan: 'Trial', status: 'Suspended', renewal: 'Expired', activity: 'Payment failed twice' },
+    ];
 
   return (
     <div className="space-y-8">
@@ -291,15 +291,15 @@ export function PlatformFirmsHub({ accent, limited }: AccentProps & { limited?: 
             items={
               limited
                 ? [
-                    'No access to cases, documents, or internal team records.',
-                    'Editable fields stay limited to firm basics, contacts, and plan context.',
-                    'Internal relationship notes remain partner-facing only.',
-                  ]
+                  'No access to cases, documents, or internal team records.',
+                  'Editable fields stay limited to firm basics, contacts, and plan context.',
+                  'Internal relationship notes remain partner-facing only.',
+                ]
                 : [
-                    'Firm records remain platform-owned and cannot be deleted from firm-owner accounts.',
-                    'Login history, sign-up activity, and billing stats are visible at platform level.',
-                    'Referral, partner, and sales ownership are tracked per firm record.',
-                  ]
+                  'Firm records remain platform-owned and cannot be deleted from firm-owner accounts.',
+                  'Login history, sign-up activity, and billing stats are visible at platform level.',
+                  'Referral, partner, and sales ownership are tracked per firm record.',
+                ]
             }
           />
         }
@@ -370,23 +370,23 @@ export function FirmDetailPage({
 }: AccentProps & { title: string; limited?: boolean }) {
   const details = limited
     ? [
-        { label: 'Firm Name', value: 'Legal Experts LLP' },
-        { label: 'Owner', value: 'Arjun Sharma' },
-        { label: 'Plan', value: 'Growth' },
-        { label: 'Renewal', value: '18 Apr 2026' },
-        { label: 'Last Activity', value: 'Case sync completed yesterday' },
-        { label: 'Partner Notes', value: 'Awaiting branch expansion quote' },
-      ]
+      { label: 'Firm Name', value: 'Legal Experts LLP' },
+      { label: 'Owner', value: 'Arjun Sharma' },
+      { label: 'Plan', value: 'Growth' },
+      { label: 'Renewal', value: '18 Apr 2026' },
+      { label: 'Last Activity', value: 'Case sync completed yesterday' },
+      { label: 'Partner Notes', value: 'Awaiting branch expansion quote' },
+    ]
     : [
-        { label: 'Firm Name', value: 'Chen & Associates' },
-        { label: 'Registration Number', value: 'BC/1842/2010' },
-        { label: 'Address', value: 'Fort, Mumbai, Maharashtra' },
-        { label: 'Phone', value: '+91 98XXXXXX45' },
-        { label: 'Total Cases', value: '142' },
-        { label: 'Total Users', value: '12' },
-        { label: 'Pending Bills', value: 'Rs. 82,000' },
-        { label: 'Paid Bills', value: 'Rs. 4,52,000' },
-      ];
+      { label: 'Firm Name', value: 'Chen & Associates' },
+      { label: 'Registration Number', value: 'BC/1842/2010' },
+      { label: 'Address', value: 'Fort, Mumbai, Maharashtra' },
+      { label: 'Phone', value: '+91 98XXXXXX45' },
+      { label: 'Total Cases', value: '142' },
+      { label: 'Total Users', value: '12' },
+      { label: 'Pending Bills', value: 'Rs. 82,000' },
+      { label: 'Paid Bills', value: 'Rs. 4,52,000' },
+    ];
 
   return (
     <div className="space-y-8">
@@ -400,17 +400,17 @@ export function FirmDetailPage({
         metrics={
           limited
             ? [
-                { label: 'Plan Health', value: 'Stable', hint: 'No renewal risk this month' },
-                { label: 'Open Notes', value: '3', hint: 'Internal relationship comments' },
-                { label: 'Support Requests', value: '2', hint: 'Awaiting response' },
-                { label: 'Recent Logins', value: '17', hint: 'Past 7 days' },
-              ]
+              { label: 'Plan Health', value: 'Stable', hint: 'No renewal risk this month' },
+              { label: 'Open Notes', value: '3', hint: 'Internal relationship comments' },
+              { label: 'Support Requests', value: '2', hint: 'Awaiting response' },
+              { label: 'Recent Logins', value: '17', hint: 'Past 7 days' },
+            ]
             : [
-                { label: 'Sign-Ups', value: '34', hint: 'Across all users' },
-                { label: 'Login Events', value: '264', hint: 'Past 30 days' },
-                { label: 'Open Invoices', value: '5', hint: '2 overdue' },
-                { label: 'Active Cases', value: '45', hint: '82 disposed, 15 closed' },
-              ]
+              { label: 'Sign-Ups', value: '34', hint: 'Across all users' },
+              { label: 'Login Events', value: '264', hint: 'Past 30 days' },
+              { label: 'Open Invoices', value: '5', hint: '2 overdue' },
+              { label: 'Active Cases', value: '45', hint: '82 disposed, 15 closed' },
+            ]
         }
       />
       <SplitPanels
@@ -428,17 +428,17 @@ export function PartnerOrSalesDetailPage({
 }: AccentProps & { title: string; entity: 'partner' | 'sales' }) {
   const detailItems = entity === 'partner'
     ? [
-        { label: 'Name', value: 'Anita Khanna' },
-        { label: 'Assigned Firms', value: '18' },
-        { label: 'Renewals This Month', value: '6' },
-        { label: 'Role Scope', value: 'Onboarding and relationship management' },
-      ]
+      { label: 'Name', value: 'Anita Khanna' },
+      { label: 'Assigned Firms', value: '18' },
+      { label: 'Renewals This Month', value: '6' },
+      { label: 'Role Scope', value: 'Onboarding and relationship management' },
+    ]
     : [
-        { label: 'Name', value: 'Rohan Sethi' },
-        { label: 'Territory', value: 'Mumbai and Pune' },
-        { label: 'Referrals', value: '12 active leads' },
-        { label: 'Conversion Rate', value: '31%' },
-      ];
+      { label: 'Name', value: 'Rohan Sethi' },
+      { label: 'Territory', value: 'Mumbai and Pune' },
+      { label: 'Referrals', value: '12 active leads' },
+      { label: 'Conversion Rate', value: '31%' },
+    ];
 
   return (
     <div className="space-y-8">
@@ -529,51 +529,29 @@ export function CasesPage({
   return (
     <div className="space-y-8">
       <PageSection
-        eyebrow="Matter Management"
         title={title}
         description={description}
         actions={primaryHref && primaryLabel ? <ActionLink href={primaryHref} label={primaryLabel} /> : undefined}
       />
-      <MetricGrid
-        accent={accent}
-        metrics={[
-          { label: 'Running Matters', value: '45', hint: 'Evidence and argument stages' },
-          { label: 'Disposed Matters', value: '82', hint: 'Closed out in current FY' },
-          { label: 'Hearing This Week', value: '9', hint: 'Court diary sync pending confirmation' },
-          { label: 'OCR Reads', value: '27', hint: 'Act suggestions generated from FIRs' },
-        ]}
-      />
-      <SplitPanels
-        left={
-          <Panel title="Case Register" subtitle="Search, filter, and review current matters." actions={<SearchBar placeholder="Search case title, number, or advocate..." />}>
-            <SimpleTabs tabs={[{ label: 'All Cases', active: true }, { label: 'Running' }, { label: 'Disposed Off' }, { label: 'Closed' }]} />
-            <div className="mt-4">
-              <DataTable
-                columns={[
-                  { key: 'matter', label: 'Matter' },
-                  { key: 'number', label: 'Case Number' },
-                  { key: 'acts', label: 'Acts' },
-                  { key: 'status', label: 'Status' },
-                  { key: 'advocate', label: 'Assigned Advocate' },
-                  { key: 'hearing', label: 'Next Hearing' },
-                ]}
-                rows={caseRows.map((row, index) => ({ ...row, viewHref: viewBase ? `${viewBase}/${index + 1}` : undefined }))}
-              />
-            </div>
-          </Panel>
-        }
-        right={
-          <InfoAside
-            accent={accent}
-            title="Case Module Coverage"
-            items={[
-              'Act column is designed to surface OCR and document-driven act suggestions.',
-              'Case history preserves transfers between junior and senior advocates.',
-              'Each matter remains the central entity for clients, documents, notes, billing, and calendar events.',
+
+
+      <Panel title="Case Register" subtitle="Search, filter, and review current matters." actions={<SearchBar placeholder="Search case title, number, or advocate..." />}>
+        <SimpleTabs tabs={[{ label: 'All Cases', active: true }, { label: 'Running' }, { label: 'Disposed Off' }, { label: 'Closed' }]} />
+        <div className="mt-4">
+          <DataTable
+            columns={[
+              { key: 'matter', label: 'Matter' },
+              { key: 'number', label: 'Case Number' },
+              { key: 'acts', label: 'Acts' },
+              { key: 'status', label: 'Status' },
+              { key: 'advocate', label: 'Assigned Advocate' },
+              { key: 'hearing', label: 'Next Hearing' },
             ]}
+            rows={caseRows.map((row, index) => ({ ...row, viewHref: viewBase ? `${viewBase}/${index + 1}` : undefined }))}
           />
-        }
-      />
+        </div>
+      </Panel>
+
     </div>
   );
 }
@@ -581,38 +559,11 @@ export function CasesPage({
 export function CaseCreatePage({ accent }: AccentProps) {
   return (
     <div className="space-y-8">
-      <PageSection
-        eyebrow="Case Creation"
-        title="Register New Matter"
-        description="Structured case intake with client linking, opponent details, OCR-ready document intake, assignment, deadlines, and optional billing."
-      />
-      <SplitPanels
-        left={
-          <Panel title="Case Creation Form" subtitle="Case registration and matter management schema.">
-            <FormGrid fields={caseFormFields} columns={2} />
-          </Panel>
-        }
-        right={
-          <div className="space-y-6">
-            <InfoAside
-              accent={accent}
-              title="Auto-Extraction Placeholder"
-              items={[
-                'Upload FIR, petition, affidavit, or evidence files.',
-                'Auto-read key fields and suggest applicable acts.',
-                'Require manual confirmation before committing extracted values.',
-              ]}
-            />
-            <Panel title="Actions" subtitle="Mock workflow controls">
-              <div className="flex flex-wrap gap-3">
-                <button className="rounded-xl bg-[#0e2340] px-4 py-2.5 text-sm font-semibold text-white">Create Case</button>
-                <button className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700">Save Draft</button>
-                <button className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700">Cancel</button>
-              </div>
-            </Panel>
-          </div>
-        }
-      />
+
+
+      <Panel title="Case Creation Form" subtitle="Case registration and matter management schema.">
+        <FormGrid fields={caseFormFields} columns={2} />
+      </Panel>
     </div>
   );
 }
