@@ -9,7 +9,7 @@ import random
 import string
 from datetime import timedelta
 
-from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, UserFirmRole
+from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, UserFirmRole, GlobalConfiguration
 from firms.models import Firm, Branch
 from .serializers import (
     CustomUserSerializer, LoginCredentialSerializer,
@@ -17,7 +17,7 @@ from .serializers import (
     UserRegistrationSerializer, UsernamePasswordLoginSerializer,
     PhoneOTPLoginSerializer, EmailOTPLoginSerializer,
     OTPVerifySerializer, SetPasswordSerializer, ChangePasswordSerializer,
-    UserFirmRoleSerializer
+    UserFirmRoleSerializer, GlobalConfigurationSerializer
 )
 from audit.models import AuditLog
 
@@ -568,3 +568,40 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
         if not self.get_queryset().filter(pk=pk).exists():
             raise DRFPermDenied("You do not have permission to access this resource.")
         return obj
+
+
+class GlobalConfigurationViewSet(viewsets.ViewSet):
+    """ViewSet for managing global configuration settings"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @action(detail=False, methods=['get'], url_name='settings')
+    def settings(self, request):
+        """Get current global settings (public endpoint for checking trial availability)"""
+        config = GlobalConfiguration.get_settings()
+        return Response({
+            'is_free_trial_enabled': config.is_free_trial_enabled,
+            'trial_period_days': config.trial_period_days
+        })
+    
+    @action(detail=False, methods=['patch'], url_name='update_settings')
+    def update_settings(self, request):
+        """Update global settings (Platform Owner only)"""
+        if request.user.user_type != 'platform_owner':
+            return Response(
+                {'error': 'Only Platform Owner can update global settings'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        config = GlobalConfiguration.get_settings()
+        serializer = GlobalConfigurationSerializer(config, data=request.data, partial=True)
+        
+        if serializer.is_valid():
+            serializer.save(updated_by=request.user)
+            log_audit(
+                request.user,
+                'update_config',
+                f'Updated global configuration: Trial Enabled={config.is_free_trial_enabled}, Trial Days={config.trial_period_days}'
+            )
+            return Response(serializer.data)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

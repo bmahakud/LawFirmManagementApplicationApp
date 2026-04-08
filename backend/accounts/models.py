@@ -231,24 +231,46 @@ class UserFirmRole(models.Model):
 
 class GlobalConfiguration(models.Model):
     """System-wide configuration settings"""
+    
+    TRIAL_PERIOD_CHOICES = [
+        (0, 'No Trial'),
+        (7, '7 Days'),
+        (15, '15 Days'),
+        (30, '30 Days'),
+        (60, '60 Days'),
+        (90, '90 Days'),
+    ]
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     is_free_trial_enabled = models.BooleanField(
         default=True, 
         help_text="Allow Super Admins to self-register with a free trial"
     )
+    trial_period_days = models.IntegerField(
+        default=15,
+        choices=TRIAL_PERIOD_CHOICES,
+        help_text="Number of days for free trial period"
+    )
     updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        'CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='config_updates'
+    )
     
     class Meta:
         verbose_name_plural = "Global Configuration"
     
     def __str__(self):
-        return "Global Configuration"
+        return f"Global Configuration (Trial: {self.is_free_trial_enabled}, Period: {self.trial_period_days} days)"
 
     @classmethod
     def get_settings(cls):
         obj = cls.objects.first()
         if not obj:
-            obj = cls.objects.create(is_free_trial_enabled=True)
+            obj = cls.objects.create(is_free_trial_enabled=True, trial_period_days=15)
         return obj
 
 

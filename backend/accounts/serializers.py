@@ -92,14 +92,31 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         firm_name = validated_data.pop('firm_name', None)
         firm_address = validated_data.pop('firm_address', '')
+        branch_id = validated_data.pop('branch_id', None)
         
         user_type = 'client'
         firm = None
         
         if firm_name:
             user_type = 'super_admin'
-            # Create the Firm
+            
+            # Get trial settings
+            settings = GlobalConfiguration.get_settings()
+            trial_days = settings.trial_period_days
+            
+            # Create the Firm with trial period
+            from datetime import timedelta
+            from django.utils import timezone
+            
             firm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+            
+            trial_end_date = None
+            subscription_end_date = None
+            
+            if trial_days > 0:
+                trial_end_date = timezone.now() + timedelta(days=trial_days)
+                subscription_end_date = trial_end_date
+            
             firm = Firm.objects.create(
                 firm_name=firm_name,
                 firm_code=firm_code,
@@ -110,7 +127,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 postal_code=validated_data.get('postal_code', ''),
                 phone_number=validated_data['phone_number'],
                 email=validated_data['email'],
-                subscription_type='trial'
+                subscription_type='trial',
+                trial_end_date=trial_end_date,
+                subscription_end_date=subscription_end_date
             )
         
         user = CustomUser.objects.create_user(
@@ -122,6 +141,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             user_type=user_type,
             firm=firm,
             password=validated_data['password'],
+            password_set=True,
             **{k: v for k, v in validated_data.items() 
                if k not in ['email', 'phone_number', 'first_name', 'last_name', 'password']}
         )
@@ -134,7 +154,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         
         # Create UserFirmRole mapping if firm was created
         if firm:
-            branch_id = validated_data.pop('branch_id', None)
             branch = None
             if branch_id:
                 from firms.models import Branch
@@ -282,3 +301,12 @@ class ChangePasswordSerializer(serializers.Serializer):
         if data['new_password'] != data.pop('new_password_confirm'):
             raise serializers.ValidationError({'new_password': 'Passwords do not match'})
         return data
+
+
+class GlobalConfigurationSerializer(serializers.ModelSerializer):
+    """Serializer for global configuration settings"""
+    
+    class Meta:
+        model = GlobalConfiguration
+        fields = ['id', 'is_free_trial_enabled', 'trial_period_days', 'updated_at', 'updated_by']
+        read_only_fields = ['id', 'updated_at', 'updated_by']
