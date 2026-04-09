@@ -33,12 +33,27 @@ def send_otp_sms(phone_number, otp_code):
     return True
 
 
+def send_notification_email(email, subject, message):
+    """Send generic notification email with error handling"""
+    try:
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [email],
+            fail_silently=False,
+        )
+        return True
+    except Exception as e:
+        print(f"Failed to send email to {email}: {str(e)}")
+        return False
+
+
 def send_otp_email(email, otp_code):
     """Send OTP via Email"""
-    subject = 'Your OTP for Law Firm Management System'
+    subject = 'Your OTP for AntLegal Management System'
     message = f'Your OTP is: {otp_code}\n\nThis OTP is valid for 10 minutes.'
-    send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
-    return True
+    return send_notification_email(email, subject, message)
 
 
 def log_audit(user, action, description='', ip_address=None, user_agent=None):
@@ -83,9 +98,24 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         """Client self-registration"""
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
+            password = request.data.get('password')
             user = serializer.save()
             token, _ = Token.objects.get_or_create(user=user)
-            reg_type = "Super Admin (Firm)" if user.user_type == 'super_admin' else "Client"
+            reg_type = "Super Admin (Firm Owner)" if user.user_type == 'super_admin' else "Client"
+            
+            # Send Welcome Email
+            subject = f"Welcome to AntLegal - Account Created"
+            message = (
+                f"Hello {user.first_name or user.username},\n\n"
+                f"Your account has been successfully created as {reg_type}.\n\n"
+                f"Your login details:\n"
+                f"Username: {user.email}\n"
+                f"Password: {password}\n\n"
+                f"You can now login at our portal and start using the system.\n\n"
+                f"Regards,\nAntLegal Team"
+            )
+            send_notification_email(user.email, subject, message)
+            
             log_audit(user, 'create_user', f'{reg_type} self-registered')
             return Response({
                 'user': CustomUserSerializer(user).data,
@@ -215,6 +245,9 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Generate a temporary password if not provided
+        temp_password = data.get('password') or ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+        
         try:
             new_user = CustomUser.objects.create_user(
                 username=email,
@@ -224,7 +257,8 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 last_name=data.get('last_name', ''),
                 user_type=user_type_to_add,
                 firm=firm,
-                password_set=False
+                password=temp_password,
+                password_set=True if data.get('password') else False
             )
             
             # Create login credential
@@ -276,11 +310,17 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         )
         
         # Send notification
-        send_otp_email(
-            new_user.email,
-            f'You have been added as {membership.get_user_type_display()} in {firm.firm_name}. '
-            f'Please use your existing account or set your password if you are new.'
+        subject = f"Welcome to AntLegal - {firm.firm_name}"
+        message = (
+            f"Hello {new_user.first_name or new_user.username},\n\n"
+            f"You have been added as {membership.get_user_type_display()} in {firm.firm_name} on AntLegal platform.\n\n"
+            f"Your login details:\n"
+            f"Username: {new_user.email}\n"
+            f"Password: {temp_password}\n\n"
+            f"Please login and change your password for security purposes.\n\n"
+            f"Regards,\nAntLegal Team"
         )
+        send_notification_email(new_user.email, subject, message)
         
         # Log audit
         log_audit(

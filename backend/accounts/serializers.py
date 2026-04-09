@@ -74,6 +74,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         # Check if firm signup is attempted
         firm_name = data.get('firm_name')
         if firm_name:
+            if Firm.objects.filter(firm_name=firm_name).exists():
+                raise serializers.ValidationError({'firm_name': 'A firm with this name already exists.'})
+                
             settings = GlobalConfiguration.get_settings()
             if not settings.is_free_trial_enabled:
                 raise serializers.ValidationError({
