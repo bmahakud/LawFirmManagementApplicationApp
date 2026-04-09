@@ -162,12 +162,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 from firms.models import Branch
                 branch = Branch.objects.filter(id=branch_id, firm=firm).first()
                 
-            UserFirmRole.objects.create(
+            UserFirmRole.objects.update_or_create(
                 user=user,
                 firm=firm,
-                branch=branch,
-                user_type=user_type,
-                is_last_active=True
+                defaults={
+                    'branch': branch,
+                    'user_type': user_type,
+                    'is_last_active': True
+                }
             )
         
         return user
