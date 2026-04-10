@@ -7,6 +7,8 @@ import {
   Scale, LayoutDashboard, Briefcase, FileText,
   UserCheck, Bell, MessageSquare, LogOut, ChevronRight, Users, ChevronDown
 } from 'lucide-react';
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
 
 const topNavItems = [
   { label: 'Dashboard', path: '/firm-admin/dashboard', icon: LayoutDashboard },
@@ -37,7 +39,6 @@ export default function FirmAdminSidebar() {
     } finally {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('user_details');
-      if (typeof setIsProfileOpen === 'function') setIsProfileOpen(false);
       router.push('/login');
     }
   };

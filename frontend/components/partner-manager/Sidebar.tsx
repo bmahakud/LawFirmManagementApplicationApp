@@ -6,6 +6,8 @@ import {
   Scale, LayoutDashboard, Building2, LogOut,
   Settings, ChevronRight, Users,
 } from 'lucide-react';
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
 
 const navItems = [
   { label: 'Dashboard', path: '/partner-manager/dashboard', icon: LayoutDashboard },
@@ -24,7 +26,6 @@ export default function PartnerManagerSidebar() {
     } finally {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('user_details');
-      if (typeof setIsProfileOpen === 'function') setIsProfileOpen(false);
       router.push('/login');
     }
   };

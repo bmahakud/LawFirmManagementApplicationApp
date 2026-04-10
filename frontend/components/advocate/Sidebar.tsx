@@ -6,6 +6,8 @@ import {
   Scale, LayoutDashboard, Briefcase, FileText,
   Calendar, MessageSquare, LogOut, ChevronRight, PenTool
 } from 'lucide-react';
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
 
 const navItems = [
   { label: 'Dashboard',    path: '/advocate/dashboard', icon: LayoutDashboard },
@@ -26,7 +28,6 @@ export default function AdvocateSidebar() {
     } finally {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('user_details');
-      if (typeof setIsProfileOpen === 'function') setIsProfileOpen(false);
       router.push('/login');
     }
   };

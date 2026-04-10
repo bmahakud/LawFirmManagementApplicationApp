@@ -292,7 +292,7 @@ export default function SuperAdminDashboard() {
                       paddingAngle={3} dataKey="value" stroke="none">
                       {caseStatusData.map((d, i) => <Cell key={i} fill={d.color} />)}
                     </Pie>
-                    <Tooltip formatter={(v: number) => [`${v} cases`, '']} />
+                    <Tooltip formatter={(v: any) => [`${v} cases`, '']} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="space-y-2 mt-2">

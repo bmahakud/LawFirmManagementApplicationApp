@@ -7,6 +7,8 @@ import {
   Scale, LayoutDashboard, Users,
   Settings, ChevronRight, LogOut, Briefcase, FileText, CreditCard, BarChart2, ChevronDown, UserCheck, Store
 } from 'lucide-react';
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
 
 const topNavItems = [
   { label: 'Dashboard', path: '/super-admin/dashboard', icon: LayoutDashboard },
@@ -42,7 +44,6 @@ export default function SuperAdminSidebar() {
     } finally {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('user_details');
-      if (typeof setIsProfileOpen === 'function') setIsProfileOpen(false);
       router.push('/login');
     }
   };
