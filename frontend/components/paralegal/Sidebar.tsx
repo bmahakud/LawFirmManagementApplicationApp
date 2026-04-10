@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Scale, LayoutDashboard, Briefcase, FileText,
   Calendar, LogOut, ChevronRight, PenTool
@@ -15,6 +15,21 @@ const navItems = [
 ];
 
 export default function ParalegalSidebar() {
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await customFetch(API.AUTH.LOGOUT, { method: 'POST' });
+    } catch (e) {
+      console.error('Logout failed on backend:', e);
+    } finally {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_details');
+      if (typeof setIsProfileOpen === 'function') setIsProfileOpen(false);
+      router.push('/login');
+    }
+  };
+
   const pathname = usePathname();
   const isActive = (path: string) => pathname.startsWith(path);
 
@@ -54,10 +69,10 @@ export default function ParalegalSidebar() {
         })}
       </nav>
       <div className="border-t border-gray-100 px-4 py-3">
-        <Link href="/login" className="flex items-center gap-2 text-red-500 hover:opacity-75 transition-opacity px-2">
+        <button onClick={handleLogout} className="flex items-center gap-2 text-red-500 hover:opacity-75 transition-opacity px-2">
           <LogOut className="w-4 h-4" />
           <span className="text-[13px] font-semibold">Sign Out</span>
-        </Link>
+        </button>
       </div>
     </aside>
   );

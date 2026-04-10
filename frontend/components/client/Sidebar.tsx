@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
 import {
   Scale, LayoutDashboard, Briefcase, FileText,
   Calendar, MessageSquare, LogOut, ChevronRight, CreditCard
@@ -18,7 +20,20 @@ const navItems = [
 
 export default function ClientSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const isActive = (path: string) => pathname.startsWith(path);
+
+  const handleLogout = async () => {
+    try {
+      await customFetch(API.AUTH.LOGOUT, { method: 'POST' });
+    } catch (e) {
+      console.error('Logout failed on backend:', e);
+    } finally {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_details');
+      router.push('/login');
+    }
+  };
 
   return (
     <aside className="w-64 h-screen bg-white border-r border-gray-100 flex flex-col shrink-0 sticky top-0">
@@ -56,10 +71,10 @@ export default function ClientSidebar() {
         })}
       </nav>
       <div className="border-t border-gray-100 px-4 py-3">
-        <Link href="/login" className="flex items-center gap-2 text-red-500 hover:opacity-75 transition-opacity px-2">
+        <button onClick={handleLogout} className="w-full flex items-center gap-2 text-red-500 hover:opacity-75 transition-opacity px-2">
           <LogOut className="w-4 h-4" />
           <span className="text-[13px] font-semibold">Sign Out</span>
-        </Link>
+        </button>
       </div>
     </aside>
   );

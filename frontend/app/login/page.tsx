@@ -15,11 +15,15 @@ import {
   Briefcase,
   FileText,
   Calendar,
+  Phone,
 } from 'lucide-react';
 
 // Note: You'll need to create or import these hooks/contexts
 // import { useAuthContext } from '../contexts/AuthContext';
 // import DeviceConflictModal from '../components/DeviceConflictModal';
+
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,6 +38,11 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loginMode, setLoginMode] = useState<'password' | 'code'>('password');
 
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpValue, setOtpValue] = useState('');
+
+  // Auto-detect: if the identifier contains '@' it's email, else it's phone
+  const isEmailInput = formData.email.includes('@');
   // Replace with your actual auth hook
   // const { login, deviceConflict, setDeviceConflict } = useAuthContext();
 
@@ -75,45 +84,85 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // Replace with your actual login logic
-      // const loggedInUser = await login(formData.email, formData.password);
+      if (loginMode === 'password') {
+        const payload = {
+          username: formData.email,
+          password: formData.password
+        };
 
-      // Mock login for demonstration
-      await new Promise(resolve => setTimeout(resolve, 1000));
+        const response = await customFetch(API.AUTH.LOGIN_USERNAME_PASSWORD, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
 
-      let userRole = '';
-      const email = formData.email.toLowerCase();
-      const password = formData.password;
+        const data = await response.json();
 
-      if (email === 'platformowner@lawfirm.com' && password === 'platformowner') {
-        userRole = 'platform_owner';
-      } else if (email === 'partnermanager@lawfirm.com' && password === 'partnermanager') {
-        userRole = 'partner_manager';
-      } else if (email === 'firmowner@lawfirm.com' && password === 'firmowner') {
-        userRole = 'firm_owner';
-      } else if (email === 'firmadmin@lawfirm.com' && password === 'firmadmin') {
-        userRole = 'firm_admin';
-      } else if (email === 'advocate@lawfirm.com' && password === 'advocate') {
-        userRole = 'advocate';
-      } else if (email === 'paralegal@lawfirm.com' && password === 'paralegal') {
-        userRole = 'paralegal';
-      } else if (email === 'client@lawfirm.com' && password === 'client') {
-        userRole = 'client';
-      } else {
-        throw new Error('Invalid credentials. Please use one of the demo accounts.');
+        if (!response.ok) {
+          throw new Error(data.detail || data.message || 'Login failed. Please check your credentials.');
+        }
+
+        if (data.token) localStorage.setItem("auth_token", data.token);
+        if (data.user) localStorage.setItem("user_details", JSON.stringify(data.user));
+
+        const targetRoute = getDashboardRoute(data.user?.user_type);
+        router.push(targetRoute);
+
+      } else if (loginMode === 'code') {
+        if (!otpSent) {
+          // Request OTP — auto-detect channel from identifier
+          if (isEmailInput) {
+            const response = await customFetch(API.AUTH.REQUEST_EMAIL_OTP, {
+              method: 'POST',
+              body: JSON.stringify({ email: formData.email })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+              throw new Error(data.detail || data.message || 'Failed to send OTP to email.');
+            }
+          } else {
+            const response = await customFetch(API.AUTH.REQUEST_PHONE_OTP, {
+              method: 'POST',
+              body: JSON.stringify({ phone_number: formData.email })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+              throw new Error(data.detail || data.message || 'Failed to send OTP to phone.');
+            }
+          }
+          setOtpSent(true);
+        } else {
+          // Verify OTP — pass email or phone_number based on auto-detection
+          const payload = isEmailInput
+            ? { email: formData.email, otp_code: otpValue }
+            : { phone_number: formData.email, otp_code: otpValue };
+
+          const response = await customFetch(API.AUTH.VERIFY_OTP, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.detail || data.message || data.error || 'Invalid OTP. Please try again.');
+          }
+
+          // Handle both response structures:
+          // Backend v1: { token, user }
+          // Backend v2 (deployed): { success, data: { access, user } }
+          const token = data.token || data.data?.access;
+          const user = data.user || data.data?.user;
+
+          if (token) localStorage.setItem("auth_token", token);
+          if (user) localStorage.setItem("user_details", JSON.stringify(user));
+
+          const targetRoute = getDashboardRoute(user?.user_type);
+          router.push(targetRoute);
+        }
       }
 
-      // Mock user role - replace with actual user data from your API
-      const mockUser = {
-        role: userRole,
-        name: 'Demo User',
-      };
-
-      // Redirect based on user role
-      const dashboardRoute = getDashboardRoute(mockUser.role);
-      router.push(dashboardRoute);
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      setError(err.message || 'Process failed. Please verify credentials.');
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -167,7 +216,7 @@ export default function LoginPage() {
           <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/20">
             <Scale className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-xl tracking-tight">Nyaya Setu</span>
+          <span className="font-bold text-xl tracking-tight">AntLegal</span>
         </motion.div>
 
         {/* Testimonial / Trust Section */}
@@ -193,7 +242,7 @@ export default function LoginPage() {
             </div>
 
             <blockquote className="text-lg font-medium leading-relaxed mb-6">
-              "Nyaya Setu has transformed how we run our practice. From case management to client billing, everything is streamlined. Our productivity has increased by 40%."
+              "AntLegal has transformed how we run our practice. From case management to client billing, everything is streamlined. Our productivity has increased by 40%."
             </blockquote>
 
             <div className="flex items-center gap-4">
@@ -229,7 +278,7 @@ export default function LoginPage() {
         </motion.div>
 
         <div className="relative z-10 text-xs text-white/60">
-          © 2026 Nyaya Setu Inc. All rights reserved.
+          © 2026 AntLegal Inc. All rights reserved.
         </div>
       </div>
 
@@ -246,7 +295,7 @@ export default function LoginPage() {
             <div className="w-8 h-8 bg-[#1e3a5f] rounded-lg flex items-center justify-center text-white">
               <Scale className="w-4 h-4" />
             </div>
-            <span className="font-bold text-lg text-slate-900">Nyaya Setu</span>
+            <span className="font-bold text-lg text-slate-900">AntLegal</span>
           </div>
 
           {/* Header */}
@@ -273,31 +322,35 @@ export default function LoginPage() {
 
           {/* Form */}
           <form className="space-y-5" onSubmit={handleSubmit}>
-            {/* Email Input */}
+            {/* Identifier Input (auto-detects email vs phone) */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
-                Email Address / Phone
+                {loginMode === 'password' ? 'Username / Email / Phone' : 'Email or Phone Number'}
               </label>
-              <div className={`relative group rounded-lg transition-all duration-200 ${focusedField === 'email' ? 'ring-2 ring-[#1e3a5f]/20' : ''
-                }`}>
+              <div className={`relative group rounded-lg transition-all duration-200 ${focusedField === 'email' ? 'ring-2 ring-[#1e3a5f]/20' : ''}`}>
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className={`w-4 h-4 transition-colors ${focusedField === 'email' ? 'text-[#1e3a5f]' : 'text-slate-400'
-                    }`} />
+                  {isEmailInput ? (
+                    <Mail className={`w-4 h-4 transition-colors ${focusedField === 'email' ? 'text-[#1e3a5f]' : 'text-slate-400'}`} />
+                  ) : (
+                    <Phone className={`w-4 h-4 transition-colors ${focusedField === 'email' ? 'text-[#1e3a5f]' : 'text-slate-400'}`} />
+                  )}
                 </div>
                 <input
                   id="email"
                   name="email"
-                  type="email"
+                  type="text"
                   autoComplete="username"
                   required
                   value={formData.email}
+                  disabled={otpSent && loginMode === 'code'}
                   onChange={handleInputChange}
                   onFocus={() => setFocusedField('email')}
                   onBlur={() => setFocusedField(null)}
-                  className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#1e3a5f] transition-all text-sm"
-                  placeholder="attorney@lawfirm.com"
+                  className={`block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#1e3a5f] transition-all text-sm ${otpSent && loginMode === 'code' ? 'opacity-50 bg-slate-50' : ''}`}
+                  placeholder="attorney@lawfirm.com or +91 98765 43210"
                 />
               </div>
+
             </div>
 
             {/* Password Input OR OTP Message */}
@@ -344,9 +397,39 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
+            ) : otpSent ? (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label htmlFor="otp" className="block text-sm font-medium text-slate-700">
+                    Enter Verification Code
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setOtpSent(false); setOtpValue(''); setError(''); }}
+                    className="text-xs font-medium text-[#1e3a5f] hover:text-[#0f2b44] transition-colors"
+                  >
+                    Change {isEmailInput ? 'Email' : 'Phone'}?
+                  </button>
+                </div>
+                <div className={`relative group rounded-lg transition-all duration-200 ${focusedField === 'otp' ? 'ring-2 ring-[#1e3a5f]/20' : ''}`}>
+                  <input
+                    id="otp"
+                    name="otp"
+                    type="text"
+                    required
+                    value={otpValue}
+                    onChange={(e) => { setOtpValue(e.target.value); setError(''); }}
+                    onFocus={() => setFocusedField('otp')}
+                    onBlur={() => setFocusedField(null)}
+                    className="block w-full px-3 py-2.5 border border-slate-200 rounded-lg text-center tracking-[0.5em] text-lg font-mono text-slate-900 placeholder-slate-300 focus:outline-none focus:border-[#1e3a5f] transition-all uppercase"
+                    placeholder="123456"
+                    maxLength={6}
+                  />
+                </div>
+              </div>
             ) : (
               <div className="text-sm text-slate-600 font-medium pb-2 text-center">
-                Message and data rates may apply
+                Enter your email or phone number above. A verification code will be sent automatically.
               </div>
             )}
 
@@ -362,10 +445,11 @@ export default function LoginPage() {
                 {loading ? (
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Signing in...
+                    Processing...
                   </div>
                 ) : (
-                  loginMode === 'password' ? 'Sign in' : 'Send sign-in code'
+                  loginMode === 'password' ? 'Sign in' : 
+                  otpSent ? 'Verify code & Sign in' : 'Send sign-in code'
                 )}
               </motion.button>
             </div>
@@ -382,7 +466,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 className="w-full flex justify-center py-3 px-4 border border-transparent bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-semibold text-slate-700 transition-colors"
-                onClick={() => setLoginMode(loginMode === 'password' ? 'code' : 'password')}
+                onClick={() => { setLoginMode(loginMode === 'password' ? 'code' : 'password'); setOtpSent(false); setOtpValue(''); setError(''); }}
               >
                 {loginMode === 'password' ? 'Use a sign-in code' : 'Use password'}
               </button>
@@ -393,9 +477,7 @@ export default function LoginPage() {
           <div className="mt-6 flex flex-col items-center sm:items-start gap-4">
             {loginMode === 'code' && (
               <div className="w-full text-center">
-                <Link href="/forgot-email" className="text-sm font-medium text-slate-600 hover:text-slate-800 hover:underline transition-colors">
-                  Forgot email or phone number?
-                </Link>
+
               </div>
             )}
 
@@ -414,7 +496,7 @@ export default function LoginPage() {
             </div>
 
             <div className="text-sm text-slate-600 mt-2">
-              New to Nyaya Setu?{' '}
+              New to AntLegal?{' '}
               <Link href="/register" className="font-semibold text-slate-900 hover:underline transition-colors">
                 Sign up now.
               </Link>

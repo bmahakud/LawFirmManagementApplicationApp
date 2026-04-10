@@ -438,7 +438,7 @@ export default function LandingPage() {
               <Scale className="w-4.5 h-4.5 text-white" />
             </motion.div>
             <span className="font-bold text-xl tracking-tight text-[var(--navy)]">
-              Nyaya <span className="text-[var(--gold)]">Setu</span>
+              Ant<span className="text-[var(--gold)]">Legal</span>
             </span>
           </Link>
 
@@ -600,7 +600,7 @@ export default function LandingPage() {
                   </div>
                   <div className="flex-1 bg-white rounded-md px-3 py-1 flex items-center gap-2">
                     <Lock className="w-3 h-3 text-gray-400" />
-                    <span className="text-xs text-gray-400">dashboard.nyayasetu.com</span>
+                    <span className="text-xs text-gray-400">dashboard.antlegal.com</span>
                   </div>
                 </div>
 
@@ -1053,7 +1053,7 @@ export default function LandingPage() {
               {
                 name: "Sarah Chen, Esq.",
                 role: "Managing Partner, Chen & Associates",
-                content: "Nyaya Setu transformed how we run our practice. Everything is streamlined — our productivity has increased by 40% since we switched.",
+                content: "AntLegal transformed how we run our practice. Everything is streamlined — our productivity has increased by 40% since we switched.",
                 rating: 5,
                 highlight: "40% productivity increase",
               },
@@ -1131,7 +1131,7 @@ export default function LandingPage() {
                 Ready to Modernize<br />Your Law Firm?
               </h2>
               <p className="text-lg text-white/60 mb-10 max-w-xl mx-auto">
-                Join hundreds of law firms that have transformed their practice with Nyaya Setu
+                Join hundreds of law firms that have transformed their practice with AntLegal
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
                 <Link
@@ -1160,7 +1160,7 @@ export default function LandingPage() {
                 <div className="w-8 h-8 bg-white/8 rounded-lg flex items-center justify-center">
                   <Scale className="w-4 h-4 text-white" />
                 </div>
-                <span className="font-bold text-lg text-white">Nyaya <span className="text-[var(--gold)]">Setu</span></span>
+                <span className="font-bold text-lg text-white">Ant<span className="text-[var(--gold)]">Legal</span></span>
               </div>
               <p className="text-sm text-gray-500 max-w-xs leading-relaxed mb-5">
                 The complete practice management platform for modern law firms. AI-powered, secure, and built for efficiency.
@@ -1208,7 +1208,7 @@ export default function LandingPage() {
 
           <div className="border-t border-white/5 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex flex-col md:flex-row items-center gap-2 md:gap-6">
-              <p className="text-xs text-gray-600">© 2026 Nyaya Setu Inc. All rights reserved.</p>
+              <p className="text-xs text-gray-600">© 2026 AntLegal Inc. All rights reserved.</p>
               <p className="text-xs text-gray-600">
                 Powered by{' '}
                 <a

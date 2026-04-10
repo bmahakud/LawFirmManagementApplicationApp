@@ -2,7 +2,7 @@
 
 # Node.js (Frontend)
 frontend/node_modules/
-# frontend/.next/ (Removed to allow pushing build artifacts)
+frontend/.next/
 frontend/out/
 frontend/build/
 frontend/.env

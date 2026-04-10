@@ -17,9 +17,9 @@ interface PartnerManager {
 }
 
 const mock: PartnerManager[] = [
-  { id: 1, name: 'Rohit Verma',    email: 'rohit@nyayasetu.com',   phone: '+91 98111 00001', region: 'North India', firmCount: 8,  status: 'Active',    joinedAt: '2 Feb 2024'  },
-  { id: 2, name: 'Priya Nair',     email: 'priya@nyayasetu.com',   phone: '+91 98222 00002', region: 'South India', firmCount: 12, status: 'Active',    joinedAt: '15 Mar 2024' },
-  { id: 3, name: 'Aman Siddiqui',  email: 'aman@nyayasetu.com',    phone: '+91 98333 00003', region: 'West India',  firmCount: 5,  status: 'Suspended', joinedAt: '1 Apr 2024'  },
+  { id: 1, name: 'Rohit Verma',    email: 'rohit@antlegal.com',   phone: '+91 98111 00001', region: 'North India', firmCount: 8,  status: 'Active',    joinedAt: '2 Feb 2024'  },
+  { id: 2, name: 'Priya Nair',     email: 'priya@antlegal.com',   phone: '+91 98222 00002', region: 'South India', firmCount: 12, status: 'Active',    joinedAt: '15 Mar 2024' },
+  { id: 3, name: 'Aman Siddiqui',  email: 'aman@antlegal.com',    phone: '+91 98333 00003', region: 'West India',  firmCount: 5,  status: 'Suspended', joinedAt: '1 Apr 2024'  },
 ];
 
 const emptyForm = { name: '', email: '', phone: '', region: '', username: '', password: '' };
@@ -62,7 +62,7 @@ export default function PartnerManagerPage() {
 
   const fields = [
     { k: 'name',     l: 'Full Name',  ph: 'Partner Manager name' },
-    { k: 'email',    l: 'Email',      ph: 'manager@nyayasetu.com', type: 'email' },
+    { k: 'email',    l: 'Email',      ph: 'manager@antlegal.com', type: 'email' },
     { k: 'phone',    l: 'Phone',      ph: '+91 98765 43210', type: 'tel' },
     { k: 'region',   l: 'Region',     ph: 'e.g. North India' },
     { k: 'username', l: 'Username',   ph: 'login username' },

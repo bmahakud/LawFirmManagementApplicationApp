@@ -1,8 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
+
 import {
   Scale, LayoutDashboard, Building2, BarChart3,
   Settings, ChevronRight, LogOut, Users,
@@ -23,6 +27,8 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
   const [userMenuOpen, setUserMenuOpen] = useState(
     () => pathname.startsWith('/platform-owner/firms') ||
       pathname.startsWith('/platform-owner/partners') ||
@@ -39,6 +45,20 @@ export default function Sidebar() {
 
   const isActive = (path: string) =>
     path === '/platform-owner' ? pathname === '/platform-owner' : pathname.startsWith(path);
+
+  const handleLogout = async () => {
+    try {
+      // Intentionally call the backend to invalidate the token on the server side
+      await customFetch(API.AUTH.LOGOUT, { method: 'POST' });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      // Regardless of backend response, scrub local credentials to enforce logout natively
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_details');
+      router.push('/login');
+    }
+  };
 
   const userSectionActive =
     pathname.startsWith('/platform-owner/firms') ||
@@ -64,7 +84,7 @@ export default function Sidebar() {
             <Scale className="w-4 h-4 text-white" />
           </div>
           <span className="font-bold text-lg text-gray-900 tracking-tight">
-            Nyaya <span className="text-[#0e2340]">Setu</span>
+            Ant<span className="text-[#0e2340]">Legal</span>
           </span>
         </div>
         <div className="mt-3">
@@ -159,17 +179,20 @@ export default function Sidebar() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold text-gray-900 truncate">Platform Owner</p>
-            <p className="text-[10px] text-gray-400 truncate">owner@nyayasetu.com</p>
+            <p className="text-[10px] text-gray-400 truncate">owner@antlegal.com</p>
           </div>
           <button className="w-7 h-7 rounded-lg hover:bg-gray-100 flex items-center justify-center transition-colors shrink-0">
             <Settings className="w-3.5 h-3.5 text-gray-400" />
           </button>
         </div>
         <div className="border-t border-gray-100 flex items-center justify-between px-4 py-3">
-          <Link href="/login" className="flex items-center gap-2 text-[#0e2340] hover:opacity-75 transition-opacity">
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-2 text-[#0e2340] hover:opacity-75 transition-opacity"
+          >
             <LogOut className="w-4 h-4" />
             <span className="text-[13px] font-semibold">Sign Out</span>
-          </Link>
+          </button>
         </div>
       </div>
     </aside>

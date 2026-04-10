@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Scale, LayoutDashboard, Building2, LogOut,
   Settings, ChevronRight, Users,
@@ -14,6 +14,21 @@ const navItems = [
 ];
 
 export default function PartnerManagerSidebar() {
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await customFetch(API.AUTH.LOGOUT, { method: 'POST' });
+    } catch (e) {
+      console.error('Logout failed on backend:', e);
+    } finally {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_details');
+      if (typeof setIsProfileOpen === 'function') setIsProfileOpen(false);
+      router.push('/login');
+    }
+  };
+
   const pathname = usePathname();
 
   const isActive = (path: string) => pathname.startsWith(path);
@@ -37,7 +52,7 @@ export default function PartnerManagerSidebar() {
             <Scale className="w-4 h-4 text-white" />
           </div>
           <span className="font-bold text-lg text-gray-900 tracking-tight">
-            Nyaya <span className="text-[#1a6b4a]">Setu</span>
+            Ant<span className="text-[#1a6b4a]">Legal</span>
           </span>
         </div>
         <div className="mt-3">
@@ -72,14 +87,14 @@ export default function PartnerManagerSidebar() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold text-gray-900 truncate">Partner Manager</p>
-            <p className="text-[10px] text-gray-400 truncate">partner@nyayasetu.com</p>
+            <p className="text-[10px] text-gray-400 truncate">partner@antlegal.com</p>
           </div>
         </div>
         <div className="border-t border-gray-100 px-4 py-3">
-          <Link href="/login" className="flex items-center gap-2 text-[#1a6b4a] hover:opacity-75 transition-opacity">
+          <button onClick={handleLogout} className="flex items-center gap-2 text-[#1a6b4a] hover:opacity-75 transition-opacity">
             <LogOut className="w-4 h-4" />
             <span className="text-[13px] font-semibold">Sign Out</span>
-          </Link>
+          </button>
         </div>
       </div>
     </aside>

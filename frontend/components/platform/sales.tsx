@@ -18,9 +18,9 @@ interface SalesPerson {
 }
 
 const mock: SalesPerson[] = [
-  { id: 1, name: 'Karan Mehta',   email: 'karan@nyayasetu.com',   phone: '+91 98001 55551', territory: 'Delhi NCR',    target: 500000, achieved: 420000, status: 'Active',    joinedAt: '10 Jan 2024' },
-  { id: 2, name: 'Sneha Patil',   email: 'sneha@nyayasetu.com',   phone: '+91 98002 55552', territory: 'Pune & Mumbai', target: 400000, achieved: 390000, status: 'Active',    joinedAt: '20 Feb 2024' },
-  { id: 3, name: 'Deepak Sharma', email: 'deepak@nyayasetu.com',  phone: '+91 98003 55553', territory: 'Chennai',       target: 300000, achieved: 110000, status: 'Suspended', joinedAt: '5 Apr 2024'  },
+  { id: 1, name: 'Karan Mehta',   email: 'karan@antlegal.com',   phone: '+91 98001 55551', territory: 'Delhi NCR',    target: 500000, achieved: 420000, status: 'Active',    joinedAt: '10 Jan 2024' },
+  { id: 2, name: 'Sneha Patil',   email: 'sneha@antlegal.com',   phone: '+91 98002 55552', territory: 'Pune & Mumbai', target: 400000, achieved: 390000, status: 'Active',    joinedAt: '20 Feb 2024' },
+  { id: 3, name: 'Deepak Sharma', email: 'deepak@antlegal.com',  phone: '+91 98003 55553', territory: 'Chennai',       target: 300000, achieved: 110000, status: 'Suspended', joinedAt: '5 Apr 2024'  },
 ];
 
 const emptyForm = { name: '', email: '', phone: '', territory: '', target: '', username: '', password: '' };
@@ -65,7 +65,7 @@ export default function SalesPersonPage() {
 
   const fields = [
     { k: 'name',      l: 'Full Name',      ph: 'Sales person name' },
-    { k: 'email',     l: 'Email',          ph: 'sales@nyayasetu.com', type: 'email' },
+    { k: 'email',     l: 'Email',          ph: 'sales@antlegal.com', type: 'email' },
     { k: 'phone',     l: 'Phone',          ph: '+91 98765 43210', type: 'tel' },
     { k: 'territory', l: 'Territory',      ph: 'e.g. Delhi NCR' },
     { k: 'target',    l: 'Monthly Target', ph: '500000', type: 'number' },

@@ -3,7 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Bell, Search, LogOut, Settings } from 'lucide-react';
-import { usePathname } from 'next/navigation';
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
+
+import { usePathname, useRouter } from 'next/navigation';
 import { resolveRouteMeta } from '@/components/platform/route-meta';
 
 const pageTitles = [
@@ -15,6 +18,21 @@ const pageTitles = [
 ];
 
 export default function AdvocateTopbar() {
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await customFetch(API.AUTH.LOGOUT, { method: 'POST' });
+    } catch (e) {
+      console.error('Logout failed on backend:', e);
+    } finally {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_details');
+      if (typeof setIsProfileOpen === 'function') setIsProfileOpen(false);
+      router.push('/login');
+    }
+  };
+
   const pathname = usePathname();
   const page = resolveRouteMeta(pathname, pageTitles, { title: 'Advocate Dashboard', sub: 'Manage your case files, drafts, and client meetings.' });
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -56,23 +74,15 @@ export default function AdvocateTopbar() {
 
           {isProfileOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50">
-              <Link 
-                href="/advocate/settings" 
-                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                onClick={() => setIsProfileOpen(false)}
+              <button 
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
               >
-                <Settings className="w-4 h-4" />
-                Settings
-              </Link>
-              <div className="h-px bg-gray-100 my-1" />
-              <Link 
-                href="/login" 
-                className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                onClick={() => setIsProfileOpen(false)}
-              >
+                 
                 <LogOut className="w-4 h-4" />
                 Logout
-              </Link>
+              
+              </button>
             </div>
           )}
         </div>

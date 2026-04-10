@@ -1,8 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
+
 import { Bell, Search, LogOut, Settings } from 'lucide-react';
 import { resolveRouteMeta } from '@/components/platform/route-meta';
 
@@ -18,9 +22,23 @@ const pageTitles = [
 
 export default function Topbar() {
   const pathname = usePathname();
+  const router = useRouter();
+  
   const page = resolveRouteMeta(pathname, pageTitles, { title: 'Platform Owner', sub: '' });
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  const handleLogout = async () => {
+    try {
+      await customFetch(API.AUTH.LOGOUT, { method: 'POST' });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_details');
+      router.push('/login');
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -79,14 +97,16 @@ export default function Topbar() {
                 Settings
               </Link>
               <div className="h-px bg-gray-100 my-1" />
-              <Link 
-                href="/login" 
-                className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                onClick={() => setIsProfileOpen(false)}
+              <button 
+                onClick={() => {
+                  setIsProfileOpen(false);
+                  handleLogout();
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
               >
                 <LogOut className="w-4 h-4" />
                 Logout
-              </Link>
+              </button>
             </div>
           )}
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Building2, Users, Gavel, ArrowRight,
@@ -11,6 +11,8 @@ import {
   PieChart, Pie, Cell, ResponsiveContainer,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
 
 // ─── PALETTE ────────────────────────────────────────────────────────────────
 const BRAND = '#0e2340';
@@ -37,13 +39,6 @@ const firmGrowthData = MONTHS.map((m, i) => ({
   totalUsers: [85, 95, 112, 140, 175, 205, 220, 245, 260, 290, 315, 340][i]
 }));
 
-const partnerPerformance = [
-  { name: 'Anita Khanna (PM)', value: 18, color: BRAND },
-  { name: 'Rohan Sethi (Sales)', value: 12, color: GOLD },
-  { name: 'Megha Rao (PM)', value: 8, color: BLUE },
-  { name: 'Karan Patel (Sales)', value: 4, color: GREEN },
-];
-
 const topFirms = [
   { name: 'Torres Law Group',  cases: 230, revenue: 78000, pct: 100 },
   { name: 'Chen & Associates', cases: 88,  revenue: 45000, pct: 58  },
@@ -59,13 +54,6 @@ const monthlyDataBreakdown = [
   { month: 'Apr', firms: 21, cases: 410, revenue: 390000 },
   { month: 'May', firms: 22, cases: 460, revenue: 420000 },
   { month: 'Jun', firms: 25, cases: 540, revenue: 465000 },
-];
-
-const recentActivity = [
-  { icon: Building2, text: 'New firm registered: Torres Law Group', time: '2 min ago', color: 'bg-[#0e2340]' },
-  { icon: Users,     text: '3 new users added to Chen & Associates', time: '18 min ago', color: 'bg-blue-600' },
-  { icon: Gavel,     text: 'Case #1042 filed under Legal Experts LLP', time: '45 min ago', color: 'bg-emerald-600' },
-  { icon: Building2, text: 'Davis Legal suspended by admin', time: '2 hr ago', color: 'bg-red-500' },
 ];
 
 const quickActions = [
@@ -93,16 +81,44 @@ export default function PlatformOwnerDashboard() {
   const [revType, setRevType] = useState<'bar' | 'area'>('bar');
   const [metricYear, setMetricYear] = useState('2026');
 
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        const response = await customFetch(API.DASHBOARD.GET);
+        const data = await response.json();
+        if (response.ok) {
+          setDashboardData(data);
+        }
+      } catch (err) {
+        console.error("Dashboard Fetch Error", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDashboard();
+  }, []);
+
+  const rawCaseStats = dashboardData?.cards?.case_statistics || { running: 0, disposed: 0, closed: 0, total: 0 };
+  const caseStatsData = [
+    { name: 'Running Cases', value: rawCaseStats.running || 0, color: BRAND },
+    { name: 'Disposed Cases', value: rawCaseStats.disposed || 0, color: GOLD },
+    { name: 'Closed Cases', value: rawCaseStats.closed || 0, color: RED },
+  ];
+  const totalCases = rawCaseStats.total || 0;
+
   return (
     <div className="space-y-6">
 
       {/* ── KPI STRIP ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { lbl: 'Total Revenue', val: '₹12.4L', chg: '↑ 22% vs last year', up: true, icon: DollarSign, color: GREEN },
-          { lbl: 'Active Firms', val: '42', chg: '↑ 4 new this month', up: true, icon: Building2, color: BRAND },
-          { lbl: 'Total Platform Users', val: '340', chg: '↑ 25 this month', up: true, icon: Users, color: BLUE },
-          { lbl: 'Pending Revenue', val: '₹2.3L', chg: 'Collections trailing', up: false, icon: Activity, color: RED },
+          { lbl: 'Active Firms', val: loading ? '...' : dashboardData?.cards?.total_firms || '0', chg: 'Live active firms', up: true, icon: Building2, color: BRAND },
+          { lbl: 'Active Users', val: loading ? '...' : dashboardData?.cards?.active_users || '0', chg: 'Live global user seats', up: true, icon: Users, color: BLUE },
+          { lbl: 'Total Cases', val: loading ? '...' : dashboardData?.cards?.case_statistics?.total || '0', chg: 'All matters on platform', up: true, icon: Gavel, color: PURPLE },
+          { lbl: 'Running Cases', val: loading ? '...' : dashboardData?.cards?.case_statistics?.running || '0', chg: 'Currently active matters', up: true, icon: Activity, color: GREEN },
         ].map((k, i) => (
           <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:border-gray-200 transition-colors">
             <div className="flex items-center justify-between mb-4">
@@ -150,7 +166,7 @@ export default function PlatformOwnerDashboard() {
             ))}
           </div>
 
-          <ResponsiveContainer width="100%" height={240}>
+          <ResponsiveContainer width="100%" height={240} className="[&_.recharts-surface]:outline-none">
             {revType === 'bar' ? (
               <BarChart data={revenueData} barGap={4} barCategoryGap="30%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
@@ -185,37 +201,47 @@ export default function PlatformOwnerDashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Platform Output Donut */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        {/* Global Case Distribution Donut */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col">
           <div className="mb-4">
-            <h2 className="text-sm font-bold text-gray-900">Platform Ownership</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Generated output by Partner &amp; Sales Mgrs</p>
+            <h2 className="text-sm font-bold text-gray-900">Case Statistics</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Distribution of all legal matters on the platform</p>
           </div>
 
-          <ResponsiveContainer width="100%" height={190}>
-            <PieChart>
-              <Pie data={partnerPerformance} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
-                paddingAngle={3} dataKey="value" stroke="none">
-                {partnerPerformance.map((d, i) => <Cell key={i} fill={d.color} />)}
-              </Pie>
-              <Tooltip formatter={(v: any) => [`${v} firms brought in`, '']} />
-            </PieChart>
-          </ResponsiveContainer>
-
-          <div className="space-y-2 mt-2">
-            {partnerPerformance.map(d => (
-              <div key={d.name} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-gray-500">
-                  <span className="w-2 h-2 rounded-sm" style={{ background: d.color }} />
-                  {d.name.split(' ')[0]}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-gray-800">{d.value} Firms</span>
-                  <span className="text-gray-400">{Math.round(d.value / 42 * 100)}%</span>
-                </div>
+          {!loading && totalCases === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center min-h-[190px]">
+              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-3">
+                <Gavel className="w-6 h-6 text-gray-300" />
               </div>
-            ))}
-          </div>
+              <p className="text-sm font-bold text-gray-400">No Cases Active</p>
+            </div>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={190} className="[&_.recharts-surface]:outline-none">
+                <PieChart>
+                  <Pie data={caseStatsData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value" stroke="none">
+                    {caseStatsData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(val: any) => [`${val} cases`, '']} />
+                </PieChart>
+              </ResponsiveContainer>
+
+              <div className="space-y-2 mt-2">
+                {caseStatsData.map(d => (
+                  <div key={d.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 text-gray-500">
+                      <span className="w-2 h-2 rounded-sm" style={{ background: d.color }} />
+                      {d.name.split(' ')[0]}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-800">{d.value}</span>
+                      <span className="text-gray-400 w-8 text-right">{totalCases > 0 ? Math.round((d.value / totalCases) * 100) : 0}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -236,7 +262,7 @@ export default function PlatformOwnerDashboard() {
           ))}
         </div>
 
-        <ResponsiveContainer width="100%" height={260}>
+        <ResponsiveContainer width="100%" height={260} className="[&_.recharts-surface]:outline-none">
           <LineChart data={firmGrowthData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
             <XAxis dataKey="month" tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -260,17 +286,31 @@ export default function PlatformOwnerDashboard() {
             </span>
           </div>
           <div className="divide-y divide-gray-50">
-            {recentActivity.map(({ icon: Icon, text, time, color }, i) => (
-              <div key={i} className="flex items-start gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors">
-                <div className={`w-8 h-8 rounded-xl ${color} flex items-center justify-center shrink-0 mt-0.5`}>
-                  <Icon className="w-4 h-4 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-800 font-semibold">{text}</p>
-                  <p className="text-[11px] text-gray-400 mt-1">{time}</p>
-                </div>
-              </div>
-            ))}
+            {loading ? (
+              <div className="px-6 py-6 text-sm text-gray-400 font-medium animate-pulse text-center">Locating audit trails...</div>
+            ) : dashboardData?.recent_audits?.length > 0 ? (
+              dashboardData.recent_audits.slice(0, 5).map((audit: any, i: number) => {
+                const isLogin = audit.action.includes('login');
+                const isError = audit.action.includes('error') || audit.action.includes('fail');
+                const isOTP = audit.action.includes('otp');
+                const ActionIcon = (isLogin || audit.action === 'logout') ? Users : isOTP ? Activity : Building2;
+                const dotColor = isLogin ? 'bg-emerald-500' : isError ? 'bg-red-500' : 'bg-[#0e2340]';
+                
+                return (
+                  <div key={i} className="flex items-start gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors">
+                    <div className={`w-8 h-8 rounded-xl ${dotColor} flex items-center justify-center shrink-0 mt-0.5`}>
+                      <ActionIcon className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-800 font-semibold">{audit.description}</p>
+                      <p className="text-[11px] text-gray-400 mt-1">{new Date(audit.created_at).toLocaleString()}</p>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="px-6 py-6 text-sm text-gray-400 text-center font-medium">No recent operations logged.</div>
+            )}
           </div>
         </div>
 
