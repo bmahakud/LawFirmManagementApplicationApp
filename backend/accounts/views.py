@@ -9,6 +9,8 @@ import random
 import string
 from datetime import timedelta
 import requests
+from django.db.models import F
+
 
 from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, UserFirmRole, GlobalConfiguration, FirmJoinLink
 from firms.models import Firm, Branch
@@ -198,8 +200,6 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 # Check if firm_name is provided to create on the fly
                 firm_name = data.get('firm_name')
                 if firm_name:
-                    import random
-                    import string
                     firm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
                     firm = Firm.objects.create(
                         firm_name=firm_name,
@@ -645,6 +645,14 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         user = self.request.user
+        
+        # Public actions should have access to the specific invitation
+        if self.action in ['details', 'accept']:
+            return UserInvitation.objects.all()
+            
+        if not user.is_authenticated:
+            return UserInvitation.objects.none()
+            
         if user.user_type == 'platform_owner':
             return UserInvitation.objects.all()
         elif user.user_type in ['super_admin', 'admin']:
@@ -777,6 +785,14 @@ class FirmJoinLinkViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        
+        # Public actions should have access to all links (validity is checked in the action)
+        if self.action in ['details', 'join']:
+            return FirmJoinLink.objects.all()
+            
+        if not user.is_authenticated:
+            return FirmJoinLink.objects.none()
+            
         if user.user_type == 'platform_owner':
             return FirmJoinLink.objects.all()
         elif user.user_type in ['super_admin', 'admin']:
@@ -871,15 +887,18 @@ class FirmJoinLinkViewSet(viewsets.ModelViewSet):
             )
             
             # 3. Create User-Firm mapping (Membership)
-            membership = UserFirmRole.objects.create(
+            # Using get_or_create because post_save signal on CustomUser might have already created it
+            membership, _ = UserFirmRole.objects.get_or_create(
                 user=user,
                 firm=link.firm,
-                user_type=link.user_type,
-                is_last_active=True
+                defaults={
+                    'user_type': link.user_type,
+                    'is_last_active': True
+                }
             )
             
-            # 4. Increment usage count on the link
-            link.usage_count += 1
+            # 4. Increment usage count on the link atomically
+            link.usage_count = F('usage_count') + 1
             link.save()
             
             # 5. Generate Auth Token
