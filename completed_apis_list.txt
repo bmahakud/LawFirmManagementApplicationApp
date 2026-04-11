@@ -62,15 +62,9 @@ Total APIs Completed: 58
 ## Analytics & Dashboard APIs
 42. GET /api/dashboard/ - Retrieve role-based analytics cards and statistics (Platform Owner, Partner Manager, Super Admin).
 
-## Case Management APIs
-43. GET /api/cases/ - List all cases (filtered by user role and firm).
-44. POST /api/cases/ - Create a new case record (Super Admin/Admin/Advocate).
-45. GET /api/cases/{id}/ - Detailed case view with Activity Timeline, Hearings, and Drafts.
-46. PATCH /api/cases/{id}/ - Update case details or status (triggers Activity Log).
-47. DELETE /api/cases/{id}/ - Remove a case record.
 
 
 
 
 ## Client Management APIs
-58. GET /api/clients/ - List clients associated with the firm (Coming Soon/Model Ready).
+43. GET /api/clients/ - List clients associated with the firm (Coming Soon/Model Ready).

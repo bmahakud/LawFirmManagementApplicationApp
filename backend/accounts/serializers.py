@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, GlobalConfiguration, UserFirmRole
+from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, GlobalConfiguration, UserFirmRole, FirmJoinLink
 from firms.models import Firm
 import random
 import string
@@ -315,3 +315,35 @@ class GlobalConfigurationSerializer(serializers.ModelSerializer):
         model = GlobalConfiguration
         fields = ['id', 'is_free_trial_enabled', 'trial_period_days', 'updated_at', 'updated_by']
         read_only_fields = ['id', 'updated_at', 'updated_by']
+
+
+class FirmJoinLinkSerializer(serializers.ModelSerializer):
+    firm_name = serializers.CharField(source='firm.firm_name', read_only=True)
+    user_type_display = serializers.CharField(source='get_user_type_display', read_only=True)
+    
+    class Meta:
+        model = FirmJoinLink
+        fields = [
+            'id', 'firm', 'firm_name', 'user_type', 'user_type_display', 
+            'is_active', 'max_uses', 'usage_count', 'created_at', 'expires_at'
+        ]
+        read_only_fields = ['id', 'firm', 'firm_name', 'usage_count', 'created_at']
+
+
+class PublicJoinSerializer(serializers.Serializer):
+    """Data required for a user to join via a generic link"""
+    email = serializers.EmailField()
+    phone_number = serializers.CharField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    password = serializers.CharField(min_length=8, write_only=True)
+    
+    def validate_email(self, value):
+        if CustomUser.objects.filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate_phone_number(self, value):
+        if CustomUser.objects.filter(phone_number=value).exists():
+            raise serializers.ValidationError("A user with this phone number already exists.")
+        return value

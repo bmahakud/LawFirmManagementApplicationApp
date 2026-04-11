@@ -1,0 +1,292 @@
+{
+    "info": {
+        "name": "AntLegal Management System - Full Collection",
+        "description": "Complete API inventory for the Law Firm Management Application. Includes all CRUD operations and custom workflows.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "1. Authentication",
+            "item": [
+                {
+                    "name": "Login (Username/Password)",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/auth/login_username_password/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "username": "admin@example.com",
+                                "password": "password123"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Request Phone OTP",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/auth/send_otp/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "phone_number": "919876543210"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Request Email OTP",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/auth/request_email_otp/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "email": "user@example.com"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Verify OTP & Get Token",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/auth/verify_otp/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "phone_number": "919876543210",
+                                "otp_code": "123456"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Set Initial Password",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/auth/set_password/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "phone_number": "919876543210",
+                                "password": "newpassword123",
+                                "password_confirm": "newpassword123"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Logout",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/auth/logout/"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "2. User & Firm Setup",
+            "item": [
+                {
+                    "name": "Dashboard Statistics",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://antlegal.anthemgt.com/api/dashboard/"
+                    }
+                },
+                {
+                    "name": "List Firms",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://antlegal.anthemgt.com/api/firms/"
+                    }
+                },
+                {
+                    "name": "Create Firm",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/firms/"
+                    }
+                },
+                {
+                    "name": "List Branches",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://antlegal.anthemgt.com/api/branches/"
+                    }
+                },
+                {
+                    "name": "Add User to Firm",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/users/add_user/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "email": "newuser@firm.com",
+                                "user_type": "advocate",
+                                "first_name": "John"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Switch Active Firm",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/users/switch_firm/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "firm_id": "uuid-here"
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "3. Case Management",
+            "item": [
+                {
+                    "name": "List All Cases",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://antlegal.anthemgt.com/api/cases/"
+                    }
+                },
+                {
+                    "name": "Create Case",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/cases/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "case_title": "State vs Sharma",
+                                "case_number": "CN-2024-001",
+                                "client": "client-uuid"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Case Detail",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://antlegal.anthemgt.com/api/cases/:id/"
+                    }
+                },
+                {
+                    "name": "Update Case Status",
+                    "request": {
+                        "method": "PATCH",
+                        "url": "https://antlegal.anthemgt.com/api/cases/:id/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "status": "running"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "List Case Hearings",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://antlegal.anthemgt.com/api/hearings/"
+                    }
+                },
+                {
+                    "name": "Schedule Hearing",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/hearings/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "case": "case-uuid",
+                                "hearing_date": "2024-05-20T10:00:00Z",
+                                "purpose": "Evidence"
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "4. Documents & Partners",
+            "item": [
+                {
+                    "name": "List Documents",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://antlegal.anthemgt.com/api/documents/"
+                    }
+                },
+                {
+                    "name": "Upload Document",
+                    "request": {
+                        "method": "POST",
+                        "url": "https://antlegal.anthemgt.com/api/documents/",
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "file",
+                                    "type": "file"
+                                },
+                                {
+                                    "key": "document_type",
+                                    "value": "identity_proof"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "List Audit Logs",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://antlegal.anthemgt.com/api/audit-logs/"
+                    }
+                },
+                {
+                    "name": "List Partners",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://antlegal.anthemgt.com/api/partners/"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "5. Global Configuration",
+            "item": [
+                {
+                    "name": "Get System Settings",
+                    "request": {
+                        "method": "GET",
+                        "url": "https://antlegal.anthemgt.com/api/config/settings/"
+                    }
+                },
+                {
+                    "name": "Update Trial Settings",
+                    "request": {
+                        "method": "PATCH",
+                        "url": "https://antlegal.anthemgt.com/api/config/update_settings/",
+                        "body": {
+                            "mode": "json",
+                            "json": {
+                                "is_free_trial_enabled": true,
+                                "trial_period_days": 15
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

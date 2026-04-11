@@ -204,6 +204,41 @@ class UserInvitation(models.Model):
     def __str__(self):
         return f"Invitation to {self.email} - {self.get_status_display()}"
 
+
+class FirmJoinLink(models.Model):
+    """Generic reusable links for joining a firm with a specific role"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    firm = models.ForeignKey('firms.Firm', on_delete=models.CASCADE, related_name='join_links')
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
+    
+    user_type = models.CharField(max_length=20, choices=CustomUser.USER_TYPE_CHOICES)
+    is_active = models.BooleanField(default=True)
+    
+    # Optional limits
+    max_uses = models.IntegerField(default=0, help_text="0 for unlimited")
+    usage_count = models.IntegerField(default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['firm', 'user_type', 'is_active']),
+        ]
+    
+    def __str__(self):
+        return f"Join Link: {self.firm.firm_name} - {self.get_user_type_display()}"
+    
+    def is_valid(self):
+        if not self.is_active:
+            return False
+        if self.expires_at and self.expires_at < timezone.now():
+            return False
+        if self.max_uses > 0 and self.usage_count >= self.max_uses:
+            return False
+        return True
+
 class UserFirmRole(models.Model):
     """Mapping of users to law firms with specific roles"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

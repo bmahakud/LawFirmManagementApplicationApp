@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status, permissions, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
@@ -9,8 +9,10 @@ import random
 import string
 from datetime import timedelta
 import requests
+from django.db.models import F
 
-from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, UserFirmRole, GlobalConfiguration
+
+from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, UserFirmRole, GlobalConfiguration, FirmJoinLink
 from firms.models import Firm, Branch
 from .serializers import (
     CustomUserSerializer, LoginCredentialSerializer,
@@ -18,7 +20,8 @@ from .serializers import (
     UserRegistrationSerializer, UsernamePasswordLoginSerializer,
     PhoneOTPLoginSerializer, EmailOTPLoginSerializer,
     OTPVerifySerializer, SetPasswordSerializer, ChangePasswordSerializer,
-    UserFirmRoleSerializer, GlobalConfigurationSerializer
+    UserFirmRoleSerializer, GlobalConfigurationSerializer,
+    FirmJoinLinkSerializer, PublicJoinSerializer
 )
 from audit.models import AuditLog
 
@@ -197,8 +200,6 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 # Check if firm_name is provided to create on the fly
                 firm_name = data.get('firm_name')
                 if firm_name:
-                    import random
-                    import string
                     firm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
                     firm = Firm.objects.create(
                         firm_name=firm_name,
@@ -342,14 +343,14 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         )
         
         # Send notification
-        subject = f"Welcome to AntLegal - {firm.firm_name}"
+        join_link = f"https://antlegal.anthemgt.com/join?token={invitation.id}"
+        subject = f"Invite to join {firm.firm_name} - AntLegal"
         message = (
             f"Hello {new_user.first_name or new_user.username},\n\n"
-            f"You have been added as {membership.get_user_type_display()} in {firm.firm_name} on AntLegal platform.\n\n"
-            f"Your login details:\n"
-            f"Username: {new_user.email}\n"
-            f"Password: {temp_password}\n\n"
-            f"Please login and change your password for security purposes.\n\n"
+            f"You have been invited to join {firm.firm_name} as a {membership.get_user_type_display()} on AntLegal.\n\n"
+            f"Please click the link below to set up your account and get started:\n"
+            f"{join_link}\n\n"
+            f"This link will expire in 7 days.\n\n"
             f"Regards,\nAntLegal Team"
         )
         send_notification_email(new_user.email, subject, message)
@@ -644,6 +645,14 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         user = self.request.user
+        
+        # Public actions should have access to the specific invitation
+        if self.action in ['details', 'accept']:
+            return UserInvitation.objects.all()
+            
+        if not user.is_authenticated:
+            return UserInvitation.objects.none()
+            
         if user.user_type == 'platform_owner':
             return UserInvitation.objects.all()
         elif user.user_type in ['super_admin', 'admin']:
@@ -658,9 +667,77 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
         except UserInvitation.DoesNotExist:
             from django.http import Http404
             raise Http404
+            
+        # Permission check: AllowAny for specific public actions, otherwise keep restrictions
+        if self.action in ['details', 'accept']:
+            return obj
+            
         if not self.get_queryset().filter(pk=pk).exists():
             raise DRFPermDenied("You do not have permission to access this resource.")
         return obj
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
+    def details(self, request, pk=None):
+        """Public endpoint to get invitation context (Firm name, Role)"""
+        invitation = self.get_object()
+        if invitation.status != 'pending':
+            return Response({'error': f'This invitation is {invitation.status}'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if invitation.expires_at and invitation.expires_at < timezone.now():
+            invitation.status = 'expired'
+            invitation.save()
+            return Response({'error': 'This invitation has expired'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        return Response({
+            'firm_name': invitation.firm.firm_name,
+            'user_type': invitation.user_type,
+            'user_type_display': invitation.get_user_type_display(),
+            'email': invitation.email,
+            'first_name': invitation.invited_user.first_name if invitation.invited_user else ""
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
+    def accept(self, request, pk=None):
+        """Public endpoint to finalize registration and accept invitation"""
+        invitation = self.get_object()
+        if invitation.status != 'pending':
+            return Response({'error': 'Invitation is no longer pending'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        data = request.data
+        password = data.get('password')
+        
+        if not password or len(password) < 8:
+            return Response({'error': 'Valid password is required (min 8 chars)'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        user = invitation.invited_user
+        if not user:
+            # If invitation was generic/email-only, create user now
+            # (Note: Current add_user logic creates a stub user, so we usually have one)
+            return Response({'error': 'User record not found. Please contact admin.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Update user details
+        user.first_name = data.get('first_name', user.first_name)
+        user.last_name = data.get('last_name', user.last_name)
+        user.set_password(password)
+        user.password_set = True
+        user.is_active = True
+        user.save()
+        
+        # Mark invitation as accepted
+        invitation.status = 'accepted'
+        invitation.accepted_at = timezone.now()
+        invitation.save()
+        
+        # Generate token for immediate login
+        token, _ = Token.objects.get_or_create(user=user)
+        
+        log_audit(user, 'accept_invitation', f'Accepted invitation to {invitation.firm.firm_name}')
+        
+        return Response({
+            'message': 'Account activated successfully',
+            'token': token.key,
+            'user': CustomUserSerializer(user).data
+        })
 
 
 class GlobalConfigurationViewSet(viewsets.ViewSet):
@@ -697,4 +774,142 @@ class GlobalConfigurationViewSet(viewsets.ViewSet):
             )
             return Response(serializer.data)
         
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FirmJoinLinkViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing generic firm join links"""
+    queryset = FirmJoinLink.objects.all()
+    serializer_class = FirmJoinLinkSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Public actions should have access to all links (validity is checked in the action)
+        if self.action in ['details', 'join']:
+            return FirmJoinLink.objects.all()
+            
+        if not user.is_authenticated:
+            return FirmJoinLink.objects.none()
+            
+        if user.user_type == 'platform_owner':
+            return FirmJoinLink.objects.all()
+        elif user.user_type in ['super_admin', 'admin']:
+            return FirmJoinLink.objects.filter(firm=user.firm)
+        return FirmJoinLink.objects.none()
+
+    def get_object(self):
+        from rest_framework.exceptions import PermissionDenied as DRFPermDenied
+        pk = self.kwargs.get('pk')
+        try:
+            obj = FirmJoinLink.objects.get(pk=pk)
+        except FirmJoinLink.DoesNotExist:
+            from django.http import Http404
+            raise Http404
+            
+        # Public actions allow access to the object
+        if self.action in ['details', 'join']:
+            return obj
+            
+        if not self.get_queryset().filter(pk=pk).exists():
+            raise DRFPermDenied("You do not have permission to access this resource.")
+        return obj
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.user_type not in ['platform_owner', 'super_admin', 'admin']:
+            raise permissions.PermissionDenied("Only admins can create join links")
+        
+        firm = user.firm
+        # If Platform Owner, they can specify any firm
+        if user.user_type == 'platform_owner' and 'firm' in self.request.data:
+            firm_id = self.request.data.get('firm')
+            try:
+                firm = Firm.objects.get(pk=firm_id)
+            except Firm.DoesNotExist:
+                raise serializers.ValidationError({'firm': 'Invalid firm ID'})
+        
+        if not firm:
+            raise serializers.ValidationError({'firm': 'Firm is required'})
+            
+        serializer.save(created_by=user, firm=firm)
+        log_audit(user, 'create_join_link', f"Created {serializer.validated_data.get('user_type')} join link for {firm.firm_name}")
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
+    def details(self, request, pk=None):
+        """Public endpoint to get join link details (firm name, role)"""
+        link = self.get_object()
+        if not link.is_valid():
+            return Response({
+                'error': 'This link is invalid, expired, or has reached maximum uses',
+                'is_valid': False
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({
+            'firm_name': link.firm.firm_name,
+            'user_type': link.user_type,
+            'user_type_display': link.get_user_type_display(),
+            'expires_at': link.expires_at,
+            'max_uses': link.max_uses,
+            'usage_count': link.usage_count,
+            'is_valid': True
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
+    def join(self, request, pk=None):
+        """Public endpoint for a user to join a firm via generic link"""
+        link = self.get_object()
+        if not link.is_valid():
+            return Response({'error': 'This link is no longer valid'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = PublicJoinSerializer(data=request.data)
+        if serializer.is_valid():
+            data = serializer.validated_data
+            
+            # 1. Create the CustomUser
+            user = CustomUser.objects.create_user(
+                username=data['email'],
+                email=data['email'],
+                phone_number=data['phone_number'],
+                first_name=data['first_name'],
+                last_name=data['last_name'],
+                password=data['password'],
+                user_type=link.user_type,
+                firm=link.firm,
+                password_set=True
+            )
+            
+            # 2. Create Login Credentials
+            LoginCredential.objects.create(
+                user=user,
+                username=data['email']
+            )
+            
+            # 3. Create User-Firm mapping (Membership)
+            # Using get_or_create because post_save signal on CustomUser might have already created it
+            membership, _ = UserFirmRole.objects.get_or_create(
+                user=user,
+                firm=link.firm,
+                defaults={
+                    'user_type': link.user_type,
+                    'is_last_active': True
+                }
+            )
+            
+            # 4. Increment usage count on the link atomically
+            link.usage_count = F('usage_count') + 1
+            link.save()
+            
+            # 5. Generate Auth Token
+            token, _ = Token.objects.get_or_create(user=user)
+            
+            log_audit(user, 'join_via_link', f"Joined {link.firm.firm_name} via generic link as {link.get_user_type_display()}")
+            
+            return Response({
+                'message': f"Welcome! You have successfully joined {link.firm.firm_name}",
+                'token': token.key,
+                'user': CustomUserSerializer(user).data
+            }, status=status.HTTP_201_CREATED)
+            
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
