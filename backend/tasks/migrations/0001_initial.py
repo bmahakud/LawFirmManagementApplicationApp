@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("firms", "0003_firm_updates"),
+        ("firms", "0002_branch"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

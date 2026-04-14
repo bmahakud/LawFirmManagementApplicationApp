@@ -7,6 +7,7 @@ import uuid
 
 class Migration(migrations.Migration):
     dependencies = [
+        ("partners", "0001_initial"),
         ("firms", "0001_initial"),
     ]
 
@@ -46,5 +47,31 @@ class Migration(migrations.Migration):
                 "ordering": ["branch_name"],
                 "unique_together": {("firm", "branch_name")},
             },
+        ),
+        migrations.AddField(
+            model_name="firm",
+            name="logo",
+            field=models.ImageField(blank=True, null=True, upload_to="firm_logos/"),
+        ),
+        migrations.AddField(
+            model_name="firm",
+            name="partner",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="onboarded_firms",
+                to="partners.partner",
+            ),
+        ),
+        migrations.AddField(
+            model_name="firm",
+            name="practice_areas",
+            field=models.JSONField(blank=True, default=list),
+        ),
+        migrations.AddField(
+            model_name="firm",
+            name="registration_number",
+            field=models.CharField(blank=True, max_length=100),
         ),
     ]
