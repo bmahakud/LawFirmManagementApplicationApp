@@ -113,6 +113,8 @@ class DashboardViewSet(viewsets.ViewSet):
                 'name': firm.firm_name,
                 'code': firm.firm_code,
                 'subscription': firm.subscription_type,
+                'is_suspended': firm.is_suspended,
+                'subscription_end_date': firm.subscription_end_date,
                 'practice_areas': firm.practice_areas
             }
         }
@@ -129,10 +131,12 @@ class DashboardViewSet(viewsets.ViewSet):
         }
 
 
+from .permissions import IsSubscriptionActive
+
 class FirmViewSet(viewsets.ModelViewSet):
     queryset = Firm.objects.all()
     serializer_class = FirmSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsSubscriptionActive]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['firm_name', 'firm_code', 'city', 'state', 'email']
     ordering_fields = ['created_at', 'firm_name']
@@ -173,7 +177,7 @@ class FirmViewSet(viewsets.ModelViewSet):
 class BranchViewSet(viewsets.ModelViewSet):
     queryset = Branch.objects.all()
     serializer_class = BranchSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsSubscriptionActive]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['branch_name', 'city', 'state', 'phone_number']
     ordering_fields = ['created_at', 'branch_name']

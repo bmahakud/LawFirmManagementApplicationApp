@@ -59,6 +59,21 @@ class Firm(models.Model):
     def __str__(self):
         return self.firm_name
 
+    @property
+    def is_suspended(self):
+        """Checks if the firm should be restricted regardless of is_active flag"""
+        from django.utils import timezone
+        
+        # 1. Manual check
+        if not self.is_active:
+            return True
+            
+        # 2. Expiry check
+        if self.subscription_end_date and self.subscription_end_date < timezone.now():
+            return True
+            
+        return False
+
 class Branch(models.Model):
     """Branch within a law firm"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

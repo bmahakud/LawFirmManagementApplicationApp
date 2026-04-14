@@ -3,6 +3,7 @@ import uuid
 
 class Case(models.Model):
     STATUS_CHOICES = [
+        ('pending', 'Pending'),
         ('open', 'Open'),
         ('in_progress', 'In Progress'),
         ('on_hold', 'On Hold'),
@@ -78,7 +79,7 @@ class Case(models.Model):
         related_name='cases_as_paralegal'
     )
     
-    case_title = models.CharField(max_length=255)
+    case_title = models.CharField(max_length=255, blank=True)
     case_number = models.CharField(max_length=100, blank=True) # Manual entry might not have it yet
     case_type = models.CharField(max_length=100) # e.g., C.C., Sessions Case, etc.
     description = models.TextField(blank=True)
@@ -119,7 +120,13 @@ class Case(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.case_title} ({self.case_number})"
+        return f"{self.case_title or self.case_number} ({self.case_number})"
+
+    def save(self, *args, **kwargs):
+        if not self.case_title and self.case_number:
+            self.case_title = f"Case {self.case_number}"
+        super().save(*args, **kwargs)
+
 
 class CaseActivity(models.Model):
     """Tracks the lifecycle/timeline of a case"""

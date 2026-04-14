@@ -8,10 +8,12 @@ from .serializers import (
 )
 from audit.models import AuditLog
 
+from firms.permissions import IsSubscriptionActive
+
 class CaseViewSet(viewsets.ModelViewSet):
     queryset = Case.objects.all()
     serializer_class = CaseSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsSubscriptionActive]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         'case_title', 'case_number', 'petitioner_name', 

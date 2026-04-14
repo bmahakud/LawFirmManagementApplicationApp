@@ -106,8 +106,9 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     queryset = CustomUser.objects.all()
     serializer_class = CustomUserSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter] # Fallback if global not set
     search_fields = ['username', 'email', 'first_name', 'last_name', 'phone_number']
+    filterset_fields = ['user_type', 'is_active', 'firm']
     ordering_fields = ['created_at', 'id']
     
     def get_queryset(self):
