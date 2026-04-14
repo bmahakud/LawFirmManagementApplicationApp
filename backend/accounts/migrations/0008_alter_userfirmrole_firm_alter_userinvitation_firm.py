@@ -6,7 +6,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("firms", "0003_firm_logo_firm_partner_firm_practice_areas_and_more"),
+        ("firms", "0003_firm_updates"),
         ("accounts", "0007_firmjoinlink"),
     ]
 

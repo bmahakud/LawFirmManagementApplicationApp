@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("firms", "0003_firm_logo_firm_partner_firm_practice_areas_and_more"),
+        ("firms", "0003_firm_updates"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
