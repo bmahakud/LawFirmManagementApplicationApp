@@ -294,25 +294,6 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                     )
         
         # ============================================================================
-        # ADVOCATE REQUIRED WHEN ADMIN ADDS A CLIENT
-        # ============================================================================
-        assigned_advocate_id = data.get('assigned_advocate_id')
-        if user_type_to_add == 'client' and user.user_type in ['admin', 'super_admin']:
-            if not assigned_advocate_id:
-                return Response(
-                    {'error': 'You must assign an advocate when registering a client (assigned_advocate_id is required).'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            # Validate advocate exists in the same firm
-            try:
-                advocate = CustomUser.objects.get(id=assigned_advocate_id, user_type='advocate', firm=firm)
-            except CustomUser.DoesNotExist:
-                return Response(
-                    {'error': 'Invalid advocate. The advocate must belong to your firm.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        # ============================================================================
         # CREATE OR LINK USER
         # ============================================================================
         
@@ -394,6 +375,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         # ============================================================================
         if user_type_to_add == 'client':
             from clients.models import Client as ClientRecord
+            assigned_advocate_id = data.get('assigned_advocate_id')
             advocate_obj = None
             if assigned_advocate_id:
                 advocate_obj = CustomUser.objects.filter(id=assigned_advocate_id, user_type='advocate').first()
