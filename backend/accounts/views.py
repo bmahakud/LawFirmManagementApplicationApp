@@ -14,6 +14,7 @@ from django.db.models import F, Q
 
 from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, UserFirmRole, GlobalConfiguration, FirmJoinLink
 from firms.models import Firm, Branch
+from audit.models import AuditLog
 from .serializers import (
     CustomUserSerializer, LoginCredentialSerializer,
     OTPVerificationSerializer, UserInvitationSerializer,
