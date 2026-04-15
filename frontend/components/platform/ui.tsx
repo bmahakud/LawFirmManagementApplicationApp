@@ -118,7 +118,7 @@ export function Panel({
 
 export function SearchBar({ placeholder, value, onChange }: { placeholder: string; value?: string; onChange?: (val: string) => void }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-[#f7f8fa] px-3 py-2">
+    <div className="flex w-full items-center gap-2 rounded-xl border border-gray-100 bg-[#f7f8fa] px-3 py-2 transition-[width] duration-300 sm:w-64 sm:focus-within:w-[45vw] lg:focus-within:w-[40rem]">
       <Search className="h-3.5 w-3.5 shrink-0 text-gray-400" />
       <input
         type="text"
@@ -236,7 +236,7 @@ export function DocumentHistory({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-[#f7f8fa] px-3 py-2">
+      <div className="flex w-full items-center gap-2 rounded-xl border border-gray-100 bg-[#f7f8fa] px-3 py-2 transition-[width] duration-300 sm:w-64 sm:focus-within:w-[45vw] lg:focus-within:w-[40rem]">
         <Search className="h-3.5 w-3.5 shrink-0 text-gray-400" />
         <input
           value={query}

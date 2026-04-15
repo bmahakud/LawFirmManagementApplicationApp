@@ -9,6 +9,7 @@ import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 
 import { resolveRouteMeta } from '@/components/platform/route-meta';
+import { useTopbar } from '@/components/platform/TopbarContext';
 
 const pageTitles = [
   { match: '/platform-owner', title: 'Dashboard', sub: "Welcome back, here's what's happening on your platform today." },
@@ -18,13 +19,17 @@ const pageTitles = [
   { match: '/platform-owner/firms', title: 'Law Firms', sub: 'Manage law firms, onboarding, and subscription context.' },
   { match: '/platform-owner/partners', title: 'Partner Managers', sub: 'Manage partner managers and assigned firms.' },
   { match: '/platform-owner/sales', title: 'Sales Persons', sub: 'Manage sales personnel, referrals, and lead ownership.' },
+  { match: '/platform-owner/users', title: 'User Management', sub: 'Manage platform-level user accounts.' },
+  { match: '/platform-owner/users/super-admin', title: 'Super Admins', sub: 'Manage firm super admin accounts.' },
 ];
 
 export default function Topbar() {
   const pathname = usePathname();
   const router = useRouter();
-  
-  const page = resolveRouteMeta(pathname, pageTitles, { title: 'Platform Owner', sub: '' });
+
+  const { dynamic } = useTopbar();
+  const staticPage = resolveRouteMeta(pathname, pageTitles, { title: 'Platform Owner', sub: '' });
+  const page = dynamic ?? staticPage;
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 

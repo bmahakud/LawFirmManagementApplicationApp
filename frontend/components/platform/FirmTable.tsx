@@ -98,7 +98,7 @@ export default function FirmTable() {
           <p className="text-xs text-gray-400 mt-0.5">{firms.length} firms total · {firms.filter(f => f.is_active).length} active</p>
         </div>
         {/* Search */}
-        <div className="flex items-center gap-2 bg-[#f7f8fa] border border-gray-100 rounded-xl px-3 py-2 w-60">
+        <div className="flex w-full items-center gap-2 rounded-xl border border-gray-100 bg-[#f7f8fa] px-3 py-2 transition-[width] duration-300 sm:w-60 sm:focus-within:w-[45vw] lg:focus-within:w-[40rem]">
           <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
           <input
             value={query}

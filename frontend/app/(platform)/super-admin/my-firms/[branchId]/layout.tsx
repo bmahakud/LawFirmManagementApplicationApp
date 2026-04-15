@@ -1,8 +1,11 @@
 'use client';
 
-import { use } from 'react';
+import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
+import { useTopbarTitle } from '@/components/platform/TopbarContext';
 
 export default function BranchDetailLayout({
   children,
@@ -14,7 +17,23 @@ export default function BranchDetailLayout({
   const pathname = usePathname();
   const { branchId } = use(params);
   const basePath = `/super-admin/my-firms/${branchId}`;
-  
+
+  const [branchName, setBranchName] = useState('');
+
+  // Fetch branch name so we can push it to the topbar
+  useEffect(() => {
+    if (!branchId) return;
+    customFetch(API.FIRMS.BRANCHES.DETAIL(branchId))
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.branch_name) setBranchName(data.branch_name);
+      })
+      .catch(() => {});
+  }, [branchId]);
+
+  // Push branch name into the shared topbar
+  useTopbarTitle(branchName, 'Branch details and settings');
+
   const navItems = [
     { name: 'Overview', path: `${basePath}/overview` },
     { name: 'Advocates', path: `${basePath}/advocates` },
@@ -28,10 +47,10 @@ export default function BranchDetailLayout({
       <div className="mb-4 text-sm text-gray-500 flex items-center gap-2">
         <Link href="/super-admin/my-firms" className="hover:text-gray-900 transition-colors">My Firms</Link>
         <span>/</span>
-        <span className="text-gray-900 font-semibold">Branch Details</span>
+        <span className="text-gray-900 font-semibold">{branchName || 'Branch Details'}</span>
       </div>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Branch Dashboard</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">{branchName || 'Branch Dashboard'}</h1>
 
       {/* Top Navigation */}
       <div className="border-b border-gray-200">
@@ -62,3 +81,4 @@ export default function BranchDetailLayout({
     </div>
   );
 }
+

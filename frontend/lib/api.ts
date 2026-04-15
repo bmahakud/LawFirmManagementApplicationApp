@@ -13,7 +13,7 @@ export const API = {
     VERIFY_OTP: "/api/auth/verify_otp/"
   },
   DASHBOARD: {
-    GET: "/api/firms/dashboard/"
+    GET: "/api/dashboard/"
   },
   USERS: {
     LIST: "/api/users/",
@@ -24,9 +24,9 @@ export const API = {
     CHANGE_PASSWORD: "/api/users/change_password/"
   },
   FIRMS: {
-    LIST: "/api/firms/firms/",
-    CREATE: "/api/firms/firms/",
-    DETAIL: (uuid: string) => `/api/firms/firms/${uuid}/`,
+    LIST: "/api/firms/",
+    CREATE: "/api/firms/",
+    DETAIL: (uuid: string) => `/api/firms/${uuid}/`,
     BRANCHES: {
       LIST: "/api/branches/",
       CREATE: "/api/branches/",

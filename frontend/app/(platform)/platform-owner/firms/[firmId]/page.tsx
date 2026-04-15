@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
+import { useTopbarTitle } from '@/components/platform/TopbarContext';
 
 const BRAND = '#0e2340';
 
@@ -61,6 +62,12 @@ export default function PlatformOwnerFirmOverviewPage({
   const [firm, setFirm] = useState<FirmDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Push firm name into the topbar dynamically once loaded
+  useTopbarTitle(
+    firm?.firm_name ?? '',
+    firm ? `Law Firm · ${firm.is_active ? 'Active' : 'Inactive'}` : '',
+  );
 
   // Editable state for Settings tab
   const [editedDetails, setEditedDetails] = useState({

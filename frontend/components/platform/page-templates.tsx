@@ -52,6 +52,7 @@ import { API } from '@/lib/api';
 import { Loader2, PlusCircle, Save, X, ChevronDown } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 import { Country, State, City } from 'country-state-city';
+import { useTopbarTitle } from '@/components/platform/TopbarContext';
 
 export const INDIAN_STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
@@ -815,6 +816,13 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
   const [saving, setSaving] = useState(false);
+
+  // Push user's full name into the topbar dynamically
+  const fullName = user ? `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() : '';
+  const userTypeLabel = user?.user_type
+    ? user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)
+    : 'User';
+  useTopbarTitle(fullName, fullName ? `${userTypeLabel} Profile` : '');
 
   useEffect(() => {
     if (user) {

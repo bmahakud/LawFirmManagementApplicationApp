@@ -8,14 +8,23 @@ import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 
 import { resolveRouteMeta } from '@/components/platform/route-meta';
+import { useTopbar } from '@/components/platform/TopbarContext';
 
 const pageTitles = [
   { match: '/super-admin/dashboard', title: 'Law Firm Dashboard', sub: 'Overview of your law firm.' },
   { match: '/super-admin/cases', title: 'Cases', sub: 'Manage all firm cases, filings, and lifecycle stages.' },
+  { match: '/super-admin/cases/pre-litigation', title: 'Pre-Litigation', sub: 'Manage pre-litigation matters and early-stage filings.' },
+  { match: '/super-admin/cases/court-case', title: 'Court Case', sub: 'Manage active court cases and hearing schedules.' },
+  { match: '/super-admin/users', title: 'User Management', sub: 'Manage admins, advocates, paralegals, and clients.' },
+  { match: '/super-admin/users/admin', title: 'Admins', sub: 'Manage firm admin accounts and branch assignments.' },
+  { match: '/super-admin/users/advocate', title: 'Advocates', sub: 'Manage advocate profiles and case assignments.' },
+  { match: '/super-admin/users/paralegal', title: 'Paralegals', sub: 'Manage paralegal profiles and matter support.' },
+  { match: '/super-admin/users/client', title: 'Clients', sub: 'Manage client records and linked matters.' },
   { match: '/super-admin/team', title: 'Team', sub: 'Manage advocates, admins, and paralegals.' },
   { match: '/super-admin/clients', title: 'Clients', sub: 'Manage clients and their profiles.' },
   { match: '/super-admin/billing', title: 'Billing', sub: 'View invoices and manage payments.' },
   { match: '/super-admin/reports', title: 'Reports', sub: 'Generate firm performance reports.' },
+  { match: '/super-admin/my-firms', title: 'My Firms', sub: 'View and manage your registered law firms.' },
   { match: '/super-admin/settings', title: 'Settings', sub: 'Manage firm profile and verification settings.' },
 ];
 
@@ -36,7 +45,9 @@ export default function SuperAdminTopbar() {
   };
 
   const pathname = usePathname();
-  const page = resolveRouteMeta(pathname, pageTitles, { title: 'Super Admin', sub: 'Firm Management' });
+  const { dynamic } = useTopbar();
+  const staticPage = resolveRouteMeta(pathname, pageTitles, { title: 'Super Admin', sub: 'Firm Management' });
+  const page = dynamic ?? staticPage;
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 

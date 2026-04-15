@@ -153,7 +153,7 @@ export default function SalesPersonPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <p className="text-sm font-bold text-[#0e2340]">{users.length} Sales Persons</p>
-          <div className="flex items-center gap-2 bg-[#f7f8fa] border border-gray-100 rounded-xl px-3 py-2 w-56">
+          <div className="flex w-full items-center gap-2 rounded-xl border border-gray-100 bg-[#f7f8fa] px-3 py-2 transition-[width] duration-300 sm:w-56 sm:focus-within:w-[45vw] lg:focus-within:w-[40rem]">
             <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
             <input value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} placeholder="Search by name / area…" className="bg-transparent text-sm text-black font-semibold placeholder:text-gray-400 outline-none w-full" />
           </div>
