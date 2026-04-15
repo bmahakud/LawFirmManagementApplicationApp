@@ -172,6 +172,50 @@ class FirmViewSet(viewsets.ModelViewSet):
         if user.user_type not in ['platform_owner', 'partner_manager', 'super_admin']:
             raise PermissionDenied('You do not have permission to update this firm')
         serializer.save()
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def suspend(self, request, pk=None):
+        """Suspend a firm (Platform Owner only)"""
+        if request.user.user_type != 'platform_owner':
+            raise PermissionDenied('Only Platform Owner can suspend firms')
+        
+        firm = self.get_object()
+        firm.is_active = False
+        firm.save()
+        
+        from audit.models import AuditLog
+        AuditLog.objects.create(
+            user=request.user,
+            action='suspend_firm',
+            description=f'Suspended firm: {firm.firm_name}'
+        )
+        
+        return Response({
+            'message': f'Firm "{firm.firm_name}" has been suspended',
+            'firm': FirmSerializer(firm).data
+        })
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def unsuspend(self, request, pk=None):
+        """Unsuspend/Activate a firm (Platform Owner only)"""
+        if request.user.user_type != 'platform_owner':
+            raise PermissionDenied('Only Platform Owner can unsuspend firms')
+        
+        firm = self.get_object()
+        firm.is_active = True
+        firm.save()
+        
+        from audit.models import AuditLog
+        AuditLog.objects.create(
+            user=request.user,
+            action='unsuspend_firm',
+            description=f'Unsuspended firm: {firm.firm_name}'
+        )
+        
+        return Response({
+            'message': f'Firm "{firm.firm_name}" has been activated',
+            'firm': FirmSerializer(firm).data
+        })
 
 
 class BranchViewSet(viewsets.ModelViewSet):
@@ -196,3 +240,139 @@ class BranchViewSet(viewsets.ModelViewSet):
         if user.user_type not in ['platform_owner', 'super_admin', 'admin']:
             raise PermissionDenied('Only Platform Owner or Firm Admins can create branches')
         serializer.save()
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def assign_admin(self, request, pk=None):
+        """Assign an admin to a branch"""
+        user = request.user
+        if user.user_type not in ['platform_owner', 'super_admin']:
+            raise PermissionDenied('Only Platform Owner or Super Admin can assign branch admins')
+        
+        branch = self.get_object()
+        admin_id = request.data.get('admin_id')
+        
+        if not admin_id:
+            return Response({'error': 'admin_id is required'}, status=400)
+        
+        from accounts.models import CustomUser, UserFirmRole
+        
+        try:
+            admin_user = CustomUser.objects.get(id=admin_id)
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'Admin user not found'}, status=404)
+        
+        # Check if user is an admin
+        if admin_user.user_type != 'admin':
+            return Response({'error': 'User must be an admin'}, status=400)
+        
+        # Check if admin belongs to the same firm
+        if admin_user.firm != branch.firm:
+            return Response({'error': 'Admin must belong to the same firm'}, status=400)
+        
+        # Check if admin is already assigned to another branch
+        existing_branch_assignment = UserFirmRole.objects.filter(
+            user=admin_user,
+            firm=branch.firm,
+            branch__isnull=False
+        ).exclude(branch=branch).first()
+        
+        if existing_branch_assignment:
+            return Response({
+                'error': f'Admin is already assigned to branch: {existing_branch_assignment.branch.branch_name}'
+            }, status=400)
+        
+        # Assign admin to branch
+        membership, created = UserFirmRole.objects.get_or_create(
+            user=admin_user,
+            firm=branch.firm,
+            defaults={'user_type': 'admin', 'branch': branch}
+        )
+        
+        if not created:
+            membership.branch = branch
+            membership.user_type = 'admin'
+            membership.save()
+        
+        from audit.models import AuditLog
+        AuditLog.objects.create(
+            user=request.user,
+            action='assign_branch_admin',
+            description=f'Assigned {admin_user.get_full_name()} as admin to branch: {branch.branch_name}'
+        )
+        
+        return Response({
+            'message': f'{admin_user.get_full_name()} assigned to {branch.branch_name}',
+            'branch': BranchSerializer(branch).data,
+            'admin': {
+                'id': admin_user.id,
+                'name': admin_user.get_full_name(),
+                'email': admin_user.email
+            }
+        })
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def unassign_admin(self, request, pk=None):
+        """Unassign an admin from a branch"""
+        user = request.user
+        if user.user_type not in ['platform_owner', 'super_admin']:
+            raise PermissionDenied('Only Platform Owner or Super Admin can unassign branch admins')
+        
+        branch = self.get_object()
+        admin_id = request.data.get('admin_id')
+        
+        if not admin_id:
+            return Response({'error': 'admin_id is required'}, status=400)
+        
+        from accounts.models import CustomUser, UserFirmRole
+        
+        try:
+            admin_user = CustomUser.objects.get(id=admin_id)
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'Admin user not found'}, status=404)
+        
+        # Find and update the membership
+        membership = UserFirmRole.objects.filter(
+            user=admin_user,
+            firm=branch.firm,
+            branch=branch
+        ).first()
+        
+        if not membership:
+            return Response({'error': 'Admin is not assigned to this branch'}, status=400)
+        
+        membership.branch = None
+        membership.save()
+        
+        from audit.models import AuditLog
+        AuditLog.objects.create(
+            user=request.user,
+            action='unassign_branch_admin',
+            description=f'Unassigned {admin_user.get_full_name()} from branch: {branch.branch_name}'
+        )
+        
+        return Response({
+            'message': f'{admin_user.get_full_name()} unassigned from {branch.branch_name}',
+            'branch': BranchSerializer(branch).data
+        })
+    
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def admins(self, request, pk=None):
+        """Get all admins assigned to a branch"""
+        branch = self.get_object()
+        
+        from accounts.models import UserFirmRole
+        from accounts.serializers import CustomUserSerializer
+        
+        admin_memberships = UserFirmRole.objects.filter(
+            branch=branch,
+            user_type='admin',
+            is_active=True
+        ).select_related('user')
+        
+        admins = [membership.user for membership in admin_memberships]
+        
+        return Response({
+            'branch': BranchSerializer(branch).data,
+            'admins': CustomUserSerializer(admins, many=True).data,
+            'count': len(admins)
+        })

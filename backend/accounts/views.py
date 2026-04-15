@@ -837,25 +837,31 @@ class GlobalConfigurationViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['patch'], url_name='update_settings')
     def update_settings(self, request):
         """Update global settings (Platform Owner only)"""
-        if request.user.user_type != 'platform_owner':
+        try:
+            if request.user.user_type != 'platform_owner':
+                return Response(
+                    {'error': 'Only Platform Owner can update global settings'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            config = GlobalConfiguration.get_settings()
+            serializer = GlobalConfigurationSerializer(config, data=request.data, partial=True)
+            
+            if serializer.is_valid():
+                serializer.save(updated_by=request.user)
+                log_audit(
+                    request.user,
+                    'update_config',
+                    f'Updated global configuration: Trial Enabled={config.is_free_trial_enabled}, Trial Days={config.trial_period_days}'
+                )
+                return Response(serializer.data)
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
             return Response(
-                {'error': 'Only Platform Owner can update global settings'},
-                status=status.HTTP_403_FORBIDDEN
+                {'error': f'Failed to update settings: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
-        config = GlobalConfiguration.get_settings()
-        serializer = GlobalConfigurationSerializer(config, data=request.data, partial=True)
-        
-        if serializer.is_valid():
-            serializer.save(updated_by=request.user)
-            log_audit(
-                request.user,
-                'update_config',
-                f'Updated global configuration: Trial Enabled={config.is_free_trial_enabled}, Trial Days={config.trial_period_days}'
-            )
-            return Response(serializer.data)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class FirmJoinLinkViewSet(viewsets.ModelViewSet):
