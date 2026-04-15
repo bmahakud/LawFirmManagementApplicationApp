@@ -59,6 +59,7 @@ class CustomUser(AbstractUser):
     pan_number = models.CharField(max_length=10, blank=True, unique=True, null=True)
     bar_council_registration = models.CharField(max_length=100, blank=True)
     bar_council_state = models.CharField(max_length=100, blank=True)
+    profile_image = models.ImageField(upload_to='profile_images/', null=True, blank=True)
     
     # Status
     is_phone_verified = models.BooleanField(default=False)

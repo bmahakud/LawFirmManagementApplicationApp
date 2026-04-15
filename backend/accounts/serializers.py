@@ -21,7 +21,7 @@ class UserBriefSerializer(serializers.ModelSerializer):
     """Concise user info for nested display"""
     class Meta:
         model = CustomUser
-        fields = ['id', 'first_name', 'last_name', 'email', 'phone_number', 'user_type']
+        fields = ['id', 'first_name', 'last_name', 'email', 'phone_number', 'user_type', 'profile_image']
         read_only_fields = fields
 
 
@@ -38,7 +38,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'available_firms',
             'aadhar_number', 'pan_number', 'bar_council_registration', 'bar_council_state',
             'is_phone_verified', 'is_email_verified', 'is_document_verified',
-            'is_active', 'created_at', 'updated_at', 'password_set'
+            'is_active', 'created_at', 'updated_at', 'password_set', 'profile_image'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_phone_verified', 
                            'is_email_verified', 'is_document_verified', 'user_type', 'firm']
@@ -55,6 +55,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     # Firm details for Super Admin signup
     firm_name = serializers.CharField(required=False)
     firm_address = serializers.CharField(required=False)
+    firm_logo = serializers.ImageField(required=False)
     branch_id = serializers.UUIDField(required=False)
     
     class Meta:
@@ -63,7 +64,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'email', 'phone_number', 'first_name', 'last_name', 'password',
             'password_confirm', 'date_of_birth', 'gender', 'address_line_1',
             'address_line_2', 'city', 'state', 'country', 'postal_code',
-            'firm_name', 'firm_address', 'branch_id'
+            'firm_name', 'firm_address', 'firm_logo', 'branch_id', 'profile_image'
         ]
     
     def validate(self, data):
@@ -103,6 +104,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         firm_name = validated_data.pop('firm_name', None)
         firm_address = validated_data.pop('firm_address', '')
+        firm_logo = validated_data.pop('firm_logo', None)
         branch_id = validated_data.pop('branch_id', None)
         
         user_type = 'client'
@@ -138,6 +140,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 postal_code=validated_data.get('postal_code', ''),
                 phone_number=validated_data['phone_number'],
                 email=validated_data['email'],
+                logo=firm_logo,
                 subscription_type='trial',
                 trial_end_date=trial_end_date,
                 subscription_end_date=subscription_end_date

@@ -10,6 +10,7 @@ class Client(models.Model):
     email = models.EmailField(blank=True)
     phone_number = models.CharField(max_length=20)
     address = models.TextField(blank=True)
+    profile_image = models.ImageField(upload_to='client_profiles/', null=True, blank=True)
     
     # Advocate assignment (required when admin adds a client)
     assigned_advocate = models.ForeignKey(
