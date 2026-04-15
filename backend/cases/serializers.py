@@ -45,3 +45,43 @@ class CaseSerializer(serializers.ModelSerializer):
             'activities', 'hearings', 'drafts'
         ]
         read_only_fields = ['id', 'firm', 'created_at', 'updated_at']
+    
+    def validate_client(self, value):
+        """Accept either Client ID or CustomUser ID and convert to Client"""
+        from clients.models import Client
+        from accounts.models import CustomUser
+        
+        # First try as Client ID
+        try:
+            return value
+        except:
+            pass
+        
+        # If validation fails, try to find Client by user_account
+        try:
+            user = CustomUser.objects.get(id=value.id)
+            if user.user_type == 'client':
+                client = Client.objects.filter(user_account=user).first()
+                if client:
+                    return client
+        except:
+            pass
+        
+        return value
+    
+    def to_internal_value(self, data):
+        """Convert CustomUser ID to Client ID if needed"""
+        from clients.models import Client
+        
+        if 'client' in data:
+            client_id = data['client']
+            # Try to find if this is a CustomUser ID
+            try:
+                client = Client.objects.filter(user_account_id=client_id).first()
+                if client:
+                    data = data.copy()
+                    data['client'] = str(client.id)
+            except:
+                pass
+        
+        return super().to_internal_value(data)
