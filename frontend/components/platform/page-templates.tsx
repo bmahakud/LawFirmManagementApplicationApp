@@ -32,6 +32,9 @@ import {
   SimpleTabs,
   SplitPanels,
   Timeline,
+  PasswordInput,
+  AadharInput,
+  PANInput,
 } from '@/components/platform/ui';
 import {
   activityRows,
@@ -46,8 +49,29 @@ import {
 } from '@/components/platform/mock-data';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
-import { Loader2, PlusCircle, Save, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { Loader2, PlusCircle, Save, X, ChevronDown } from 'lucide-react';
+import { useRouter, useParams } from 'next/navigation';
+import { Country, State, City } from 'country-state-city';
+
+export const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
+  "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
+];
+
+export const COUNTRIES = [
+  "India", "United States", "United Kingdom", "Canada", "Australia",
+  "Germany", "France", "UAE", "Singapore", "Other"
+];
+
+export const MAJOR_INDIAN_CITIES = [
+  "Bhubaneswar", "Cuttack", "Mumbai", "Delhi", "Bangalore", "Hyderabad",
+  "Ahmedabad", "Chennai", "Kolkata", "Surat", "Pune", "Jaipur",
+  "Lucknow", "Kanpur", "Nagpur", "Indore", "Thane", "Bhopal", "Visakhapatnam"
+];
 
 const classNames = (...classes: any[]) => classes.filter(Boolean).join(' ');
 
@@ -107,17 +131,7 @@ function DataTable({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-[#f7f8fa] px-3 py-2">
-        <input
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setPage(1);
-          }}
-          placeholder="Search list..."
-          className="w-full bg-transparent text-sm text-gray-600 outline-none placeholder:text-gray-400"
-        />
-      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full min-w-[920px] text-left">
           <thead>
@@ -648,21 +662,35 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 500);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        const response = await customFetch(API.USERS.LIST);
-        const data = await response.json();
+        let url = API.USERS.LIST;
+        const params = new URLSearchParams();
         
-        if (!response.ok) throw new Error(data.detail || 'Failed to fetch users');
+        if (debouncedSearch) params.set('search', debouncedSearch);
+        if (role) params.set('user_type', role);
         
-        let results = data.results || data;
-        if (role) {
-          results = results.filter((u: any) => u.user_type === role);
+        if (params.toString()) {
+          url = `${url}?${params.toString()}`;
         }
-        setUsers(results);
+
+        const response = await customFetch(url);
+        const data = await response.json();
+
+        if (!response.ok) throw new Error(data.detail || 'Failed to fetch users');
+
+        setUsers(data.results || data);
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -670,16 +698,24 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
       }
     };
     fetchUsers();
-  }, [role]);
+  }, [role, debouncedSearch]);
 
-  const rows = users.map((u, i) => ({
-    name: `${u.first_name} ${u.last_name}`,
-    role: u.user_type,
-    practice: u.practice_area || 'N/A',
-    cases: '0',
-    status: u.is_active ? 'Active' : 'Inactive',
-    viewHref: viewBase ? `${viewBase}/${u.id}` : undefined,
-  }));
+  const rows = users.map((u, i) => {
+    // Find branch from memberships
+    const activeMembership = u.available_firms?.find((m: any) => m.is_active || m.branch_name);
+    const branchName = activeMembership?.branch_name || 'N/A';
+
+    return {
+      name: `${u.first_name} ${u.last_name}`,
+      role: u.user_type,
+      practice: u.practice_area || 'N/A',
+      firm: u.firm_name || 'N/A',
+      branch: branchName,
+      cases: '0',
+      status: u.is_active ? 'Active' : 'Inactive',
+      viewHref: viewBase ? `${viewBase}/${u.id}` : undefined,
+    };
+  });
 
   const metrics = [
     { label: 'Total Members', value: users.length.toString() },
@@ -690,14 +726,22 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
 
   return (
     <div className="space-y-8">
-      <PageSection 
-        eyebrow="Team Management" 
-        title={`${role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Firm'} Team Directory`} 
-        description="Create and manage your team members with role-aware access and workload visibility." 
-        actions={<ActionLink href={`${viewBase}/new`} label={`Add ${role || 'Member'}`} />} 
+      <PageSection
+        title={`${role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Firm'} Team Directory`}
+        description="Create and manage your team members with role-aware access and workload visibility."
+        actions={<ActionLink href={`${viewBase}/new`} label={`Add ${role || 'Member'}`} />}
       />
       <MetricGrid accent={accent} metrics={metrics} />
-      <Panel title="Current Team" subtitle="Role, workload, and access status">
+      <Panel
+        title="Current Team"
+        actions={
+          <SearchBar
+            placeholder="Search by name, email, or phone..."
+            value={search}
+            onChange={(val) => setSearch(val)}
+          />
+        }
+      >
         {loading ? (
           <div className="flex flex-col items-center justify-center p-20">
             <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
@@ -712,7 +756,14 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
             columns={[
               { key: 'name', label: 'Member' },
               { key: 'role', label: 'Role' },
-              { key: 'practice', label: 'Practice Area' },
+              ...(role === 'super_admin'
+                ? [{ key: 'firm', label: 'Associated Law Firm' }]
+                : role === 'partner_manager'
+                  ? []
+                  : role === 'admin'
+                    ? [{ key: 'branch', label: 'Assigned Branch' }]
+                    : [{ key: 'practice', label: 'Practice Area' }]
+              ),
               { key: 'cases', label: 'Cases' },
               { key: 'status', label: 'Status' },
             ]}
@@ -735,9 +786,9 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
         setLoading(true);
         const response = await customFetch(API.USERS.DETAIL(userId));
         const data = await response.json();
-        
+
         if (!response.ok) throw new Error(data.detail || 'Failed to fetch user details');
-        
+
         setUser(data);
       } catch (err: any) {
         setError(err.message);
@@ -747,6 +798,19 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
     };
     fetchUser();
   }, [userId]);
+
+  const [branches, setBranches] = useState<any[]>([]);
+  useEffect(() => {
+    if (user?.user_type === 'admin') {
+      customFetch(API.FIRMS.BRANCHES.LIST)
+        .then(res => res.json())
+        .then(data => {
+          if (data.results) setBranches(data.results);
+          else if (Array.isArray(data)) setBranches(data);
+        })
+        .catch(err => console.error('Failed to fetch branches:', err));
+    }
+  }, [user?.user_type]);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
@@ -771,6 +835,7 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
         bar_council_registration: user.bar_council_registration,
         bar_council_state: user.bar_council_state,
         is_active: user.is_active,
+        branch_id: user.available_firms?.[0]?.branch || '',
       });
     }
   }, [user, isEditing]);
@@ -822,21 +887,24 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
   }
 
   const profileItems = [
-    { label: 'Full Name', value: `${user.first_name} ${user.last_name}` },
-    { label: 'Username', value: user.username },
-    { label: 'Email', value: user.email },
-    { label: 'Phone', value: user.phone_number },
+    { label: 'Full Name', value: <span className="text-black font-semibold">{user.first_name} {user.last_name}</span> },
+    { label: 'Username', value: <span className="text-black font-semibold">{user.username}</span> },
+    { label: 'Email', value: <span className="text-black font-semibold">{user.email}</span> },
+    { label: 'Phone', value: <span className="text-black font-semibold">{user.phone_number || '--'}</span> },
     { label: 'User Type', value: <Badge label={user.user_type} tone="info" /> },
-    { label: 'Firm Name', value: user.firm_name || 'N/A' },
+    { label: 'Firm Name', value: <span className="text-black font-semibold">{user.firm_name || 'N/A'}</span> },
+    ...(user.user_type === 'admin' ? [{ label: 'Assigned Branch', value: <span className="text-black font-semibold">{user.available_firms?.[0]?.branch_name || 'N/A'}</span> }] : []),
+    { label: 'Gender', value: <span className="text-black font-semibold">{user.gender === 'M' ? 'Male' : user.gender === 'F' ? 'Female' : user.gender === 'O' ? 'Other' : '--'}</span> },
+    { label: 'Date of Birth', value: <span className="text-black font-semibold">{user.date_of_birth || '--'}</span> },
   ];
 
   const addressItems = [
-    { label: 'Address Line 1', value: user.address_line_1 || '--' },
-    { label: 'Address Line 2', value: user.address_line_2 || '--' },
-    { label: 'City', value: user.city || '--' },
-    { label: 'State', value: user.state || '--' },
-    { label: 'Country', value: user.country || '--' },
-    { label: 'Postal Code', value: user.postal_code || '--' },
+    { label: 'Address Line 1', value: <span className="text-black font-semibold">{user.address_line_1 || '--'}</span> },
+    { label: 'Address Line 2', value: <span className="text-black font-semibold">{user.address_line_2 || '--'}</span> },
+    { label: 'City', value: <span className="text-black font-semibold">{user.city || '--'}</span> },
+    { label: 'State', value: <span className="text-black font-semibold">{user.state || '--'}</span> },
+    { label: 'Country', value: <span className="text-black font-semibold">{user.country || '--'}</span> },
+    { label: 'Postal Code', value: <span className="text-black font-semibold">{user.postal_code || '--'}</span> },
   ];
 
   const verificationItems = [
@@ -846,41 +914,41 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
     { label: 'Account Status', value: <Badge label={user.is_active ? 'Active' : 'Inactive'} tone={user.is_active ? 'success' : 'danger'} /> },
   ];
 
-  const legalItems = user.user_type === 'advocate' ? [
-    { label: 'Bar Council Reg', value: user.bar_council_registration || '--' },
-    { label: 'Bar Council State', value: user.bar_council_state || '--' },
-    { label: 'PAN Number', value: user.pan_number || '--' },
-    { label: 'Aadhar Number', value: user.aadhar_number || '--' },
-  ] : [];
+  const professionalItems = [
+    { label: 'Aadhar Number', value: <span className="text-black font-semibold">{user.aadhar_number || '--'}</span> },
+    { label: 'PAN Number', value: <span className="text-black font-semibold">{user.pan_number || '--'}</span> },
+    { label: 'Bar Council Reg', value: <span className="text-black font-semibold">{user.bar_council_registration || '--'}</span> },
+    { label: 'Bar Council State', value: <span className="text-black font-semibold">{user.bar_council_state || '--'}</span> },
+  ];
 
   return (
     <div className="space-y-8">
-      <PageSection 
-        eyebrow="User Profile" 
-        title={`${user.first_name} ${user.last_name}`} 
-        description={`Full breakdown of account details, firm association, and verified credentials for ${user.user_type}.`} 
+      <PageSection
+        eyebrow="User Profile"
+        title={`${user.first_name} ${user.last_name}`}
+        description={`Full breakdown of account details, firm association, and verified credentials for ${user.user_type}.`}
         actions={
           isEditing ? (
-             <div className="flex gap-2">
-                <button 
-                  onClick={handleUpdate} 
-                  disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#0e2340] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1a3a5c] disabled:opacity-50"
-                >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Save Changes
-                </button>
-                <button 
-                  onClick={() => setIsEditing(false)} 
-                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  <X className="h-4 w-4" /> Cancel
-                </button>
-             </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleUpdate}
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#0e2340] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1a3a5c] shadow-sm disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save Changes
+              </button>
+              <button
+                onClick={() => setIsEditing(false)}
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 shadow-sm"
+              >
+                <X className="h-4 w-4" /> Cancel
+              </button>
+            </div>
           ) : (
-            <button 
-              onClick={() => setIsEditing(true)} 
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            <button
+              onClick={() => setIsEditing(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 shadow-sm"
             >
               <PenTool className="h-4 w-4" /> Edit Profile
             </button>
@@ -893,22 +961,27 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
           <div className="space-y-6">
             <Panel title="Identity & Contact" subtitle="Basic personal and role information.">
               {isEditing ? (
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-5 md:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">First Name</label>
-                    <input value={editData.first_name} onChange={e => updateField('first_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">First Name</label>
+                    <input value={editData.first_name} onChange={e => updateField('first_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Last Name</label>
-                    <input value={editData.last_name} onChange={e => updateField('last_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Last Name</label>
+                    <input value={editData.last_name} onChange={e => updateField('last_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Phone Number</label>
-                    <input value={editData.phone_number} onChange={e => updateField('phone_number', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Phone</label>
+                    <input
+                      value={editData.phone_number}
+                      onChange={e => updateField('phone_number', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      maxLength={10}
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                    />
                   </div>
-                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Gender</label>
-                    <select value={editData.gender} onChange={e => updateField('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Gender</label>
+                    <select value={editData.gender} onChange={e => updateField('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none">
                       <option value="">Select Gender</option>
                       <option value="M">Male</option>
                       <option value="F">Female</option>
@@ -916,37 +989,110 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
                     </select>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Date of Birth</label>
-                    <input type="date" value={editData.date_of_birth || ''} onChange={e => updateField('date_of_birth', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Date of Birth</label>
+                    <input
+                      type="date"
+                      value={editData.date_of_birth || ''}
+                      onChange={e => updateField('date_of_birth', e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                    />
                   </div>
+                  {user.user_type === 'admin' && branches.length > 0 && (
+                    <div className="md:col-span-2 pt-2 border-t border-gray-100">
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Assigned Branch</label>
+                      <select
+                        value={editData.branch_id}
+                        onChange={e => updateField('branch_id', e.target.value)}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                      >
+                        <option value="">Select Branch</option>
+                        {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <DetailList items={profileItems} columns={2} />
               )}
             </Panel>
-            
+
             <Panel title="Location Details" subtitle="Full residential or office address.">
               {isEditing ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
                   <div className="md:col-span-2 lg:col-span-3">
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 1</label>
-                    <input value={editData.address_line_1} onChange={e => updateField('address_line_1', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Address Line 1</label>
+                    <input value={editData.address_line_1} onChange={e => updateField('address_line_1', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
                   </div>
                   <div className="md:col-span-2 lg:col-span-3">
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 2</label>
-                    <input value={editData.address_line_2} onChange={e => updateField('address_line_2', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Address Line 2</label>
+                    <input value={editData.address_line_2} onChange={e => updateField('address_line_2', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">City</label>
-                    <input value={editData.city} onChange={e => updateField('city', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Country</label>
+                    <div className="relative group">
+                      <select
+                        value={editData.country}
+                        onChange={e => {
+                          updateField('country', e.target.value);
+                          updateField('state', '');
+                          updateField('city', '');
+                        }}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none focus:border-[#0e2340] transition-colors"
+                      >
+                        <option value="">Select Country</option>
+                        {Country.getAllCountries().map(c => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                    </div>
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">State</label>
-                    <input value={editData.state} onChange={e => updateField('state', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">State</label>
+                    <div className="relative group">
+                      <select
+                        value={editData.state}
+                        disabled={!editData.country}
+                        onChange={e => {
+                          updateField('state', e.target.value);
+                          updateField('city', '');
+                        }}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none disabled:opacity-50 focus:border-[#0e2340] transition-colors"
+                      >
+                        <option value="">Select State</option>
+                        {editData.country && State.getStatesOfCountry(editData.country).map(s => <option key={s.isoCode} value={s.isoCode}>{s.name}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                    </div>
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Postal Code</label>
-                    <input value={editData.postal_code} onChange={e => updateField('postal_code', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">City</label>
+                    <div className="relative group">
+                      {editData.country && editData.state && City.getCitiesOfState(editData.country, editData.state).length > 0 ? (
+                        <>
+                          <select
+                            value={editData.city}
+                            onChange={e => updateField('city', e.target.value)}
+                            className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none focus:border-[#0e2340] transition-colors"
+                          >
+                            <option value="">Select City</option>
+                            {City.getCitiesOfState(editData.country, editData.state).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                            <option value="Other">Other</option>
+                          </select>
+                          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                        </>
+                      ) : (
+                        <input
+                          value={editData.city}
+                          onChange={e => updateField('city', e.target.value)}
+                          placeholder="Type city..."
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]"
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Postal Code</label>
+                    <input value={editData.postal_code} onChange={e => updateField('postal_code', e.target.value.replace(/\D/g, ''))} placeholder="e.g. 400001" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]" />
                   </div>
                 </div>
               ) : (
@@ -954,48 +1100,38 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
               )}
             </Panel>
 
-            {(legalItems.length > 0 || isEditing) && user.user_type === 'advocate' && (
-              <Panel title="Legal Credentials" subtitle="Professional and tax identity records.">
-                {isEditing ? (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council Reg</label>
-                      <input value={editData.bar_council_registration} onChange={e => updateField('bar_council_registration', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council State</label>
-                      <input value={editData.bar_council_state} onChange={e => updateField('bar_council_state', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">PAN Number</label>
-                      <input value={editData.pan_number} onChange={e => updateField('pan_number', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Aadhar Number</label>
-                      <input value={editData.aadhar_number} onChange={e => updateField('aadhar_number', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none" />
-                    </div>
+            <Panel title="Identification & Professional" subtitle="Identity numbers and legal registration data.">
+              {isEditing ? (
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Aadhar Number</label>
+                    <AadharInput
+                      value={editData.aadhar_number}
+                      onChange={v => updateField('aadhar_number', v)}
+                    />
                   </div>
-                ) : (
-                  <DetailList items={legalItems} columns={2} />
-                )}
-              </Panel>
-            )}
-            
-            <Panel title="Firm History" subtitle="Current and past law firm associations.">
-              <DataTable
-                columns={[
-                  { key: 'firm_name', label: 'Firm' },
-                  { key: 'user_type', label: 'Role' },
-                  { key: 'is_active', label: 'Active' },
-                  { key: 'branch', label: 'Branch' },
-                ]}
-                rows={user.available_firms?.map((f: any) => ({
-                  firm_name: f.firm_name,
-                  user_type: f.user_type,
-                  is_active: f.is_active ? 'Yes' : 'No',
-                  branch: f.branch || 'Main',
-                })) || []}
-              />
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">PAN Number</label>
+                    <PANInput
+                      value={editData.pan_number}
+                      onChange={v => updateField('pan_number', v)}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Bar Council Reg</label>
+                    <input value={editData.bar_council_registration} onChange={e => updateField('bar_council_registration', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Bar Council State</label>
+                    <select value={editData.bar_council_state} onChange={e => updateField('bar_council_state', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none">
+                      <option value="">Select State</option>
+                      {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <DetailList items={professionalItems} columns={2} />
+              )}
             </Panel>
           </div>
         }
@@ -1003,29 +1139,29 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
           <div className="space-y-6">
             <Panel title="Verification Status" subtitle="System-level trust indicators.">
               {isEditing ? (
-                 <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-gray-700">Account Active</span>
-                      <button 
-                        onClick={() => updateField('is_active', !editData.is_active)}
-                        className={classNames(
-                          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out outline-none",
-                          editData.is_active ? "bg-[#0e2340]" : "bg-gray-200"
-                        )}
-                      >
-                        <span className={classNames(
-                          "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                          editData.is_active ? "translate-x-5" : "translate-x-0"
-                        )} />
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-400">Deactivating an account will prevent the user from logging in until reactivated.</p>
-                 </div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-700">Account Active</span>
+                    <button
+                      onClick={() => updateField('is_active', !editData.is_active)}
+                      className={classNames(
+                        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out outline-none",
+                        editData.is_active ? "bg-[#0e2340]" : "bg-gray-200"
+                      )}
+                    >
+                      <span className={classNames(
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                        editData.is_active ? "translate-x-5" : "translate-x-0"
+                      )} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400">Deactivating an account will prevent the user from logging in until reactivated.</p>
+                </div>
               ) : (
-                <DetailList items={verificationItems} columns={2} />
+                <DetailList items={verificationItems} columns={1} />
               )}
             </Panel>
-            
+
             <Panel title="System Metadata" subtitle="Audit trail and security info.">
               <div className="space-y-3">
                 <div className="flex justify-between text-xs">
@@ -1042,7 +1178,7 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
                 </div>
               </div>
             </Panel>
-            
+
             <InfoAside
               accent={accent}
               title="Profile Integrity"
@@ -1068,6 +1204,9 @@ export function TeamMemberFormPage({
   fixedRole,
 }: AccentProps & { detail?: boolean; title?: string; description?: string; fixedRole?: string }) {
   const router = useRouter();
+  const params = useParams();
+  const userId = params?.userId || params?.id;
+
   const [formData, setFormData] = useState<any>({
     first_name: '',
     last_name: '',
@@ -1075,10 +1214,24 @@ export function TeamMemberFormPage({
     phone_number: '',
     password: '',
     user_type: fixedRole || 'advocate',
-    practice_area: '',
     firm: '',
+    date_of_birth: '',
+    gender: '',
+    aadhar_number: '',
+    pan_number: '',
+    address_line_1: '',
+    address_line_2: '',
+    city: '',
+    state: '',
+    country: 'India',
+    postal_code: '',
+    bar_council_registration: '',
+    bar_council_state: '',
+    is_active: true,
+    branch_id: '',
   });
   const [firms, setFirms] = useState<any[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -1094,6 +1247,39 @@ export function TeamMemberFormPage({
     }
   }, [formData.user_type]);
 
+  useEffect(() => {
+    // If we're creating/editing an admin, fetch branches
+    // For Super Admin, /api/branches/ returns branches of their firm
+    // For Platform Owner, we might filter by the selected firm later
+    if (formData.user_type === 'admin') {
+      customFetch(API.FIRMS.BRANCHES.LIST)
+        .then(res => res.json())
+        .then(data => {
+          if (data.results) setBranches(data.results);
+          else if (Array.isArray(data)) setBranches(data);
+        })
+        .catch(err => console.error('Failed to fetch branches:', err));
+    }
+  }, [formData.user_type]);
+
+  useEffect(() => {
+    if (detail && userId) {
+      setLoading(true);
+      customFetch(API.USERS.DETAIL(userId as string))
+        .then(res => res.json())
+        .then(data => {
+          setFormData({
+            ...data,
+            password: '', // Don't populate password
+            firm: data.firm || '',
+            branch_id: data.available_firms?.[0]?.branch || '',
+          });
+        })
+        .catch(err => setError('Failed to load user data'))
+        .finally(() => setLoading(false));
+    }
+  }, [detail, userId]);
+
   const roles = [
     { label: 'Admin', value: 'admin' },
     { label: 'Advocate', value: 'advocate' },
@@ -1108,10 +1294,32 @@ export function TeamMemberFormPage({
     setError('');
 
     try {
-      const response = await customFetch(API.USERS.ADD_USER, {
-        method: 'POST',
+      const payload = { ...formData };
+
+      // Auto-assign first firm for Partner Manager if none selected, as backend requires it
+      // for invitation emails and role mapping (preventing 500 error).
+      if (payload.user_type === 'partner_manager' && !payload.firm && firms.length > 0) {
+        payload.firm = firms[0].id;
+      }
+
+      // Perfect Payload Handling: Send null for empty optional fields
+      // This prevents the backend (UserFirmRole/UserInvitation) from crashing on empty strings
+      if (!payload.firm) payload.firm = null;
+      if (!payload.date_of_birth) payload.date_of_birth = null;
+      if (!payload.aadhar_number) payload.aadhar_number = null;
+      if (!payload.pan_number) payload.pan_number = null;
+      if (!payload.gender) payload.gender = "";
+      if (!payload.bar_council_registration) payload.bar_council_registration = "";
+      if (!payload.bar_council_state) payload.bar_council_state = "";
+      if (!payload.branch_id) payload.branch_id = null;
+
+      const url = detail && userId ? API.USERS.DETAIL(userId as string) : API.USERS.ADD_USER;
+      const method = detail && userId ? 'PATCH' : 'POST';
+
+      const response = await customFetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -1127,92 +1335,265 @@ export function TeamMemberFormPage({
     }
   };
 
-  const update = (key: string, value: string) => setFormData((p: any) => ({ ...p, [key]: value }));
+  const update = (key: string, value: any) => setFormData((p: any) => ({ ...p, [key]: value }));
 
   return (
     <div className="space-y-8">
       <PageSection
-        eyebrow="Team"
+        eyebrow="Onboarding"
         title={title ?? (detail ? 'Team Member Profile' : 'Add Team Member')}
-        description={description ?? (detail ? 'Role scope, assignment load, and access visibility for an individual user.' : 'Create a new team member with controlled access.')}
+        description={description ?? (detail ? 'Role scope, assignment load, and access visibility for an individual user.' : 'Create a new team member with controlled access and full profile initialization.')}
       />
       <form onSubmit={handleSubmit}>
         <SplitPanels
           left={
-            <Panel title={detail ? 'Member Details' : 'Member Form'} subtitle="Core identity, role, and contact information.">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">First Name</label>
-                  <input value={formData.first_name} onChange={e => update('first_name', e.target.value)} required placeholder="John" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none placeholder:text-gray-400" />
+            <div className="space-y-6">
+              <Panel title="Core Account" subtitle="Basic identity and professional role.">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">First Name</label>
+                    <input value={formData.first_name} onChange={e => update('first_name', e.target.value)} required placeholder="John" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Last Name</label>
+                    <input value={formData.last_name} onChange={e => update('last_name', e.target.value)} required placeholder="Doe" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Email Address</label>
+                    <input type="email" value={formData.email} onChange={e => update('email', e.target.value)} required placeholder="john@example.com" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Phone Number</label>
+                    <input
+                      value={formData.phone_number}
+                      onChange={e => update('phone_number', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      maxLength={10}
+                      required
+                      placeholder="9876543210"
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all"
+                    />
+                  </div>
+                  {!fixedRole && (
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">User Role</label>
+                      <select value={formData.user_type} onChange={e => update('user_type', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none">
+                        {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {(formData.user_type === 'admin' && branches.length > 0) && (
+                    <div className="md:col-span-2 pt-2 border-t border-gray-100">
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
+                        Assign Branch <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={formData.branch_id}
+                        onChange={e => update('branch_id', e.target.value)}
+                        required
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none"
+                      >
+                        <option value="">Select a branch...</option>
+                        {branches.map((b: any) => (
+                          <option key={b.id} value={b.id}>{b.branch_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Last Name</label>
-                  <input value={formData.last_name} onChange={e => update('last_name', e.target.value)} required placeholder="Doe" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none placeholder:text-gray-400" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Email Address</label>
-                  <input type="email" value={formData.email} onChange={e => update('email', e.target.value)} required placeholder="john@example.com" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none placeholder:text-gray-400" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Phone Number</label>
-                  <input value={formData.phone_number} onChange={e => update('phone_number', e.target.value)} required placeholder="+91 9876543210" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none placeholder:text-gray-400" />
-                </div>
-                {!fixedRole && (
-                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">User Role</label>
-                    <select value={formData.user_type} onChange={e => update('user_type', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none">
-                      {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </Panel>
+
+              <Panel title="Identity & Profile" subtitle="Identity numbers and personal details.">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Gender</label>
+                    <select value={formData.gender} onChange={e => update('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none">
+                      <option value="">Select Gender</option>
+                      <option value="M">Male</option>
+                      <option value="F">Female</option>
+                      <option value="O">Other</option>
                     </select>
                   </div>
-                )}
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Practice Area</label>
-                  <input value={formData.practice_area} onChange={e => update('practice_area', e.target.value)} placeholder="e.g. Criminal Law" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none placeholder:text-gray-400" />
-                </div>
-                {['super_admin', 'partner_manager'].includes(formData.user_type) && (
-                  <div className="md:col-span-2">
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
-                      Associated Law Firm {formData.user_type === 'super_admin' && <span className="text-red-500">*</span>}
-                    </label>
-                    <select 
-                      value={formData.firm} 
-                      onChange={e => update('firm', e.target.value)} 
-                      required={formData.user_type === 'super_admin'}
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none"
-                    >
-                      <option value="">Select a firm...</option>
-                      {firms.map((f: any) => (
-                        <option key={f.id} value={f.id}>{f.firm_name}</option>
-                      ))}
-                    </select>
-                    <p className="mt-1.5 text-xs text-gray-400">
-                      {formData.user_type === 'super_admin' 
-                        ? 'A Super Admin must be linked to a law firm.' 
-                        : 'Link this partner manager to a specific law firm (optional).'}
-                    </p>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Date of Birth</label>
+                    <input
+                      type="date"
+                      value={formData.date_of_birth}
+                      onChange={e => update('date_of_birth', e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none"
+                    />
                   </div>
-                )}
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Temporary Password</label>
-                  <input type="password" value={formData.password} onChange={e => update('password', e.target.value)} required placeholder="••••••••" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-700 outline-none placeholder:text-gray-400" />
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Aadhar Number</label>
+                    <AadharInput
+                      value={formData.aadhar_number}
+                      onChange={v => update('aadhar_number', v)}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">PAN Number</label>
+                    <PANInput
+                      value={formData.pan_number}
+                      onChange={v => update('pan_number', v)}
+                    />
+                  </div>
                 </div>
-              </div>
-              {error && <p className="mt-4 text-xs font-semibold text-red-500">{error}</p>}
-            </Panel>
+              </Panel>
+
+              <Panel title="Professional Credentials" subtitle="Legal registration details.">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Bar Registration No.</label>
+                    <input value={formData.bar_council_registration} onChange={e => update('bar_council_registration', e.target.value)} placeholder="E.g. WB/123/2023" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Bar Registration State</label>
+                    <input value={formData.bar_council_state} onChange={e => update('bar_council_state', e.target.value)} placeholder="E.g. West Bengal" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                  </div>
+                </div>
+              </Panel>
+            </div>
           }
           right={
             <div className="space-y-6">
-              <InfoAside accent={accent} title="Creation Notes" items={['New users will receive a verification email.', 'They must use the temporary password for first login.', 'Access scope is limited by the selected role.']} />
-              <Panel title="Actions" subtitle="Onboard team member">
-                 <div className="flex flex-col gap-3">
-                    <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#0e2340] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1a3a5c] disabled:opacity-50">
-                      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Save Team Member
+              <Panel title="Account Security" subtitle={detail ? "Update credentials" : "Onboarding credentials."}>
+                <div className="space-y-4">
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
+                    {detail ? "Change Password (Optional)" : "Temporary Password"}
+                  </label>
+                  <PasswordInput
+                    value={formData.password}
+                    onChange={v => update('password', v)}
+                    required={!detail}
+                  />
+                </div>
+                {detail && (
+                  <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-100">
+                    <span className="text-sm font-semibold text-gray-700">Account Active</span>
+                    <button
+                      type="button"
+                      onClick={() => update('is_active', !formData.is_active)}
+                      className={classNames(
+                        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out outline-none",
+                        formData.is_active ? "bg-[#0e2340]" : "bg-gray-200"
+                      )}
+                    >
+                      <span className={classNames(
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                        formData.is_active ? "translate-x-5" : "translate-x-0"
+                      )} />
                     </button>
-                    <button type="button" onClick={() => router.back()} className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                      <X className="h-4 w-4" /> Cancel
-                    </button>
-                 </div>
+                  </div>
+                )}
+              </Panel>
+
+              <Panel title="Location & Firm" subtitle="Service region and firm alignment.">
+                <div className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Address Line 1</label>
+                      <input value={formData.address_line_1} onChange={e => update('address_line_1', e.target.value)} placeholder="Street name, building" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]" />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Address Line 2</label>
+                      <input value={formData.address_line_2} onChange={e => update('address_line_2', e.target.value)} placeholder="Locality, landmark" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]" />
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Country</label>
+                      <select
+                        value={formData.country}
+                        onChange={e => {
+                          update('country', e.target.value);
+                          update('state', '');
+                          update('city', '');
+                        }}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none focus:border-[#0e2340] transition-colors"
+                      >
+                        <option value="">Select Country</option>
+                        {Country.getAllCountries().map(c => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">State</label>
+                      <select
+                        value={formData.state}
+                        disabled={!formData.country}
+                        onChange={e => {
+                          update('state', e.target.value);
+                          update('city', '');
+                        }}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none disabled:opacity-50 focus:border-[#0e2340] transition-colors"
+                      >
+                        <option value="">Select State</option>
+                        {formData.country && State.getStatesOfCountry(formData.country).map(s => <option key={s.isoCode} value={s.isoCode}>{s.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">City</label>
+                      {formData.country && formData.state && City.getCitiesOfState(formData.country, formData.state).length > 0 ? (
+                        <select
+                          value={formData.city}
+                          onChange={e => update('city', e.target.value)}
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none focus:border-[#0e2340] transition-colors"
+                        >
+                          <option value="">Select City</option>
+                          {City.getCitiesOfState(formData.country, formData.state).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                          <option value="Other">Other</option>
+                        </select>
+                      ) : (
+                        <input
+                          value={formData.city}
+                          onChange={e => update('city', e.target.value)}
+                          placeholder="Type city..."
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]"
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-1">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Postal Code</label>
+                      <input value={formData.postal_code} onChange={e => update('postal_code', e.target.value.replace(/\D/g, ''))} placeholder="e.g. 400001" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]" />
+                    </div>
+                  </div>
+
+                  {formData.user_type === 'super_admin' && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
+                        Associated Law Firm <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative group">
+                        <select
+                          value={formData.firm}
+                          onChange={e => update('firm', e.target.value)}
+                          required
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none focus:border-[#0e2340] transition-colors hover:border-gray-200"
+                        >
+                          <option value="">Select a firm...</option>
+                          {firms.map((f: any) => (
+                            <option key={f.id} value={f.id}>{f.firm_name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Panel>
+
+              <Panel title="Actions" subtitle="Finalize onboarding">
+                <div className="flex flex-col gap-3">
+                  <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-[#0e2340] px-4 py-3 text-sm font-bold text-white hover:bg-[#1a3a5c] shadow-lg shadow-[#0e2340]/10 transition-all active:scale-[0.98] disabled:opacity-50">
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Save Team Member
+                  </button>
+                  <button type="button" onClick={() => router.back()} className="w-full flex items-center justify-center gap-2.5 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-500 hover:bg-gray-50 hover:text-gray-700 hover:border-gray-300 transition-all active:scale-[0.98]">
+                    <X className="h-4 w-4" /> Cancel
+                  </button>
+                </div>
+                {error && <p className="mt-4 p-3 rounded-lg bg-red-50 border border-red-100 text-xs font-bold text-red-500 animate-in slide-in-from-top-1">{error}</p>}
               </Panel>
             </div>
           }
@@ -1233,9 +1614,9 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
         setLoading(true);
         const response = await customFetch(API.USERS.LIST);
         const data = await response.json();
-        
+
         if (!response.ok) throw new Error(data.detail || 'Failed to fetch clients');
-        
+
         let results = data.results || data;
         if (role) {
           results = results.filter((u: any) => u.user_type === role);
@@ -1261,11 +1642,11 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
 
   return (
     <div className="space-y-8">
-      <PageSection 
-        eyebrow="Client Management" 
-        title="Client Directory" 
-        description="Register and manage client records tied to firm matters." 
-        actions={<ActionLink href={`${viewBase}/new`} label="Register Client" />} 
+      <PageSection
+        eyebrow="Client Management"
+        title="Client Directory"
+        description="Register and manage client records tied to firm matters."
+        actions={<ActionLink href={`${viewBase}/new`} label="Register Client" />}
       />
       <MetricGrid accent={accent} metrics={[{ label: 'Total Clients', value: clients.length.toString() }, { label: 'Active', value: clients.filter(c => c.is_active).length.toString() }, { label: 'Pending Docs', value: '0' }, { label: 'New This Month', value: '0' }]} />
       <Panel title="Client Register" subtitle="Current clients, lead matters, and contact status." actions={<SearchBar placeholder="Search clients, phone, or matter..." />}>
@@ -1517,44 +1898,38 @@ export function ChangePasswordPanel({ accent }: AccentProps) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Old Password</label>
-          <input 
-            type="password" 
-            value={formData.old_password} 
-            onChange={e => setFormData({ ...formData, old_password: e.target.value })}
-            required 
+          <PasswordInput
+            value={formData.old_password}
+            onChange={v => setFormData({ ...formData, old_password: v })}
+            required
             autoComplete="current-password"
-            className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
           />
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">New Password</label>
-            <input 
-              type="password" 
-              value={formData.new_password} 
-              onChange={e => setFormData({ ...formData, new_password: e.target.value })}
-              required 
+            <PasswordInput
+              value={formData.new_password}
+              onChange={v => setFormData({ ...formData, new_password: v })}
+              required
               autoComplete="new-password"
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
             />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Confirm New Password</label>
-            <input 
-              type="password" 
-              value={formData.new_password_confirm} 
-              onChange={e => setFormData({ ...formData, new_password_confirm: e.target.value })}
-              required 
+            <PasswordInput
+              value={formData.new_password_confirm}
+              onChange={v => setFormData({ ...formData, new_password_confirm: v })}
+              required
               autoComplete="new-password"
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
             />
           </div>
         </div>
         {error && <p className="text-xs font-semibold text-red-500 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
         {success && <p className="text-xs font-semibold text-emerald-600 bg-emerald-50 p-3 rounded-lg border border-emerald-100">{success}</p>}
         <div className="flex justify-end pt-2">
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={loading}
             className="flex items-center gap-2 rounded-xl bg-[#0e2340] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
             style={{ backgroundColor: accent }}
@@ -1571,14 +1946,19 @@ export function ChangePasswordPanel({ accent }: AccentProps) {
 export function ProfileInformationPanel({ accent }: AccentProps) {
   const [formData, setFormData] = useState({
     first_name: '',
+    last_name: '',
+    gender: '',
     date_of_birth: '',
     aadhar_number: '',
     pan_number: '',
     address_line_1: '',
+    address_line_2: '',
     city: '',
     state: '',
     country: 'India',
     postal_code: '',
+    bar_council_registration: '',
+    bar_council_state: '',
   });
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -1595,14 +1975,19 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
         setFormData(prev => ({
           ...prev,
           first_name: user.first_name || '',
+          last_name: user.last_name || '',
+          gender: user.gender || '',
           date_of_birth: user.date_of_birth || '',
           aadhar_number: user.aadhar_number || '',
           pan_number: user.pan_number || '',
           address_line_1: user.address_line_1 || '',
+          address_line_2: user.address_line_2 || '',
           city: user.city || '',
           state: user.state || '',
           country: user.country || 'India',
           postal_code: user.postal_code || '',
+          bar_council_registration: user.bar_council_registration || '',
+          bar_council_state: user.bar_council_state || '',
         }));
       } catch (e) {
         console.error('Error parsing user_details:', e);
@@ -1622,10 +2007,16 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
     setSuccess('');
 
     try {
+      const payload: any = { ...formData };
+      // Payload cleaning for backend compatibility
+      if (!payload.date_of_birth) payload.date_of_birth = null;
+      if (!payload.aadhar_number) payload.aadhar_number = null;
+      if (!payload.pan_number) payload.pan_number = null;
+
       const response = await customFetch(API.USERS.DETAIL(userId), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -1656,88 +2047,182 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">First Name</label>
-            <input 
-              type="text" 
-              value={formData.first_name} 
+            <input
+              type="text"
+              value={formData.first_name}
               onChange={e => updateField('first_name', e.target.value)}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
+              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
             />
           </div>
           <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Last Name</label>
+            <input
+              type="text"
+              value={formData.last_name}
+              onChange={e => updateField('last_name', e.target.value)}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Gender</label>
+            <select
+              value={formData.gender}
+              onChange={e => updateField('gender', e.target.value)}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+            >
+              <option value="">Select Gender</option>
+              <option value="M">Male</option>
+              <option value="F">Female</option>
+              <option value="O">Other</option>
+            </select>
+          </div>
+          <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Date of Birth</label>
-            <input 
-              type="date" 
-              value={formData.date_of_birth} 
+            <input
+              type="date"
+              value={formData.date_of_birth}
               onChange={e => updateField('date_of_birth', e.target.value)}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
+              max={new Date().toISOString().split('T')[0]}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
             />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Aadhar Number</label>
-            <input 
-              type="text" 
-              value={formData.aadhar_number} 
-              onChange={e => updateField('aadhar_number', e.target.value)}
-              maxLength={12}
-              placeholder="12-digit Aadhar"
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
+            <AadharInput
+              value={formData.aadhar_number}
+              onChange={v => updateField('aadhar_number', v)}
             />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">PAN Number</label>
-            <input 
-              type="text" 
-              value={formData.pan_number} 
-              onChange={e => updateField('pan_number', e.target.value)}
-              maxLength={10}
-              placeholder="ABCDE1234F"
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
+            <PANInput
+              value={formData.pan_number}
+              onChange={v => updateField('pan_number', v)}
             />
           </div>
-          <div className="md:col-span-2">
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 1</label>
-            <input 
-              type="text" 
-              value={formData.address_line_1} 
-              onChange={e => updateField('address_line_1', e.target.value)}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
-            />
+
+          <div className="md:col-span-2 pt-4 border-t border-gray-100">
+            <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Professional Registration</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council Reg</label>
+                <input
+                  type="text"
+                  value={formData.bar_council_registration}
+                  onChange={e => updateField('bar_council_registration', e.target.value)}
+                  placeholder="e.g. MH/1234/2020"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council State</label>
+                <select
+                  value={formData.bar_council_state}
+                  onChange={e => updateField('bar_council_state', e.target.value)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                >
+                  <option value="">Select State</option>
+                  {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">City</label>
-            <input 
-              type="text" 
-              value={formData.city} 
-              onChange={e => updateField('city', e.target.value)}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">State</label>
-            <input 
-              type="text" 
-              value={formData.state} 
-              onChange={e => updateField('state', e.target.value)}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Country</label>
-            <input 
-              type="text" 
-              value={formData.country} 
-              onChange={e => updateField('country', e.target.value)}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Postal Code</label>
-            <input 
-              type="text" 
-              value={formData.postal_code} 
-              onChange={e => updateField('postal_code', e.target.value)}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none" 
-            />
+
+          <div className="md:col-span-2 pt-4 border-t border-gray-100">
+            <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Address Information</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 1</label>
+                <input
+                  type="text"
+                  value={formData.address_line_1}
+                  onChange={e => updateField('address_line_1', e.target.value)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 2</label>
+                <input
+                  type="text"
+                  value={formData.address_line_2}
+                  onChange={e => updateField('address_line_2', e.target.value)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Country</label>
+                <div className="relative group">
+                  <select
+                    value={formData.country}
+                    onChange={e => {
+                      updateField('country', e.target.value);
+                      updateField('state', '');
+                      updateField('city', '');
+                    }}
+                    className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                  >
+                    <option value="">Select Country</option>
+                    {Country.getAllCountries().map(c => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">State</label>
+                <div className="relative group">
+                  <select
+                    value={formData.state}
+                    disabled={!formData.country}
+                    onChange={e => {
+                      updateField('state', e.target.value);
+                      updateField('city', '');
+                    }}
+                    className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none disabled:opacity-50"
+                  >
+                    <option value="">Select State</option>
+                    {formData.country && State.getStatesOfCountry(formData.country).map(s => <option key={s.isoCode} value={s.isoCode}>{s.name}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">City</label>
+                <div className="relative group">
+                  {formData.country && formData.state && City.getCitiesOfState(formData.country, formData.state).length > 0 ? (
+                    <>
+                      <select
+                        value={formData.city}
+                        onChange={e => updateField('city', e.target.value)}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                      >
+                        <option value="">Select City</option>
+                        {City.getCitiesOfState(formData.country, formData.state).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                        <option value="Other">Other</option>
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                    </>
+                  ) : (
+                    <input
+                      type="text"
+                      value={formData.city}
+                      onChange={e => updateField('city', e.target.value)}
+                      placeholder="Specify city..."
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                    />
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Postal Code</label>
+                <input
+                  type="text"
+                  value={formData.postal_code}
+                  onChange={e => updateField('postal_code', e.target.value.replace(/\D/g, ''))}
+                  placeholder="e.g. 400001"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1745,8 +2230,8 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
         {success && <p className="text-xs font-semibold text-emerald-600 bg-emerald-50 p-3 rounded-lg border border-emerald-100">{success}</p>}
 
         <div className="flex justify-end pt-2">
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={loading}
             className="flex items-center gap-2 rounded-xl bg-[#0e2340] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
             style={{ backgroundColor: accent }}
@@ -1788,3 +2273,108 @@ export const roleIcons = {
   court: Gavel,
   tasks: CheckSquare,
 };
+
+export function CasesDirectoryPage({ accent, viewBase, category }: AccentProps & { viewBase?: string; category: 'pre_litigation' | 'court_case' }) {
+  const [cases, setCases] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 500);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    const fetchCases = async () => {
+      try {
+        setLoading(true);
+        let url = API.CASES.LIST;
+        if (debouncedSearch) {
+          url += `?search=${encodeURIComponent(debouncedSearch)}`;
+        }
+
+        const response = await customFetch(url);
+        const data = await response.json();
+
+        if (!response.ok) throw new Error(data.detail || 'Failed to fetch cases');
+
+        let results = data.results || data;
+        // Client-side filtering because server-side ?category= is causing 500 errors
+        if (category) {
+          results = results.filter((c: any) => c.category === category);
+        }
+        
+        setCases(results);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCases();
+  }, [category, debouncedSearch]);
+
+  const rows = cases.map((c, i) => ({
+    title: c.case_title,
+    type: c.case_type,
+    client: c.client_name || 'N/A',
+    advocate: c.advocate_name || 'N/A',
+    priority: c.priority,
+    status: (c.stage || '').replace('_', ' '),
+    viewHref: viewBase ? `${viewBase}/${c.id || c.uuid}` : undefined,
+  }));
+
+  const metrics = [
+    { label: 'Total Cases', value: cases.length.toString() },
+    { label: 'High Priority', value: cases.filter(c => c.priority === 'high').length.toString() },
+    { label: 'In Evidence', value: cases.filter(c => c.stage === 'evidence').length.toString() },
+    { label: 'Pending Docs', value: '0' },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <PageSection
+        title={category === 'pre_litigation' ? 'Pre-litigation Directory' : 'Court Case Directory'}
+        description="Monitor and manage legal matters from initial filing to final judgment."
+        actions={<ActionLink href={`/super-admin/cases/new?category=${category}`} label={`Add Case`} />}
+      />
+      <MetricGrid accent={accent} metrics={metrics} />
+      <Panel
+        title="Active Matters"
+        actions={
+          <SearchBar
+            placeholder="Search cases, clients..."
+            value={search}
+            onChange={(val) => setSearch(val)}
+          />
+        }
+      >
+        {loading ? (
+          <div className="flex flex-col items-center justify-center p-20">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            <p className="mt-4 text-sm text-gray-400">Loading directory...</p>
+          </div>
+        ) : error ? (
+          <div className="p-12 text-center text-red-500 bg-red-50 rounded-2xl border border-red-100">
+            <p className="text-sm font-medium">Error: {error}</p>
+          </div>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'title', label: 'Case Title' },
+              { key: 'type', label: 'Type' },
+              { key: 'client', label: 'Client' },
+              { key: 'advocate', label: 'Advocate' },
+              { key: 'priority', label: 'Priority' },
+              { key: 'status', label: 'Stage' },
+            ]}
+            rows={rows}
+          />
+        )}
+      </Panel>
+    </div>
+  );
+}

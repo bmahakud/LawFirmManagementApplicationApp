@@ -8,6 +8,7 @@ import { Scale, CheckCircle2, ChevronRight, ChevronLeft, User, Building, MapPin,
 import { Country, State, City } from 'country-state-city';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
+import { PasswordInput } from '@/components/platform/ui';
 
 export default function RegisterWizard() {
   const router = useRouter();
@@ -51,7 +52,11 @@ export default function RegisterWizard() {
     : ["Account Type", "Personal Details", "Law Firm Profile", "Address Data", "Security & Access"];
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
+    let { name, value } = e.target;
+    if (name === 'phone_number' || name === 'postal_code') {
+      value = value.replace(/\D/g, '');
+      if (name === 'phone_number') value = value.slice(0, 10);
+    }
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -339,15 +344,36 @@ export default function RegisterWizard() {
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Phone Number</label>
-                <input name="phone_number" type="tel" required value={formData.phone_number} onChange={handleInputChange} className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#0e2340]/20 focus:border-[#0e2340] text-[15px] font-medium text-slate-900 placeholder-slate-400" placeholder="+91 98765 43210" />
+                <input 
+                  name="phone_number" 
+                  type="tel" 
+                  required 
+                  value={formData.phone_number} 
+                  onChange={handleInputChange} 
+                  maxLength={10}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#0e2340]/20 focus:border-[#0e2340] text-[15px] font-medium text-slate-900 placeholder-slate-400" 
+                  placeholder="9876543210" 
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Password</label>
-                <input name="password" type="password" required value={formData.password} onChange={handleInputChange} className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#0e2340]/20 focus:border-[#0e2340] text-[15px] font-medium text-slate-900 placeholder-slate-400" placeholder="••••••••" />
+                <PasswordInput 
+                  value={formData.password} 
+                  onChange={v => setFormData(p => ({ ...p, password: v }))} 
+                  required 
+                  autoComplete="new-password"
+                  className="!bg-white !border-gray-200"
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Confirm Password</label>
-                <input name="password_confirm" type="password" required value={formData.password_confirm} onChange={handleInputChange} className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#0e2340]/20 focus:border-[#0e2340] text-[15px] font-medium text-slate-900 placeholder-slate-400" placeholder="••••••••" />
+                <PasswordInput 
+                  value={formData.password_confirm} 
+                  onChange={v => setFormData(p => ({ ...p, password_confirm: v }))} 
+                  required 
+                  autoComplete="new-password"
+                  className="!bg-white !border-gray-200"
+                />
               </div>
             </div>
           </div>

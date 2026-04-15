@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { Bell, LogOut, Settings } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 
-import { Bell, Search, LogOut, Settings } from 'lucide-react';
 import { resolveRouteMeta } from '@/components/platform/route-meta';
 
 const pageTitles = [
@@ -58,14 +58,6 @@ export default function Topbar() {
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="hidden md:flex items-center gap-2 bg-[#f7f8fa] border border-gray-100 rounded-xl px-3 py-2 w-56">
-          <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-          <input
-            type="text"
-            placeholder="Search…"
-            className="bg-transparent text-sm text-gray-600 placeholder:text-gray-400 outline-none w-full"
-          />
-        </div>
 
         <button className="relative w-9 h-9 rounded-xl bg-[#f7f8fa] border border-gray-100 flex items-center justify-center hover:bg-gray-100 transition-colors">
           <Bell className="w-4 h-4 text-gray-500" />

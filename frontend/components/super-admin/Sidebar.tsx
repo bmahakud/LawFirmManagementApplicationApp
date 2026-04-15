@@ -12,7 +12,11 @@ import { API } from '@/lib/api';
 
 const topNavItems = [
   { label: 'Dashboard', path: '/super-admin/dashboard', icon: LayoutDashboard },
-  { label: 'Cases',     path: '/super-admin/cases',     icon: Briefcase       },
+];
+
+const casesSubItems = [
+  { label: 'Pre-litigation', path: '/super-admin/cases/pre-litigation', icon: FileText },
+  { label: 'Court Cases', path: '/super-admin/cases/court-case', icon: Scale },
 ];
 
 const userSubItems = [
@@ -55,6 +59,9 @@ export default function SuperAdminSidebar() {
   const [firmMenuOpen, setFirmMenuOpen] = useState(
     () => pathname.startsWith('/super-admin/my-firms')
   );
+  const [casesMenuOpen, setCasesMenuOpen] = useState(
+    () => pathname.startsWith('/super-admin/cases')
+  );
 
   useEffect(() => {
     if (pathname.startsWith('/super-admin/users')) {
@@ -62,6 +69,9 @@ export default function SuperAdminSidebar() {
     }
     if (pathname.startsWith('/super-admin/my-firms')) {
       setFirmMenuOpen(true);
+    }
+    if (pathname.startsWith('/super-admin/cases')) {
+      setCasesMenuOpen(true);
     }
   }, [pathname]);
 
@@ -99,21 +109,60 @@ export default function SuperAdminSidebar() {
       </div>
 
       <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
-        {topNavItems.map(({ label, path, icon: Icon }) => {
-          const active = isActive(path);
-          return (
-            <Link key={path} href={path}>
-              <div className={navRow(active)}>
-                {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#984c1f]" />}
-                <div className="flex items-center gap-3">
-                  <div className={iconBox(active)}><Icon className={iconColor(active)} /></div>
-                  <span className="text-sm font-semibold">{label}</span>
-                </div>
-                {active && <ChevronRight className="w-3.5 h-3.5 text-[#984c1f]/40" />}
+        {/* Dashboard */}
+        <Link href="/super-admin/dashboard">
+          <div className={navRow(isActive('/super-admin/dashboard'))}>
+            {isActive('/super-admin/dashboard') && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#984c1f]" />
+            )}
+            <div className="flex items-center gap-3">
+              <div className={iconBox(isActive('/super-admin/dashboard'))}>
+                <LayoutDashboard className={iconColor(isActive('/super-admin/dashboard'))} />
               </div>
-            </Link>
-          );
-        })}
+              <span className="text-sm font-semibold">Dashboard</span>
+            </div>
+            {isActive('/super-admin/dashboard') && <ChevronRight className="w-3.5 h-3.5 text-[#984c1f]/40" />}
+          </div>
+        </Link>
+
+        {/* Cases */}
+        <div>
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); setCasesMenuOpen((o) => !o); }}
+            className={navRow(pathname.startsWith('/super-admin/cases')) + ' w-full'}
+          >
+            {pathname.startsWith('/super-admin/cases') && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#984c1f]" />
+            )}
+            <div className="flex items-center gap-3">
+              <div className={iconBox(pathname.startsWith('/super-admin/cases'))}>
+                <Briefcase className={iconColor(pathname.startsWith('/super-admin/cases'))} />
+              </div>
+              <span className="text-sm font-semibold">Cases</span>
+            </div>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${casesMenuOpen ? 'rotate-180 text-[#984c1f]' : 'text-gray-300'}`} />
+          </button>
+
+          <div className={`overflow-hidden transition-all duration-300 ease-in-out ${casesMenuOpen ? 'max-h-52 opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="ml-[22px] mt-1 mb-1 border-l-2 border-[#984c1f]/15 pl-3.5 space-y-0.5">
+              {casesSubItems.map(({ label, path, icon: Icon }) => {
+                const active = pathname.startsWith(path);
+                return (
+                  <Link key={path} href={path}>
+                    <div className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 cursor-pointer ${
+                      active ? 'bg-[#984c1f]/10 text-[#984c1f]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                    }`}>
+                      <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[#984c1f]' : 'text-gray-300 group-hover:text-gray-500'}`} />
+                      <span className={`text-[13px] font-semibold ${active ? 'text-[#984c1f]' : ''}`}>{label}</span>
+                      {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#984c1f]" />}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
 
         {/* My Firms */}
         <Link href="/super-admin/my-firms">

@@ -24,6 +24,7 @@ import {
 
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
+import { PasswordInput } from '@/components/platform/ui';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -367,34 +368,14 @@ export default function LoginPage() {
                     Forgot password?
                   </Link>
                 </div>
-                <div className={`relative group rounded-lg transition-all duration-200 ${focusedField === 'password' ? 'ring-2 ring-[#1e3a5f]/20' : ''}`}>
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className={`w-4 h-4 transition-colors ${focusedField === 'password' ? 'text-[#1e3a5f]' : 'text-slate-400'}`} />
-                  </div>
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    required={loginMode === 'password'}
+                <div className="!relative">
+                  <PasswordInput
                     value={formData.password}
-                    onChange={handleInputChange}
-                    onFocus={() => setFocusedField('password')}
-                    onBlur={() => setFocusedField(null)}
-                    className="block w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#1e3a5f] transition-all text-sm"
-                    placeholder="••••••••"
+                    onChange={v => setFormData(p => ({ ...p, password: v }))}
+                    required={loginMode === 'password'}
+                    autoComplete="current-password"
+                    className="!pl-11 !bg-white !border-slate-200"
                   />
-                  <button
-                    type="button"
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4 text-slate-400 hover:text-slate-600 transition-colors" />
-                    ) : (
-                      <Eye className="w-4 h-4 text-slate-400 hover:text-slate-600 transition-colors" />
-                    )}
-                  </button>
                 </div>
               </div>
             ) : otpSent ? (

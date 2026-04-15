@@ -349,7 +349,9 @@ export default function PlatformOwnerFirmOverviewPage({
                 <input
                   type="text"
                   value={editedDetails.phone_number}
-                  onChange={(e) => setEditedDetails({ ...editedDetails, phone_number: e.target.value })}
+                  onChange={(e) => setEditedDetails({ ...editedDetails, phone_number: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                  maxLength={10}
+                  placeholder="9876543210"
                   className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0e2340]/20 focus:border-[#0e2340] focus:bg-white"
                 />
               </div>
@@ -398,7 +400,8 @@ export default function PlatformOwnerFirmOverviewPage({
                 <input
                   type="text"
                   value={editedDetails.postal_code}
-                  onChange={(e) => setEditedDetails({ ...editedDetails, postal_code: e.target.value })}
+                  onChange={(e) => setEditedDetails({ ...editedDetails, postal_code: e.target.value.replace(/\D/g, '') })}
+                  placeholder="400001"
                   className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0e2340]/20 focus:border-[#0e2340] focus:bg-white"
                 />
               </div>
@@ -407,7 +410,7 @@ export default function PlatformOwnerFirmOverviewPage({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Subscription Plan</label>
-                <select 
+                <select
                   value={editedDetails.subscription_type}
                   onChange={(e) => setEditedDetails({ ...editedDetails, subscription_type: e.target.value })}
                   className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0e2340]/20 focus:border-[#0e2340] focus:bg-white"
@@ -421,7 +424,7 @@ export default function PlatformOwnerFirmOverviewPage({
               <div className="flex flex-col">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Account Status</label>
                 <div className="flex items-center gap-3 mt-1">
-                  <button 
+                  <button
                     onClick={() => setEditedDetails({ ...editedDetails, is_active: !editedDetails.is_active })}
                     className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out outline-none ${editedDetails.is_active ? 'bg-emerald-500' : 'bg-gray-200'}`}
                   >
@@ -436,9 +439,9 @@ export default function PlatformOwnerFirmOverviewPage({
 
             <div className="pt-4 border-t border-gray-100 mt-6 flex gap-3 justify-end">
               <button
-                onClick={() => setEditedDetails({ 
-                  firm_name: firm.firm_name, 
-                  email: firm.email, 
+                onClick={() => setEditedDetails({
+                  firm_name: firm.firm_name,
+                  email: firm.email,
                   phone_number: firm.phone_number,
                   subscription_type: firm.subscription_type,
                   is_active: firm.is_active,

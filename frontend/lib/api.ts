@@ -13,7 +13,7 @@ export const API = {
     VERIFY_OTP: "/api/auth/verify_otp/"
   },
   DASHBOARD: {
-    GET: "/api/dashboard/"
+    GET: "/api/firms/dashboard/"
   },
   USERS: {
     LIST: "/api/users/",
@@ -24,9 +24,9 @@ export const API = {
     CHANGE_PASSWORD: "/api/users/change_password/"
   },
   FIRMS: {
-    LIST: "/api/firms/",
-    CREATE: "/api/firms/",
-    DETAIL: (uuid: string) => `/api/firms/${uuid}/`,
+    LIST: "/api/firms/firms/",
+    CREATE: "/api/firms/firms/",
+    DETAIL: (uuid: string) => `/api/firms/firms/${uuid}/`,
     BRANCHES: {
       LIST: "/api/branches/",
       CREATE: "/api/branches/",
@@ -37,6 +37,10 @@ export const API = {
     LIST: "/api/documents/",
     UPLOAD: "/api/documents/",
     DETAIL: (uuid: string) => `/api/documents/${uuid}/`
+  },
+  CLIENTS: {
+    LIST: "/api/clients/",
+    DETAIL: (uuid: string) => `/api/clients/${uuid}/`
   },
   PARTNERS: {
     LIST: "/api/partners/",
@@ -50,6 +54,11 @@ export const API = {
   CONFIG: {
     GET: "/api/config/settings/",
     UPDATE: "/api/config/update_settings/"
+  },
+  CASES: {
+    LIST: "/api/cases/cases/",
+    CREATE: "/api/cases/cases/",
+    DETAIL: (id: string) => `/api/cases/cases/${id}/`
   }
 };
 

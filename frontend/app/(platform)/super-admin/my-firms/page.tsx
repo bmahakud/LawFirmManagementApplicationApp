@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Store, Plus, ArrowRight, MapPin, Loader2, Building2, Phone, Mail, Hash } from 'lucide-react';
+import { Store, Plus, ArrowRight, MapPin, Loader2, Building2, Phone, Mail, Hash, User } from 'lucide-react';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 
@@ -26,28 +26,37 @@ interface Branch {
 
 export default function MyFirmsPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [admins, setAdmins] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const fetchBranches = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await customFetch(API.FIRMS.BRANCHES.LIST);
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.detail || data.message || 'Failed to load branches');
-        }
-        const branchList = data.results || data;
+        const [branchRes, userRes] = await Promise.all([
+          customFetch(API.FIRMS.BRANCHES.LIST),
+          customFetch(API.USERS.LIST)
+        ]);
+        
+        const branchData = await branchRes.json();
+        const userData = await userRes.json();
+        
+        if (!branchRes.ok) throw new Error(branchData.detail || branchData.message || 'Failed to load branches');
+        
+        const branchList = branchData.results || branchData;
+        const userList = userData.results || userData;
+        
         setBranches(Array.isArray(branchList) ? branchList : []);
+        setAdmins(Array.isArray(userList) ? userList.filter((u: any) => u.user_type === 'admin') : []);
       } catch (err: any) {
-        setError(err.message || 'Failed to load branches');
-        console.error('Branch fetch error:', err);
+        setError(err.message || 'Failed to load data');
+        console.error('Fetch error:', err);
       } finally {
         setLoading(false);
       }
     };
-    fetchBranches();
+    fetchData();
   }, []);
 
   return (
@@ -114,7 +123,18 @@ export default function MyFirmsPage() {
                     <h3 className="text-base font-bold text-gray-900 group-hover:text-[#984c1f] transition-colors">
                       {branch.branch_name || `Branch`}
                     </h3>
-                    <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-400">
+                    
+                    {/* Assigned Admins */}
+                    <div className="flex flex-wrap gap-2 mt-2 mb-2">
+                      {admins.filter(a => a.available_firms?.some((m: any) => m.branch === branch.id)).map((admin) => (
+                        <div key={admin.id} className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-100 rounded-md">
+                          <User className="w-3 h-3 text-[#984c1f]" />
+                          <span className="text-[10px] font-bold text-gray-600">{admin.first_name} {admin.last_name}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
                       {(branch.city || branch.state) && (
                         <span className="flex items-center gap-1">
                           <MapPin className="w-3 h-3" />

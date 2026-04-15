@@ -81,7 +81,11 @@ export default function AddNewFirmPage() {
   };
 
   const updateField = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    let finalValue = value;
+    if (field === 'phone_number') {
+      finalValue = value.replace(/\D/g, '').slice(0, 10);
+    }
+    setFormData(prev => ({ ...prev, [field]: finalValue }));
   };
 
   if (fetchingFirm) {
@@ -186,7 +190,8 @@ export default function AddNewFirmPage() {
                 type="text" 
                 value={formData.phone_number}
                 onChange={(e) => updateField('phone_number', e.target.value)}
-                placeholder="+91 98765 43210" 
+                maxLength={10}
+                placeholder="9876543210" 
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#984c1f]/20 focus:border-[#984c1f] transition-all text-black font-semibold placeholder:text-gray-400" 
               />
             </div>

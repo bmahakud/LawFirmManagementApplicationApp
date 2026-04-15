@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ReactNode, useMemo, useState } from 'react';
-import { ArrowRight, Search } from 'lucide-react';
+import { ArrowRight, Search, Clock, Eye, EyeOff, Hash, CreditCard, Lock } from 'lucide-react';
 
 type Tone = 'default' | 'success' | 'warning' | 'danger' | 'info';
 
@@ -116,12 +116,14 @@ export function Panel({
   );
 }
 
-export function SearchBar({ placeholder }: { placeholder: string }) {
+export function SearchBar({ placeholder, value, onChange }: { placeholder: string; value?: string; onChange?: (val: string) => void }) {
   return (
     <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-[#f7f8fa] px-3 py-2">
       <Search className="h-3.5 w-3.5 shrink-0 text-gray-400" />
       <input
         type="text"
+        value={value}
+        onChange={(e) => onChange?.(e.target.value)}
         placeholder={placeholder}
         className="w-full bg-transparent text-sm text-black font-semibold outline-none placeholder:text-gray-400"
       />
@@ -142,14 +144,20 @@ export function DetailList({
   columns = 2,
 }: {
   items: Array<{ label: string; value: ReactNode }>;
-  columns?: 2 | 3;
+  columns?: 1 | 2 | 3;
 }) {
+  const gridClass = columns === 3
+    ? "grid-cols-2 lg:grid-cols-3"
+    : columns === 2
+      ? "grid-cols-1 md:grid-cols-2"
+      : "grid-cols-1";
+
   return (
-    <div className={classNames('grid gap-4', columns === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
-      {items.map((item) => (
-        <div key={item.label} className="rounded-xl border border-gray-100 bg-[#f7f8fa] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">{item.label}</p>
-          <div className="mt-2 text-sm font-semibold text-gray-700">{item.value}</div>
+    <div className={classNames("grid gap-6 py-1", gridClass)}>
+      {items.map((item, idx) => (
+        <div key={idx} className="space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">{item.label}</p>
+          <div className="text-sm">{item.value}</div>
         </div>
       ))}
     </div>
@@ -300,24 +308,59 @@ export function DocumentHistory({
   );
 }
 
-export function SimpleTabs({
-  tabs,
-}: {
-  tabs: Array<{ label: string; active?: boolean }>;
-}) {
+export function SimpleTabs({ tabs }: { tabs: { label: string; active?: boolean }[] }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex gap-4 border-b border-gray-100 pb-2">
       {tabs.map((tab) => (
         <button
           key={tab.label}
           className={classNames(
-            'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors',
-            tab.active ? 'bg-[#0e2340] text-white' : 'border border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+            'px-1 py-2 text-sm font-semibold transition-colors',
+            tab.active
+              ? 'border-b-2 border-[#0e2340] text-[#0e2340]'
+              : 'text-gray-400 hover:text-gray-600'
           )}
         >
           {tab.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+export function ComingSoonMask({ title = "Coming Soon", message = "This feature is currently under development." }: { title?: string; message?: string }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white">
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/20 backdrop-blur-[2px] p-8 text-center">
+        <div className="rounded-2xl bg-white/90 p-8 shadow-2xl border border-gray-100 flex flex-col items-center gap-4 max-w-sm">
+          <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center">
+            <Clock className="w-8 h-8 text-gray-400" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">{title}</h3>
+            <p className="mt-2 text-sm text-gray-500 font-medium">
+              {message}
+            </p>
+          </div>
+          <div className="mt-4 px-4 py-1.5 rounded-full bg-[#0e2340] text-white text-[10px] font-bold uppercase tracking-widest">
+            En route
+          </div>
+        </div>
+      </div>
+
+      {/* Background Skeleton Content */}
+      <div className="p-8 opacity-20 pointer-events-none filter grayscale">
+        <div className="flex justify-between items-center mb-8">
+          <div className="h-8 w-48 bg-gray-200 rounded-lg animate-pulse" />
+          <div className="h-10 w-32 bg-gray-200 rounded-lg animate-pulse" />
+        </div>
+        <div className="grid grid-cols-4 gap-6 mb-10">
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-32 bg-gray-100 rounded-2xl animate-pulse" />)}
+        </div>
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-12 bg-gray-50 rounded-xl" />)}
+        </div>
+      </div>
     </div>
   );
 }
@@ -384,6 +427,115 @@ export function RecoveryCard({
       <div className="mt-8">
         <ActionLink href={href} label={label} />
       </div>
+    </div>
+  );
+}
+
+export function PasswordInput({
+  value,
+  onChange,
+  placeholder = '••••••••',
+  required = false,
+  className,
+  autoComplete,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  required?: boolean;
+  className?: string;
+  autoComplete?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative group">
+      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-hover:text-gray-500 transition-colors" />
+      <input
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className={classNames(
+          "h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 pr-12 text-sm text-gray-800 font-semibold outline-none focus:bg-white focus:border-[#0e2340] focus:ring-4 focus:ring-[#0e2340]/5 transition-all text-black",
+          className
+        )}
+      />
+      <button
+        type="button"
+        onClick={() => setShow(!show)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg hover:bg-gray-200/50 text-gray-400 hover:text-gray-600 transition-all"
+      >
+        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+}
+
+export function AadharInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  className?: string;
+}) {
+  const handleFormat = (val: string) => {
+    // Keep only digits
+    const clean = val.replace(/\D/g, '').slice(0, 12);
+    // Add spaces every 4 digits
+    const formatted = clean.replace(/(\d{4})(?=\d)/g, '$1 ');
+    onChange(formatted);
+  };
+
+  return (
+    <div className="relative group">
+      <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-hover:text-gray-500" />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => handleFormat(e.target.value)}
+        placeholder="XXXX XXXX XXXX"
+        maxLength={14} // 12 digits + 2 spaces
+        className={classNames(
+          "h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm text-gray-800 font-semibold outline-none focus:bg-white focus:border-[#0e2340] focus:ring-4 focus:ring-[#0e2340]/5 transition-all shadow-sm shadow-[#0e2340]/[0.02] text-black",
+          className
+        )}
+      />
+    </div>
+  );
+}
+
+export function PANInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  className?: string;
+}) {
+  const handleFormat = (val: string) => {
+    const uppercase = val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+    onChange(uppercase);
+  };
+
+  return (
+    <div className="relative group">
+      <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-hover:text-gray-500" />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => handleFormat(e.target.value)}
+        placeholder="ABCDE1234F"
+        maxLength={10}
+        className={classNames(
+          "h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm text-gray-800 font-semibold outline-none focus:bg-white focus:border-[#0e2340] focus:ring-4 focus:ring-[#0e2340]/5 transition-all shadow-sm shadow-[#0e2340]/[0.02] text-black",
+          className
+        )}
+      />
     </div>
   );
 }

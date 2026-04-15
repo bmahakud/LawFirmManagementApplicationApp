@@ -103,7 +103,11 @@ export default function BranchSettingsPage({ params }: { params: Promise<{ branc
   };
 
   const updateField = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    let finalValue = value;
+    if (field === 'phone_number' && typeof value === 'string') {
+      finalValue = value.replace(/\D/g, '').slice(0, 10);
+    }
+    setFormData(prev => ({ ...prev, [field]: finalValue }));
   };
 
   if (loading) {
@@ -182,6 +186,7 @@ export default function BranchSettingsPage({ params }: { params: Promise<{ branc
                   type="text" 
                   value={formData.phone_number}
                   onChange={(e) => updateField('phone_number', e.target.value)}
+                  maxLength={10}
                   className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#984c1f]/20 focus:border-[#984c1f] transition-all font-semibold text-black"
                 />
               </div>
