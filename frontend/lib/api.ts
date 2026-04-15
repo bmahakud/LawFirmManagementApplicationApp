@@ -13,7 +13,7 @@ export const API = {
     VERIFY_OTP: "/api/auth/verify_otp/"
   },
   DASHBOARD: {
-    GET: "/api/firms/dashboard/"
+    GET: "/api/dashboard/"
   },
   USERS: {
     LIST: "/api/users/",

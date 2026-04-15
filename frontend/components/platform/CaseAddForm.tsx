@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Briefcase, Gavel, User, Users, Store, AlertCircle, Loader2, CheckCircle2, FileText, ChevronDown, Save, X, Hash, MapPin, Layers, Building2, Check, Scale } from 'lucide-react';
+import { Briefcase, Gavel, User, Users, Store, AlertCircle, Loader2, CheckCircle2, FileText, ChevronDown, Save, X, Hash, MapPin, Layers, Building2, Check, Scale, DollarSign, FileCheck } from 'lucide-react';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 import { Panel, SplitPanels, classNames } from './ui';
@@ -12,10 +12,27 @@ interface Option {
   label: string;
 }
 
+// ─── Mandatory Fields Mapping ───────────────────────────────────────────────
+const MANDATORY_FIELDS = {
+  case_title: true,
+  case_type: true,
+  client: true,
+  assigned_advocate: true,
+  branch: true,
+};
+
+const FIELD_GROUPS = {
+  matter_identity: ['case_title', 'case_number', 'case_type'],
+  assignments: ['client', 'assigned_advocate', 'branch'],
+  court_details: ['court_name', 'filing_date', 'opposing_counsel', 'respondent_name'],
+  economics: ['priority', 'status', 'billing_type', 'estimated_value'],
+  documentation: ['description'],
+};
+
 export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pre_litigation' | 'court_case' }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   // -- Determine initial category --
   const urlCategory = searchParams.get('category') as any;
   const targetCategory = initialCategory || urlCategory || 'court_case';
@@ -38,7 +55,21 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
     respondent_name: '',
     opposing_counsel: '',
     description: '',
-    stage: 'case_filing'
+    stage: 'case_filing',
+    case_summary: '',
+    payment_terms: '',
+    loe_notes: '',
+    petitioner_name: '',
+    court_no: '',
+    judge_name: '',
+    district: '',
+    state: '',
+    representing: '',
+    cnr_number: '',
+    next_hearing_date: '',
+    additional_expenses: 'At actuals',
+    total_fee: '',
+    hearing_fee: '',
   });
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
@@ -69,7 +100,6 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
     const fetchData = async () => {
       try {
         setFetchingData(true);
-        // Using the user-specified /api/accounts/users/ endpoint via standardized USERS.LIST
         const [clientsRes, advocatesRes, branchesRes] = await Promise.all([
           customFetch(`${API.USERS.LIST}?user_type=client`),
           customFetch(`${API.USERS.LIST}?user_type=advocate`),
@@ -82,7 +112,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
           branchesRes.json()
         ]);
 
-        const format = (list: any) => 
+        const format = (list: any) =>
           (list.results || list).map((item: any) => ({
             value: item.id || item.uuid,
             label: item.full_name || item.get_full_name || `${item.first_name} ${item.last_name || ''}`.trim() || item.username || item.branch_name || item.name
@@ -119,10 +149,43 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
     setLoading(true);
 
     try {
+      const optionalStringFields = [
+        'court_name', 'description', 'opposing_counsel',
+        'respondent_name', 'case_number', 'court_no', 'judge_name',
+        'district', 'state', 'representing', 'cnr_number', 'case_summary',
+        'payment_terms', 'loe_notes', 'petitioner_name', 'next_hearing_date',
+      ];
+      const payload: Record<string, any> = { ...form };
+
+      optionalStringFields.forEach((field) => {
+        if (payload[field] === '') payload[field] = null;
+      });
+
+      if (payload.estimated_value === '' || payload.estimated_value === null) {
+        payload.estimated_value = null;
+      } else {
+        const parsed = parseFloat(payload.estimated_value);
+        payload.estimated_value = isNaN(parsed) ? null : parsed;
+      }
+
+      if (payload.total_fee === '' || payload.total_fee === null) {
+        payload.total_fee = null;
+      } else {
+        const parsed = parseFloat(payload.total_fee);
+        payload.total_fee = isNaN(parsed) ? null : parsed;
+      }
+
+      if (payload.hearing_fee === '' || payload.hearing_fee === null) {
+        payload.hearing_fee = null;
+      } else {
+        const parsed = parseFloat(payload.hearing_fee);
+        payload.hearing_fee = isNaN(parsed) ? null : parsed;
+      }
+
       const response = await customFetch(API.CASES.CREATE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -166,6 +229,13 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
     );
   }
 
+  const FieldLabel = ({ children, required = false }: { children: React.ReactNode; required?: boolean }) => (
+    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 flex items-center gap-1">
+      {children}
+      {required && <span className="text-red-500 text-xs">*</span>}
+    </label>
+  );
+
   return (
     <div className="max-w-5xl mx-auto pb-20">
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -183,7 +253,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
               <Panel title="Matter Identity" subtitle="Primary title and legal classification.">
                 <div className="space-y-5">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Case Title *</label>
+                    <FieldLabel required={MANDATORY_FIELDS.case_title}>Case Title</FieldLabel>
                     <div className="relative group">
                       <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-[#984c1f] transition-colors" />
                       <input
@@ -192,7 +262,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
                         onChange={e => set('case_title', e.target.value)}
                         placeholder="e.g. IP Case - Emily Chen"
                         className={classNames(
-                          "h-11 w-full rounded-xl border pl-11 px-4 text-sm font-semibold outline-none transition-all",
+                          "h-11 w-full rounded-xl border pl-11 px-4 text-sm font-semibold text-gray-900 outline-none transition-all",
                           fieldErrors.case_title ? "border-red-200 bg-red-50/50" : "border-gray-100 bg-gray-50/50 focus:bg-white focus:border-[#984c1f] focus:ring-4 focus:ring-[#984c1f]/5"
                         )}
                       />
@@ -202,7 +272,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Case Number</label>
+                      <FieldLabel>Case Number</FieldLabel>
                       <div className="relative group">
                         <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
@@ -214,7 +284,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
                       </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Case Type</label>
+                      <FieldLabel required={MANDATORY_FIELDS.case_type}>Case Type</FieldLabel>
                       <div className="relative group">
                         <Scale className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
@@ -222,7 +292,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
                           value={form.case_type}
                           onChange={e => set('case_type', e.target.value)}
                           placeholder="e.g. Intellectual Property"
-                          className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                          className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
                         />
                       </div>
                     </div>
@@ -234,7 +304,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
               <Panel title="Assignments" subtitle="Clients and personnel allocation.">
                 <div className="space-y-5">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Client *</label>
+                    <FieldLabel required={MANDATORY_FIELDS.client}>Client</FieldLabel>
                     <div className="relative group">
                       <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <select
@@ -252,7 +322,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Assigned Advocate</label>
+                      <FieldLabel required={MANDATORY_FIELDS.assigned_advocate}>Assigned Advocate</FieldLabel>
                       <div className="relative group">
                         <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <select
@@ -268,7 +338,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
                       </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Branch</label>
+                      <FieldLabel required={MANDATORY_FIELDS.branch}>Branch</FieldLabel>
                       <div className="relative group">
                         <Store className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <select
@@ -291,47 +361,110 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
               <Panel title="Court Information" subtitle="Legal jurisdiction and timeline.">
                 <div className="space-y-5">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Court Name</label>
+                    <FieldLabel>Court Name</FieldLabel>
                     <div className="relative group">
                       <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <input
                         value={form.court_name}
                         onChange={e => set('court_name', e.target.value)}
                         placeholder="e.g. High Court"
-                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
                       />
                     </div>
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Filing Date</label>
+                      <FieldLabel>Filing Date</FieldLabel>
                       <input
                         type="date"
                         value={form.filing_date}
                         onChange={e => set('filing_date', e.target.value)}
-                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Opposing Counsel</label>
+                      <FieldLabel>Opposing Counsel</FieldLabel>
                       <input
                         value={form.opposing_counsel}
                         onChange={e => set('opposing_counsel', e.target.value)}
                         placeholder="Counsel Name"
-                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
                       />
                     </div>
                   </div>
-                  
+
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Respondent Name</label>
+                    <FieldLabel>Respondent Name</FieldLabel>
                     <input
                       value={form.respondent_name}
                       onChange={e => set('respondent_name', e.target.value)}
                       placeholder="Opposing Party Name"
-                      className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                      className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
                     />
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>Court No.</FieldLabel>
+                      <input
+                        value={form.court_no}
+                        onChange={e => set('court_no', e.target.value)}
+                        placeholder="Room 4"
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>Judge Name</FieldLabel>
+                      <input
+                        value={form.judge_name}
+                        onChange={e => set('judge_name', e.target.value)}
+                        placeholder="Hon. Justice..."
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>District</FieldLabel>
+                      <input
+                        value={form.district}
+                        onChange={e => set('district', e.target.value)}
+                        placeholder="District"
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>State</FieldLabel>
+                      <input
+                        value={form.state}
+                        onChange={e => set('state', e.target.value)}
+                        placeholder="State"
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>CNR Number</FieldLabel>
+                      <input
+                        value={form.cnr_number}
+                        onChange={e => set('cnr_number', e.target.value)}
+                        placeholder="CNR..."
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>Representing</FieldLabel>
+                      <input
+                        value={form.representing}
+                        onChange={e => set('representing', e.target.value)}
+                        placeholder="Petitioner / Respondent"
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                      />
+                    </div>
                   </div>
                 </div>
               </Panel>
@@ -344,7 +477,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
                 <div className="space-y-5">
                   <div className="grid md:grid-cols-2 gap-4 text-center">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 text-left">Priority</label>
+                      <FieldLabel>Priority</FieldLabel>
                       <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100">
                         {['low', 'medium', 'high'].map((p) => (
                           <button
@@ -362,7 +495,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
                       </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1 text-left">Status</label>
+                      <FieldLabel>Status</FieldLabel>
                       <select
                         value={form.status}
                         onChange={e => set('status', e.target.value)}
@@ -378,7 +511,7 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Billing Type</label>
+                      <FieldLabel>Billing Type</FieldLabel>
                       <select
                         value={form.billing_type}
                         onChange={e => set('billing_type', e.target.value)}
@@ -391,13 +524,66 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
                       </select>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Value (Est.)</label>
+                      <FieldLabel>Value (Est.)</FieldLabel>
+                      <div className="relative">
+                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          value={form.estimated_value}
+                          onChange={e => set('estimated_value', e.target.value)}
+                          placeholder="45000.00"
+                          className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>Total Fee</FieldLabel>
+                      <div className="relative">
+                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          value={form.total_fee}
+                          onChange={e => set('total_fee', e.target.value)}
+                          placeholder="80000.00"
+                          className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>Hearing Fee</FieldLabel>
+                      <div className="relative">
+                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          value={form.hearing_fee}
+                          onChange={e => set('hearing_fee', e.target.value)}
+                          placeholder="5000.00"
+                          className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>Payment Terms</FieldLabel>
                       <input
-                        type="text"
-                        value={form.estimated_value}
-                        onChange={e => set('estimated_value', e.target.value)}
-                        placeholder="45000.00"
-                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                        value={form.payment_terms}
+                        onChange={e => set('payment_terms', e.target.value)}
+                        placeholder="50% upfront"
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>Additional Expenses</FieldLabel>
+                      <input
+                        value={form.additional_expenses}
+                        onChange={e => set('additional_expenses', e.target.value)}
+                        placeholder="At actuals"
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
                       />
                     </div>
                   </div>
@@ -408,13 +594,55 @@ export default function CaseAddForm({ initialCategory }: { initialCategory?: 'pr
               <Panel title="Documentation" subtitle="Brief summary and context.">
                 <div className="space-y-4">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Matter Description</label>
+                    <FieldLabel>Matter Description</FieldLabel>
                     <textarea
                       value={form.description}
                       onChange={e => set('description', e.target.value)}
                       placeholder="e.g. Filing patent for new biotech innovation..."
                       rows={5}
-                      className="w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3 text-sm font-semibold text-gray-800 outline-none focus:bg-white focus:border-[#984c1f] transition-all resize-none"
+                      className="w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all resize-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel>Case Summary</FieldLabel>
+                    <textarea
+                      value={form.case_summary}
+                      onChange={e => set('case_summary', e.target.value)}
+                      placeholder="Legal summary for internal reference..."
+                      rows={5}
+                      className="w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all resize-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel>LOE Notes</FieldLabel>
+                    <textarea
+                      value={form.loe_notes}
+                      onChange={e => set('loe_notes', e.target.value)}
+                      placeholder="Letter of engagement notes..."
+                      rows={3}
+                      className="w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all resize-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel>Petitioner Name</FieldLabel>
+                    <input
+                      value={form.petitioner_name}
+                      onChange={e => set('petitioner_name', e.target.value)}
+                      placeholder="Petitioner name"
+                      className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel>Next Hearing Date</FieldLabel>
+                    <input
+                      type="date"
+                      value={form.next_hearing_date}
+                      onChange={e => set('next_hearing_date', e.target.value)}
+                      className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#984c1f] transition-all"
                     />
                   </div>
                 </div>
