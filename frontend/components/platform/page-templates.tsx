@@ -2101,11 +2101,14 @@ export function ReportsPage({ accent }: AccentProps) {
 export function DocumentLibraryPage({ accent, roleTitle, viewBase }: AccentProps & { roleTitle: string; viewBase?: string }) {
   return (
     <div className="space-y-8">
-      <PageSection eyebrow="Documents" title={`${roleTitle} Document Library`} description="Browse document types, version history, and upload ownership." />
-      <SplitPanels
-        left={<Panel title="Document Register" subtitle="FIR, petitions, evidence, orders, agreements, and affidavits."><DocumentHistory rows={documentRows} viewBase={viewBase} /></Panel>}
-        right={<InfoAside accent={accent} title="Library Notes" items={['Each document captures upload date and uploader identity.', 'Version history is visible for review and audit.', 'Document type filters are represented in this mock through grouped rows.']} />}
+      <PageSection 
+        eyebrow="Documents" 
+        title={`${roleTitle} Document Library`} 
+        description="Personal and professional documents for verification and record keeping." 
       />
+      <Panel title="My Documents" subtitle="Upload and manage your documents">
+        <DocumentManager accent={accent} showUpload={true} />
+      </Panel>
     </div>
   );
 }

@@ -36,6 +36,45 @@ class ClientViewSet(viewsets.ModelViewSet):
         if user.user_type not in ['admin', 'super_admin', 'advocate', 'platform_owner']:
             raise PermissionDenied("Only Admins or Advocates can register clients.")
         
+        # Extract client data
+        email = serializer.validated_data.get('email')
+        phone_number = serializer.validated_data.get('phone_number')
+        first_name = serializer.validated_data.get('first_name')
+        last_name = serializer.validated_data.get('last_name')
+        
+        # Check if a user account with this email already exists
+        user_account = None
+        if email:
+            user_account = CustomUser.objects.filter(email=email).first()
+        
+        # If no user account exists, create one
+        if not user_account:
+            # Generate username from email or phone
+            username = email.split('@')[0] if email else f"client_{phone_number}"
+            
+            # Ensure username is unique
+            base_username = username
+            counter = 1
+            while CustomUser.objects.filter(username=username).exists():
+                username = f"{base_username}{counter}"
+                counter += 1
+            
+            # Create user account
+            user_account = CustomUser.objects.create(
+                username=username,
+                email=email or '',
+                phone_number=phone_number or '',
+                first_name=first_name or '',
+                last_name=last_name or '',
+                user_type='client',
+                firm=user.firm,
+                is_active=True,
+                password_set=False  # User needs to set password later
+            )
+            # Set an unusable password initially
+            user_account.set_unusable_password()
+            user_account.save()
+        
         # When admin/super_admin adds a client, assigned_advocate is REQUIRED
         if user.user_type in ['admin', 'super_admin']:
             advocate_id = self.request.data.get('assigned_advocate')
@@ -47,13 +86,16 @@ class ClientViewSet(viewsets.ModelViewSet):
                 advocate = CustomUser.objects.get(id=advocate_id, user_type='advocate', firm=user.firm)
             except CustomUser.DoesNotExist:
                 raise PermissionDenied("Invalid advocate. The advocate must belong to your firm.")
+            
+            serializer.save(firm=user.firm, user_account=user_account, assigned_advocate=advocate)
+            return
         
         # When advocate adds a client, auto-assign themselves
         if user.user_type == 'advocate':
-            serializer.save(firm=user.firm, assigned_advocate=user)
+            serializer.save(firm=user.firm, user_account=user_account, assigned_advocate=user)
             return
         
-        serializer.save(firm=user.firm)
+        serializer.save(firm=user.firm, user_account=user_account)
 
     @action(detail=False, methods=['get'], url_path='advocates', url_name='advocate-list')
     def list_advocates(self, request):

@@ -11,11 +11,21 @@ interface DashboardData {
   role_display: string;
   user_name: string;
   cards: {
-    active_cases: number;
-    next_hearing: string;
-    new_messages: number;
-    unpaid_invoices: number;
+    my_cases?: number;
+    active_cases?: number;
+    next_hearing?: string;
+    new_messages?: number;
+    unpaid_invoices?: number;
+    upcoming_hearings?: number;
   };
+  client_info?: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    assigned_advocate: string | null;
+  };
+  recent_cases?: any[];
 }
 
 export default function ClientDashboard() {
@@ -65,13 +75,23 @@ export default function ClientDashboard() {
     );
   }
 
-  const { cards } = data;
+  const { cards, client_info } = data;
 
   return (
     <div className="space-y-8 max-w-5xl">
+      {/* Client Info Header */}
+      {client_info && (
+        <div className="bg-gradient-to-r from-[#1f2937] to-[#111827] rounded-2xl p-6 text-white shadow-lg">
+          <h2 className="text-2xl font-bold">Welcome, {client_info.name}</h2>
+          {client_info.assigned_advocate && (
+            <p className="text-sm text-white/80 mt-1">Your Advocate: {client_info.assigned_advocate}</p>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Active Cases',   val: cards?.active_cases || 0,     icon: Scale,     color: 'bg-[#1f2937]' },
+          { label: 'Active Cases',   val: cards?.my_cases || cards?.active_cases || 0,     icon: Scale,     color: 'bg-[#1f2937]' },
           { label: 'Next Hearing',   val: cards?.next_hearing || 'N/A', icon: Calendar,  color: 'bg-indigo-600' },
           { label: 'New Messages',   val: cards?.new_messages || 0,     icon: MessageSquare, color: 'bg-emerald-600' },
           { label: 'Unpaid Invoices',val: cards?.unpaid_invoices || 0,  icon: Clock,     color: 'bg-gray-400' },

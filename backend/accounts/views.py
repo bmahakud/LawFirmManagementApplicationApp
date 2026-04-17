@@ -1005,11 +1005,24 @@ class FirmJoinLinkViewSet(viewsets.ModelViewSet):
                 }
             )
             
-            # 4. Increment usage count on the link atomically
+            # 4. If user is a client, create Client profile
+            if link.user_type == 'client':
+                from clients.models import Client
+                Client.objects.create(
+                    firm=link.firm,
+                    first_name=data['first_name'],
+                    last_name=data['last_name'],
+                    email=data['email'],
+                    phone_number=data['phone_number'],
+                    user_account=user,
+                    assigned_advocate=None  # Client can choose advocate later
+                )
+            
+            # 5. Increment usage count on the link atomically
             link.usage_count = F('usage_count') + 1
             link.save()
             
-            # 5. Generate Auth Token
+            # 6. Generate Auth Token
             token, _ = Token.objects.get_or_create(user=user)
             
             log_audit(user, 'join_via_link', f"Joined {link.firm.firm_name} via generic link as {link.get_user_type_display()}")

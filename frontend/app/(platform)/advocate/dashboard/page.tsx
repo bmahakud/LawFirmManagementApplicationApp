@@ -11,11 +11,18 @@ interface DashboardData {
   role_display: string;
   user_name: string;
   cards: {
-    assigned_cases: number;
+    my_cases?: number;
+    assigned_cases?: number;
     my_clients: number;
+    pending_tasks?: number;
     upcoming_hearings: number;
-    pending_tasks: number;
   };
+  firm_info?: {
+    id: string;
+    name: string;
+  };
+  recent_cases?: any[];
+  recent_clients?: any[];
 }
 
 export default function AdvocateDashboard() {
@@ -65,13 +72,21 @@ export default function AdvocateDashboard() {
     );
   }
 
-  const { cards } = data;
+  const { cards, firm_info } = data;
 
   return (
     <div className="space-y-8">
+      {/* Firm Name Header */}
+      {firm_info && (
+        <div className="bg-gradient-to-r from-[#4a1c40] to-[#6b2456] rounded-2xl p-6 text-white shadow-lg">
+          <h2 className="text-2xl font-bold">{firm_info.name}</h2>
+          <p className="text-sm text-white/80 mt-1">Welcome back, {data.user_name}</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Assigned Cases',     val: cards?.assigned_cases || 0,     icon: Briefcase,     color: 'bg-[#4a1c40]' },
+          { label: 'Assigned Cases',     val: cards?.my_cases || cards?.assigned_cases || 0,     icon: Briefcase,     color: 'bg-[#4a1c40]' },
           { label: 'My Clients',         val: cards?.my_clients || 0,         icon: PenTool,       color: 'bg-purple-600' },
           { label: 'Upcoming Hearings',  val: cards?.upcoming_hearings || 0,  icon: Calendar,      color: 'bg-blue-600' },
           { label: 'Pending Tasks',      val: cards?.pending_tasks || 0,      icon: MessageSquare, color: 'bg-emerald-500' },

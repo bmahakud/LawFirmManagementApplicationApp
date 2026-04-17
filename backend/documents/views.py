@@ -70,16 +70,25 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         firm = None
         if user.user_type in ['super_admin', 'admin', 'advocate', 'paralegal']:
             firm = user.firm
-        elif user.user_type == 'client' and hasattr(user, 'client_profile'):
-            firm = user.client_profile.firm
+        elif user.user_type == 'client':
+            # Try to get firm from client profile
+            if hasattr(user, 'client_profile') and user.client_profile:
+                firm = user.client_profile.firm
+            # Fallback: try to get from user's firm field
+            elif user.firm:
+                firm = user.firm
         
         if not firm:
-            raise PermissionDenied("Unable to determine firm for document upload.")
+            raise PermissionDenied(
+                f"Unable to determine firm for document upload. User type: {user.user_type}, "
+                f"Has client_profile: {hasattr(user, 'client_profile')}"
+            )
         
         # Auto-assign client if user is a client
         client = None
-        if user.user_type == 'client' and hasattr(user, 'client_profile'):
-            client = user.client_profile
+        if user.user_type == 'client':
+            if hasattr(user, 'client_profile') and user.client_profile:
+                client = user.client_profile
         
         serializer.save(
             uploaded_by=user,

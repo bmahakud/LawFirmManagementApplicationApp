@@ -73,16 +73,45 @@ class CaseSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         """Convert CustomUser ID to Client ID if needed"""
         from clients.models import Client
+        from accounts.models import CustomUser
         
         if 'client' in data:
             client_id = data['client']
-            # Try to find if this is a CustomUser ID
+            
+            # First check if it's already a valid Client ID
+            try:
+                existing_client = Client.objects.filter(id=client_id).first()
+                if existing_client:
+                    # It's already a Client ID, use it as is
+                    return super().to_internal_value(data)
+            except:
+                pass
+            
+            # Try to find Client by user_account (CustomUser ID)
             try:
                 client = Client.objects.filter(user_account_id=client_id).first()
                 if client:
+                    # Convert User ID to Client ID
                     data = data.copy()
                     data['client'] = str(client.id)
-            except:
+                else:
+                    # User exists but no Client profile - create one
+                    user = CustomUser.objects.filter(id=client_id, user_type='client').first()
+                    if user:
+                        # Create Client profile for this user
+                        new_client = Client.objects.create(
+                            firm=user.firm,
+                            first_name=user.first_name or '',
+                            last_name=user.last_name or '',
+                            email=user.email or '',
+                            phone_number=user.phone_number or '',
+                            user_account=user
+                        )
+                        data = data.copy()
+                        data['client'] = str(new_client.id)
+            except Exception as e:
+                # If all else fails, let the validation handle it
+                print(f"Error converting client ID: {e}")
                 pass
         
         return super().to_internal_value(data)
