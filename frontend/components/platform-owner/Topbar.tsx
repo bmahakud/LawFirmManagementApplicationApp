@@ -6,7 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 
 import { customFetch } from '@/lib/fetch';
-import { API } from '@/lib/api';
+import { API, API_BASE_URL } from '@/lib/api';
 
 import { resolveRouteMeta } from '@/components/platform/route-meta';
 import { useTopbar } from '@/components/platform/TopbarContext';
