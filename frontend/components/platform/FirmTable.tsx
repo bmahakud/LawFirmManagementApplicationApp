@@ -69,6 +69,37 @@ export default function FirmTable() {
     fetchFirms();
   }, []);
 
+  const toggleFirmStatus = async (firmId: string, currentStatus: boolean) => {
+    try {
+      const action = currentStatus ? 'suspend' : 'unsuspend';
+      const endpoint = `${API.FIRMS.DETAIL(firmId)}${action}/`;
+      
+      const response = await customFetch(endpoint, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || errorData.message || 'Failed to update firm status');
+      }
+
+      const data = await response.json();
+      
+      // Update local state without full reload
+      setFirms(prevFirms => prevFirms.map(f => {
+        if (f.id === firmId) {
+          return { ...f, is_active: data.firm ? data.firm.is_active : !currentStatus };
+        }
+        return f;
+      }));
+      setOpenMenu(null);
+      
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'An error occurred while updating firm status');
+    }
+  };
+
   const filtered = firms.filter(
     (f) =>
       f.firm_name.toLowerCase().includes(query.toLowerCase()) ||
@@ -104,7 +135,7 @@ export default function FirmTable() {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm lg:overflow-visible overflow-hidden">
       {/* Table header */}
       <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
         <div>
@@ -127,11 +158,11 @@ export default function FirmTable() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto lg:overflow-visible">
         <table className="w-full min-w-[780px]">
           <thead>
             <tr className="border-b border-gray-100 bg-[#f7f8fa]">
-              {['Sl. No', 'Firm', 'Reg. No', 'Code', 'City', 'Super Admin', 'Subscription', 'Status', 'Joined', 'View', ''].map((h) => (
+              {['Sl. No', 'Firm', 'Code', 'City', 'Super Admin', 'Subscription', 'Status', 'Joined', 'View', ''].map((h) => (
                 <th
                   key={h}
                   className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400"
@@ -179,12 +210,6 @@ export default function FirmTable() {
                         <p className="text-[11px] text-gray-400 truncate">{firm.email}</p>
                       </div>
                     </div>
-                  </td>
-
-                  <td className="px-5 py-4">
-                    <span className="text-xs font-mono font-bold text-gray-400 bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg">
-                      {firm.registration_number || 'N/A'}
-                    </span>
                   </td>
 
                   <td className="px-5 py-4">
@@ -279,19 +304,17 @@ export default function FirmTable() {
                           <Eye className="w-3.5 h-3.5 text-gray-400" /> View Details
                         </Link>
                         <button
-                          onClick={() => { setOpenMenu(null); }}
-                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-amber-600 hover:bg-amber-50 transition-colors"
+                          onClick={() => toggleFirmStatus(firm.id, firm.is_active)}
+                          className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors ${
+                            firm.is_active 
+                              ? 'text-amber-600 hover:bg-amber-50' 
+                              : 'text-emerald-600 hover:bg-emerald-50'
+                          }`}
                         >
-                          <PauseCircle className="w-3.5 h-3.5" />
-                          {firm.is_active ? 'Suspend Firm' : 'Reactivate'}
+                          {firm.is_active ? <PauseCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                          {firm.is_active ? 'Suspend Firm' : 'Reactivate Firm'}
                         </button>
-                        <div className="h-px bg-gray-100 my-1" />
-                        <button
-                          onClick={() => { setOpenMenu(null); }}
-                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" /> Delete Firm
-                        </button>
+
                       </div>
                     )}
                   </td>

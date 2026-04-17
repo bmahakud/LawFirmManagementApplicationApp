@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, PlusCircle, Loader2, CheckCircle2, AlertCircle, ChevronDown, Globe, Phone, Save, X, Briefcase, Mail, Link as LinkIcon, MapPin } from 'lucide-react';
+import { Building2, PlusCircle, Loader2, CheckCircle2, AlertCircle, ChevronDown, Globe, Phone, Save, X, Briefcase, Mail, Link as LinkIcon, MapPin, Upload } from 'lucide-react';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 import { Country, State, City } from 'country-state-city';
@@ -25,6 +25,17 @@ export default function CreateFirmForm() {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [success, setSuccess] = useState(false);
+
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setLogoFile(file);
+      setLogoPreview(URL.createObjectURL(file));
+    }
+  };
 
   // -- Location Data --
   const countries = Country.getAllCountries();
@@ -78,11 +89,26 @@ export default function CreateFirmForm() {
         state: stateName,
       };
 
-      const response = await customFetch(API.FIRMS.CREATE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      let response;
+      if (logoFile) {
+        const formData = new FormData();
+        Object.entries(payload).forEach(([key, val]) => {
+          if (val !== undefined && val !== null) {
+            formData.append(key, String(val));
+          }
+        });
+        formData.append('logo', logoFile);
+        response = await customFetch(API.FIRMS.CREATE, {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        response = await customFetch(API.FIRMS.CREATE, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
 
       const data = await response.json();
 
@@ -124,6 +150,26 @@ export default function CreateFirmForm() {
           <div className="space-y-6">
             <Panel title="Core Credentials" subtitle="Primary identification and contact markers.">
               <div className="space-y-5">
+                <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50/50 hover:bg-gray-50 transition-colors group relative cursor-pointer">
+                  <input type="file" accept="image/*" onChange={handleLogoChange} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                  {logoPreview ? (
+                    <div className="relative w-20 h-20 rounded-xl overflow-hidden shadow-sm">
+                      <img src={logoPreview} alt="Logo Preview" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Upload className="w-5 h-5 text-white" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center">
+                      <div className="w-12 h-12 rounded-full bg-white border border-gray-100 shadow-sm flex items-center justify-center mb-3">
+                        <Upload className="w-5 h-5 text-gray-400 group-hover:text-[#0e2340] transition-colors" />
+                      </div>
+                      <p className="text-sm font-semibold text-gray-700">Upload Firm Logo</p>
+                      <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 5MB</p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Firm Name *</label>

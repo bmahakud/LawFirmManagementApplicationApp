@@ -1,3 +1,5 @@
+frontend/components/super-admin/Sidebar.tsx
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -27,7 +29,6 @@ const userSubItems = [
 ];
 
 const bottomNavItems = [
-  { label: 'Documents', path: '/super-admin/documents', icon: FileText },
   { label: 'Billing', path: '/super-admin/billing', icon: CreditCard },
   { label: 'Reports', path: '/super-admin/reports', icon: BarChart2 },
 ];

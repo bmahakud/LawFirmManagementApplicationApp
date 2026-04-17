@@ -23,7 +23,6 @@ const userSubItems = [
 const navItems = [
   { label: 'Dashboard', path: '/platform-owner', icon: LayoutDashboard },
   { label: 'Billing', path: '/platform-owner/billing', icon: CreditCard },
-  { label: 'Settings', path: '/platform-owner/settings', icon: Settings },
 ];
 
 export default function Sidebar() {
@@ -195,29 +194,41 @@ export default function Sidebar() {
             </Link>
           );
         })}
+
+        {(isActive('/platform-owner/profile') || isActive('/platform-owner/settings')) && (
+          <>
+            <div className="my-3 border-t border-gray-100" />
+            <div className="px-3 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">Account Context</span>
+            </div>
+            {[
+              { label: 'Profile', path: '/platform-owner/profile', icon: UserCheck },
+              { label: 'Settings', path: '/platform-owner/settings', icon: Settings }
+            ].map(({ label, path, icon: Icon }) => {
+              const active = isActive(path);
+              return (
+                <Link key={path} href={path}>
+                  <div className={navRow(active)}>
+                    {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#0e2340]" />}
+                    <div className="flex items-center gap-3">
+                      <div className={iconBox(active)}><Icon className={iconColor(active)} /></div>
+                      <span className="text-sm font-semibold">{label}</span>
+                    </div>
+                    {active && <ChevronRight className="w-3.5 h-3.5 text-[#0e2340]/40" />}
+                  </div>
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       {/* Bottom user card */}
       <div className="border-t border-gray-100">
-        <div className="px-4 py-3.5 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-[#0e2340] flex items-center justify-center text-white text-xs font-bold shrink-0">
-            PO
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-gray-900 truncate">Platform Owner</p>
-            <p className="text-[10px] text-gray-400 truncate">owner@antlegal.com</p>
-          </div>
-          <button className="w-7 h-7 rounded-lg hover:bg-gray-100 flex items-center justify-center transition-colors shrink-0">
-            <Settings className="w-3.5 h-3.5 text-gray-400" />
-          </button>
-        </div>
-        <div className="border-t border-gray-100 flex items-center justify-between px-4 py-3">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 text-[#0e2340] hover:opacity-75 transition-opacity"
-          >
+        <div className="border-t border-gray-100 px-4 py-3">
+          <button onClick={handleLogout} className="flex items-center gap-2 text-[#0e2340] hover:opacity-75 transition-opacity">
             <LogOut className="w-4 h-4" />
-            <span className="text-[13px] font-semibold">Sign Out</span>
+            <span className="text-[15px] font-semibold">Log Out</span>
           </button>
         </div>
       </div>

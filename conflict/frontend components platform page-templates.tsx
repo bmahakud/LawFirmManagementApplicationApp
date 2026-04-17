@@ -1,3 +1,5 @@
+
+
 'use client';
 
 import Link from 'next/link';
@@ -16,9 +18,6 @@ import {
   PenTool,
   ShieldCheck,
   Users,
-  Link2,
-  Copy,
-  X,
 } from 'lucide-react';
 import {
   ActivityFeed,
@@ -51,9 +50,8 @@ import {
   teamFields,
 } from '@/components/platform/mock-data';
 import { customFetch } from '@/lib/fetch';
-import DocumentManager from '@/components/platform/DocumentManager';
 import { API, API_BASE_URL } from '@/lib/api';
-import { Loader2, PlusCircle, Save, ChevronDown } from 'lucide-react';
+import { Loader2, PlusCircle, Save, X, ChevronDown } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 import { Country, State, City } from 'country-state-city';
 import { useTopbarTitle } from '@/components/platform/TopbarContext';
@@ -217,6 +215,33 @@ function InfoAside({ accent, title, items }: AccentProps & { title: string; item
     </Panel>
   );
 }
+
+const caseRows = [
+  {
+    matter: 'State vs Mehta',
+    number: 'CRL-2026-1042',
+    acts: 'IPC 420, CrPC 154',
+    status: 'Evidence Stage',
+    advocate: 'Ritika Iyer',
+    hearing: '31 Mar 2026',
+  },
+  {
+    matter: 'Apex Traders Arbitration',
+    number: 'ARB-2026-031',
+    acts: 'Arbitration Act',
+    status: 'Draft Filing',
+    advocate: 'Arjun Sharma',
+    hearing: '04 Apr 2026',
+  },
+  {
+    matter: 'Kumar Property Appeal',
+    number: 'CIV-2026-220',
+    acts: 'Transfer of Property Act',
+    status: 'Judgment Reserved',
+    advocate: 'Neha Sethi',
+    hearing: '07 Apr 2026',
+  },
+];
 
 export function PlatformFirmsHub({ accent, limited }: AccentProps & { limited?: boolean }) {
   const metrics = limited
@@ -538,49 +563,7 @@ export function CasesPage({
   primaryHref,
   primaryLabel,
   viewBase,
-  filterByAssignedAdvocate,
-}: AccentProps & { title: string; description: string; primaryHref?: string; primaryLabel?: string; viewBase?: string; filterByAssignedAdvocate?: boolean }) {
-  const [cases, setCases] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const fetchCases = async () => {
-      try {
-        setLoading(true);
-        let url = API.CASES.LIST;
-
-        // If filtering by assigned advocate, add query parameter
-        if (filterByAssignedAdvocate) {
-          url = `${url}?assigned_to_me=true`;
-        }
-
-        const response = await customFetch(url);
-        const data = await response.json();
-
-        // Handle both paginated and non-paginated responses
-        const casesList = Array.isArray(data) ? data : (data.results || []);
-        setCases(casesList);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load cases');
-        console.error('Error fetching cases:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchCases();
-  }, [filterByAssignedAdvocate]);
-
-  const caseRows = cases.map((c) => ({
-    matter: c.case_title || 'Untitled Case',
-    number: c.case_number || 'N/A',
-    acts: c.acts_sections || 'N/A',
-    status: c.status || 'N/A',
-    advocate: c.assigned_advocate_name || 'Unassigned',
-    hearing: c.next_hearing_date || 'Not scheduled',
-    viewHref: viewBase ? `${viewBase}/${c.id}` : undefined,
-  }));
-
+}: AccentProps & { title: string; description: string; primaryHref?: string; primaryLabel?: string; viewBase?: string }) {
   return (
     <div className="space-y-8">
       <PageSection
@@ -589,39 +572,24 @@ export function CasesPage({
         actions={primaryHref && primaryLabel ? <ActionLink href={primaryHref} label={primaryLabel} /> : undefined}
       />
 
+
       <Panel title="Case Register" subtitle="Search, filter, and review current matters." actions={<SearchBar placeholder="Search case title, number, or advocate..." />}>
         <SimpleTabs tabs={[{ label: 'All Cases', active: true }, { label: 'Running' }, { label: 'Disposed Off' }, { label: 'Closed' }]} />
         <div className="mt-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-              <p className="ml-3 text-sm text-gray-400">Loading cases...</p>
-            </div>
-          ) : error ? (
-            <div className="flex items-center justify-center py-12">
-              <p className="text-sm text-red-500">{error}</p>
-            </div>
-          ) : caseRows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Briefcase className="w-12 h-12 text-gray-300 mb-3" />
-              <p className="text-sm text-gray-500 font-medium">No cases assigned yet</p>
-              <p className="text-xs text-gray-400 mt-1">Cases will appear here once assigned to you</p>
-            </div>
-          ) : (
-            <DataTable
-              columns={[
-                { key: 'matter', label: 'Matter' },
-                { key: 'number', label: 'Case Number' },
-                { key: 'acts', label: 'Acts' },
-                { key: 'status', label: 'Status' },
-                { key: 'advocate', label: 'Assigned Advocate' },
-                { key: 'hearing', label: 'Next Hearing' },
-              ]}
-              rows={caseRows}
-            />
-          )}
+          <DataTable
+            columns={[
+              { key: 'matter', label: 'Matter' },
+              { key: 'number', label: 'Case Number' },
+              { key: 'acts', label: 'Acts' },
+              { key: 'status', label: 'Status' },
+              { key: 'advocate', label: 'Assigned Advocate' },
+              { key: 'hearing', label: 'Next Hearing' },
+            ]}
+            rows={caseRows.map((row, index) => ({ ...row, viewHref: viewBase ? `${viewBase}/${index + 1}` : undefined }))}
+          />
         </div>
       </Panel>
+
     </div>
   );
 }
@@ -721,9 +689,6 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [showJoinLinkModal, setShowJoinLinkModal] = useState(false);
-  const [creatingLink, setCreatingLink] = useState(false);
-  const [joinLink, setJoinLink] = useState<any>(null);
 
   // Debounce search input
   useEffect(() => {
@@ -737,10 +702,10 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
         setLoading(true);
         let url = API.USERS.LIST;
         const params = new URLSearchParams();
-
+        
         if (debouncedSearch) params.set('search', debouncedSearch);
         if (role) params.set('user_type', role);
-
+        
         if (params.toString()) {
           url = `${url}?${params.toString()}`;
         }
@@ -760,72 +725,33 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
     fetchUsers();
   }, [role, debouncedSearch]);
 
-  const handleCreateJoinLink = async () => {
-    if (!role) return;
-
-    try {
-      setCreatingLink(true);
-      const payload = {
-        user_type: role,
-        max_uses: 0,
-        expires_at: null
-      };
-
-      const response = await customFetch(API.JOIN_LINKS.CREATE, {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setJoinLink(data);
-        setShowJoinLinkModal(true);
-      } else {
-        const errorData = await response.json();
-        alert(errorData.error || 'Failed to create link');
-      }
-    } catch (err: any) {
-      console.error('Error creating link:', err);
-      alert('Failed to create join link');
-    } finally {
-      setCreatingLink(false);
-    }
-  };
-
-  const copyLinkToClipboard = () => {
-    if (!joinLink) return;
-    const fullUrl = `${window.location.origin}/join/${joinLink.id}`;
-    navigator.clipboard.writeText(fullUrl);
-    alert('Link copied to clipboard!');
-  };
-
   const rows = users.map((u, i) => {
     // Find branch from memberships
     const activeMembership = u.available_firms?.find((m: any) => m.is_active || m.branch_name);
     const branchName = activeMembership?.branch_name || 'N/A';
-
+    
     // Format Display Identity
     const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
     const initials = `${(u.first_name || u.username || '').charAt(0)}${(u.last_name || '').charAt(0)}`.toUpperCase() || 'U';
-
+    
     let avatarUrl = null;
     if (u.profile_image) {
-      avatarUrl = u.profile_image.startsWith('http') ? u.profile_image : `${API_BASE_URL}${u.profile_image}`;
+       avatarUrl = u.profile_image.startsWith('http') ? u.profile_image : `${API_BASE_URL}${u.profile_image}`;
     }
 
     return {
       name: (
         <div className="flex items-center gap-3">
-          {avatarUrl ? (
-            <div className="w-8 h-8 rounded-lg shrink-0 overflow-hidden border border-gray-100 bg-white">
-              <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
-            </div>
-          ) : (
-            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-[#984c1f] text-[11px] font-bold shrink-0 uppercase tracking-widest">
-              {initials}
-            </div>
-          )}
-          <span className="font-semibold text-gray-800 truncate">{fullName}</span>
+           {avatarUrl ? (
+               <div className="w-8 h-8 rounded-lg shrink-0 overflow-hidden border border-gray-100 bg-white">
+                   <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
+               </div>
+           ) : (
+               <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-[#984c1f] text-[11px] font-bold shrink-0 uppercase tracking-widest">
+                   {initials}
+               </div>
+           )}
+           <span className="font-semibold text-gray-800 truncate">{fullName}</span>
         </div>
       ),
       role: u.user_type,
@@ -850,28 +776,7 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
       <PageSection
         title={`${role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Firm'} Team Directory`}
         description="Create and manage your team members with role-aware access and workload visibility."
-        actions={
-          <div className="flex gap-3">
-            <ActionLink href={`${viewBase}/new`} label={`Add ${role || 'Member'}`} />
-            <button
-              onClick={handleCreateJoinLink}
-              disabled={creatingLink}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {creatingLink ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Link2 className="h-4 w-4" />
-                  Join with Link
-                </>
-              )}
-            </button>
-          </div>
-        }
+        actions={<ActionLink href={`${viewBase}/new`} label={`Add ${role || 'Member'}`} />}
       />
       <MetricGrid accent={accent} metrics={metrics} />
       <Panel
@@ -913,43 +818,6 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
           />
         )}
       </Panel>
-
-      {showJoinLinkModal && joinLink && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Join Link Created!</h2>
-              <button onClick={() => setShowJoinLinkModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div className="bg-[#4a1c40]/5 rounded-xl p-4 border border-[#4a1c40]/10">
-                <p className="text-sm font-semibold text-[#4a1c40] mb-2">Share this link:</p>
-                <div className="bg-white rounded-lg p-3 border border-gray-200 mb-3">
-                  <p className="text-sm text-gray-600 break-all font-mono">{`${window.location.origin}/join/${joinLink.id}`}</p>
-                </div>
-                <button onClick={copyLinkToClipboard} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#4a1c40] text-white rounded-lg hover:bg-[#3a1530] transition-colors font-semibold">
-                  <Copy className="w-4 h-4" />
-                  Copy Link
-                </button>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="text-sm font-bold text-blue-900 mb-2">How to use:</h4>
-                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                  <li>Copy the link above</li>
-                  <li>Share it via email, WhatsApp, or SMS</li>
-                  <li>New {role} fills in their details</li>
-                  <li>They join your firm automatically</li>
-                </ol>
-              </div>
-              <button onClick={() => setShowJoinLinkModal(false)} className="w-full px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-semibold">
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1039,9 +907,9 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
       if (profileFile instanceof File) {
         const fData = new FormData();
         Object.entries(editData).forEach(([key, val]) => {
-          if (val !== null && val !== undefined && val !== '') {
-            fData.append(key, String(val));
-          }
+            if (val !== null && val !== undefined && val !== '') {
+               fData.append(key, String(val));
+            }
         });
         fData.append('profile_image', profileFile);
         response = await customFetch(API.USERS.DETAIL(userId), {
@@ -1168,104 +1036,104 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
             <Panel title="Identity & Contact" subtitle="Basic personal and role information.">
               {isEditing ? (
                 <>
-                  <div className="flex items-center gap-6 mb-6 pb-6 border-b border-gray-100 mt-2">
-                    <div className="relative group w-20 h-20 rounded-full border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
-                      <input type="file" accept="image/*" onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setProfileFile(file);
-                          setProfilePreview(URL.createObjectURL(file));
-                        }
-                      }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                      {profilePreview ? (
+                <div className="flex items-center gap-6 mb-6 pb-6 border-b border-gray-100 mt-2">
+                  <div className="relative group w-20 h-20 rounded-full border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                     <input type="file" accept="image/*" onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                              setProfileFile(file);
+                              setProfilePreview(URL.createObjectURL(file));
+                          }
+                     }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                     {profilePreview ? (
                         <>
                           <img src={profilePreview} alt="Profile" className="w-full h-full object-cover" />
                           <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                             <span className="text-white text-[10px] uppercase font-bold tracking-wider">Change</span>
                           </div>
                         </>
-                      ) : (
+                     ) : (
                         <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wider group-hover:text-gray-500">Photo</span>
-                      )}
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900">Profile Image</h3>
-                      <p className="text-xs text-gray-500 mt-1 mb-2">Upload a square image (max 5MB).</p>
-                      {profilePreview && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setProfileFile('REMOVE');
-                            setProfilePreview(null);
-                          }}
-                          className="text-xs font-semibold text-red-500 hover:text-red-600 bg-red-50 px-2 py-1 rounded"
-                        >
-                          Remove Photo
-                        </button>
-                      )}
-                    </div>
+                     )}
                   </div>
-                  <div className="grid gap-5 md:grid-cols-2">
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">First Name</label>
-                      <input value={editData.first_name} onChange={e => updateField('first_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Last Name</label>
-                      <input value={editData.last_name} onChange={e => updateField('last_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Phone</label>
-                      <input
-                        value={editData.phone_number}
-                        onChange={e => updateField('phone_number', e.target.value.replace(/\D/g, '').slice(0, 10))}
-                        maxLength={10}
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Gender</label>
-                      <select value={editData.gender} onChange={e => updateField('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none">
-                        <option value="">Select Gender</option>
-                        <option value="M">Male</option>
-                        <option value="F">Female</option>
-                        <option value="O">Other</option>
-                      </select>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Date of Birth</label>
-                      <input
-                        type="date"
-                        value={editData.date_of_birth || ''}
-                        onChange={e => updateField('date_of_birth', e.target.value)}
-                        max={new Date().toISOString().split('T')[0]}
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                      />
-                    </div>
-                    {user.user_type === 'admin' && branches.length > 0 && (
-                      <div className="md:col-span-2 pt-2 border-t border-gray-100">
-                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Assigned Branch</label>
-                        <select
-                          value={editData.branch_id}
-                          onChange={e => updateField('branch_id', e.target.value)}
-                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
-                        >
-                          <option value="">Select Branch</option>
-                          {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name}</option>)}
-                        </select>
-                      </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Profile Image</h3>
+                    <p className="text-xs text-gray-500 mt-1 mb-2">Upload a square image (max 5MB).</p>
+                    {profilePreview && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                           setProfileFile('REMOVE');
+                           setProfilePreview(null);
+                        }}
+                        className="text-xs font-semibold text-red-500 hover:text-red-600 bg-red-50 px-2 py-1 rounded"
+                      >
+                        Remove Photo
+                      </button>
                     )}
                   </div>
+                </div>
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">First Name</label>
+                    <input value={editData.first_name} onChange={e => updateField('first_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Last Name</label>
+                    <input value={editData.last_name} onChange={e => updateField('last_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Phone</label>
+                    <input
+                      value={editData.phone_number}
+                      onChange={e => updateField('phone_number', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      maxLength={10}
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Gender</label>
+                    <select value={editData.gender} onChange={e => updateField('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none">
+                      <option value="">Select Gender</option>
+                      <option value="M">Male</option>
+                      <option value="F">Female</option>
+                      <option value="O">Other</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Date of Birth</label>
+                    <input
+                      type="date"
+                      value={editData.date_of_birth || ''}
+                      onChange={e => updateField('date_of_birth', e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                    />
+                  </div>
+                  {user.user_type === 'admin' && branches.length > 0 && (
+                    <div className="md:col-span-2 pt-2 border-t border-gray-100">
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Assigned Branch</label>
+                      <select
+                        value={editData.branch_id}
+                        onChange={e => updateField('branch_id', e.target.value)}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                      >
+                        <option value="">Select Branch</option>
+                        {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
                 </>
               ) : (
                 <div className="flex flex-col md:flex-row gap-8 items-start">
                   {profilePreview && (
-                    <div className="shrink-0 w-32 h-32 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-                      <img src={profilePreview} alt="Profile" className="w-full h-full object-cover" />
-                    </div>
+                      <div className="shrink-0 w-32 h-32 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                          <img src={profilePreview} alt="Profile" className="w-full h-full object-cover" />
+                      </div>
                   )}
                   <div className="flex-1 w-full">
-                    <DetailList items={profileItems} columns={2} />
+                      <DetailList items={profileItems} columns={2} />
                   </div>
                 </div>
               )}
@@ -1861,9 +1729,6 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showJoinLinkModal, setShowJoinLinkModal] = useState(false);
-  const [creatingLink, setCreatingLink] = useState(false);
-  const [joinLink, setJoinLink] = useState<any>(null);
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -1879,10 +1744,10 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
         setLoading(true);
         let url = API.USERS.LIST;
         const params = new URLSearchParams();
-
+        
         if (debouncedSearch) params.set('search', debouncedSearch);
         if (role) params.set('user_type', role);
-
+        
         if (params.toString()) {
           url = `${url}?${params.toString()}`;
         }
@@ -1902,70 +1767,31 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
     fetchClients();
   }, [role, debouncedSearch]);
 
-  const handleCreateJoinLink = async () => {
-    if (!role) return;
-
-    try {
-      setCreatingLink(true);
-      const payload = {
-        user_type: role,
-        max_uses: 0,
-        expires_at: null
-      };
-
-      const response = await customFetch(API.JOIN_LINKS.CREATE, {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setJoinLink(data);
-        setShowJoinLinkModal(true);
-      } else {
-        const errorData = await response.json();
-        alert(errorData.error || 'Failed to create link');
-      }
-    } catch (err: any) {
-      console.error('Error creating link:', err);
-      alert('Failed to create join link');
-    } finally {
-      setCreatingLink(false);
-    }
-  };
-
-  const copyLinkToClipboard = () => {
-    if (!joinLink) return;
-    const fullUrl = `${window.location.origin}/join/${joinLink.id}`;
-    navigator.clipboard.writeText(fullUrl);
-    alert('Link copied to clipboard!');
-  };
-
   const rows = clients.map((u, i) => {
     const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
     const initials = `${(u.first_name || u.username || '').charAt(0)}${(u.last_name || '').charAt(0)}`.toUpperCase() || 'C';
-
+    
     let avatarUrl = null;
     if (u.profile_image) {
-      avatarUrl = u.profile_image.startsWith('http') ? u.profile_image : `${API_BASE_URL}${u.profile_image}`;
+       avatarUrl = u.profile_image.startsWith('http') ? u.profile_image : `${API_BASE_URL}${u.profile_image}`;
     }
 
     return {
       client: (
         <div className="flex items-center gap-3">
-          {avatarUrl ? (
-            <div className="w-8 h-8 rounded-lg shrink-0 overflow-hidden border border-gray-100 bg-white">
-              <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
-            </div>
-          ) : (
-            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-[#6366f1] text-[11px] font-bold shrink-0 uppercase tracking-widest">
-              {initials}
-            </div>
-          )}
-          <span className="font-semibold text-gray-800 truncate">{fullName}</span>
+           {avatarUrl ? (
+               <div className="w-8 h-8 rounded-lg shrink-0 overflow-hidden border border-gray-100 bg-white">
+                   <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
+               </div>
+           ) : (
+               <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-[#6366f1] text-[11px] font-bold shrink-0 uppercase tracking-widest">
+                   {initials}
+               </div>
+           )}
+           <span className="font-semibold text-gray-800 truncate">{fullName}</span>
         </div>
       ),
-      matter: 'N/A',
+      matter: 'N/A', // Linking to real matters would require another API call or field
       phone: u.phone_number || '--',
       email: u.email || '--',
       status: u.is_active ? 'Active' : 'Inactive',
@@ -1979,28 +1805,7 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
         eyebrow="Client Management"
         title="Client Directory"
         description="Register and manage client records tied to firm matters."
-        actions={
-          <div className="flex gap-3">
-            <ActionLink href={`${viewBase}/new`} label="Register Client" />
-            <button
-              onClick={handleCreateJoinLink}
-              disabled={creatingLink}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {creatingLink ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Link2 className="h-4 w-4" />
-                  Join with Link
-                </>
-              )}
-            </button>
-          </div>
-        }
+        actions={<ActionLink href={`${viewBase}/new`} label="Register Client" />}
       />
       <MetricGrid accent={accent} metrics={[{ label: 'Total Clients', value: clients.length.toString() }, { label: 'Active', value: clients.filter(c => c.is_active).length.toString() }, { label: 'Pending Docs', value: '0' }, { label: 'New This Month', value: '0' }]} />
       <Panel title="Client Register" subtitle="Current clients, lead matters, and contact status." actions={<SearchBar placeholder="Search clients, phone, or matter..." value={search} onChange={setSearch} />}>
@@ -2026,43 +1831,6 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
           />
         )}
       </Panel>
-
-      {showJoinLinkModal && joinLink && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Join Link Created!</h2>
-              <button onClick={() => setShowJoinLinkModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div className="bg-[#4a1c40]/5 rounded-xl p-4 border border-[#4a1c40]/10">
-                <p className="text-sm font-semibold text-[#4a1c40] mb-2">Share this link:</p>
-                <div className="bg-white rounded-lg p-3 border border-gray-200 mb-3">
-                  <p className="text-sm text-gray-600 break-all font-mono">{`${window.location.origin}/join/${joinLink.id}`}</p>
-                </div>
-                <button onClick={copyLinkToClipboard} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#4a1c40] text-white rounded-lg hover:bg-[#3a1530] transition-colors font-semibold">
-                  <Copy className="w-4 h-4" />
-                  Copy Link
-                </button>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="text-sm font-bold text-blue-900 mb-2">How to use:</h4>
-                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                  <li>Copy the link above</li>
-                  <li>Share it via email, WhatsApp, or SMS</li>
-                  <li>New {role} fills in their details</li>
-                  <li>They join your firm automatically</li>
-                </ol>
-              </div>
-              <button onClick={() => setShowJoinLinkModal(false)} className="w-full px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-semibold">
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -2358,7 +2126,7 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
-
+  
   const [profileFile, setProfileFile] = useState<File | null | 'REMOVE'>(null);
   const [profilePreview, setProfilePreview] = useState<string | null>(null);
   const [systemData, setSystemData] = useState<any>(null);
@@ -2448,9 +2216,9 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
       if (profileFile instanceof File) {
         const fData = new FormData();
         Object.entries(payload).forEach(([key, val]) => {
-          if (val !== null && val !== undefined) {
-            fData.append(key, String(val));
-          }
+            if (val !== null && val !== undefined) {
+               fData.append(key, String(val));
+            }
         });
         fData.append('profile_image', profileFile);
         response = await customFetch(API.USERS.DETAIL(userId), {
@@ -2494,298 +2262,298 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
       left={
         <Panel title="Profile Information" subtitle="Update your personal details and identity information.">
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex items-center gap-6 mb-6 pb-6 border-b border-gray-100 mt-2">
-              <div className="relative group w-20 h-20 rounded-full border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
-                <input type="file" accept="image/*" onChange={(e) => {
+        <div className="flex items-center gap-6 mb-6 pb-6 border-b border-gray-100 mt-2">
+          <div className="relative group w-20 h-20 rounded-full border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+             <input type="file" accept="image/*" onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    setProfileFile(file);
-                    setProfilePreview(URL.createObjectURL(file));
+                      setProfileFile(file);
+                      setProfilePreview(URL.createObjectURL(file));
                   }
-                }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                {profilePreview ? (
-                  <>
-                    <img src={profilePreview} alt="Profile" className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="text-white text-[10px] uppercase font-bold tracking-wider">Change</span>
-                    </div>
-                  </>
-                ) : (
-                  <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wider group-hover:text-gray-500">Photo</span>
-                )}
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Profile Image</h3>
-                <p className="text-xs text-gray-500 mt-1 mb-2">Upload a square image (max 5MB).</p>
-                {profilePreview && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProfileFile('REMOVE');
-                      setProfilePreview(null);
-                    }}
-                    className="text-xs font-semibold text-red-500 hover:text-red-600 bg-red-50 px-2 py-1 rounded"
-                  >
-                    Remove Photo
-                  </button>
-                )}
-              </div>
-            </div>
+             }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+             {profilePreview ? (
+                <>
+                  <img src={profilePreview} alt="Profile" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-white text-[10px] uppercase font-bold tracking-wider">Change</span>
+                  </div>
+                </>
+             ) : (
+                <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wider group-hover:text-gray-500">Photo</span>
+             )}
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Profile Image</h3>
+            <p className="text-xs text-gray-500 mt-1 mb-2">Upload a square image (max 5MB).</p>
+            {profilePreview && (
+              <button
+                type="button"
+                onClick={() => {
+                   setProfileFile('REMOVE');
+                   setProfilePreview(null);
+                }}
+                className="text-xs font-semibold text-red-500 hover:text-red-600 bg-red-50 px-2 py-1 rounded"
+              >
+                Remove Photo
+              </button>
+            )}
+          </div>
+        </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-6">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">First Name</label>
+            <input
+              type="text"
+              value={formData.first_name}
+              onChange={e => updateField('first_name', e.target.value)}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Last Name</label>
+            <input
+              type="text"
+              value={formData.last_name}
+              onChange={e => updateField('last_name', e.target.value)}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Email Address</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={e => updateField('email', e.target.value)}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Phone Number</label>
+            <input
+              type="text"
+              value={formData.phone_number}
+              onChange={e => updateField('phone_number', e.target.value)}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Gender</label>
+            <select
+              value={formData.gender}
+              onChange={e => updateField('gender', e.target.value)}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+            >
+              <option value="">Select Gender</option>
+              <option value="M">Male</option>
+              <option value="F">Female</option>
+              <option value="O">Other</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Date of Birth</label>
+            <input
+              type="date"
+              value={formData.date_of_birth}
+              onChange={e => updateField('date_of_birth', e.target.value)}
+              max={new Date().toISOString().split('T')[0]}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Aadhar Number</label>
+            <AadharInput
+              value={formData.aadhar_number}
+              onChange={v => updateField('aadhar_number', v)}
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">PAN Number</label>
+            <PANInput
+              value={formData.pan_number}
+              onChange={v => updateField('pan_number', v)}
+            />
+          </div>
+
+          <div className="md:col-span-2 pt-4 border-t border-gray-100">
+            <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Professional Registration</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">First Name</label>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council Reg</label>
                 <input
                   type="text"
-                  value={formData.first_name}
-                  onChange={e => updateField('first_name', e.target.value)}
+                  value={formData.bar_council_registration}
+                  onChange={e => updateField('bar_council_registration', e.target.value)}
+                  placeholder="e.g. MH/1234/2020"
                   className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Last Name</label>
-                <input
-                  type="text"
-                  value={formData.last_name}
-                  onChange={e => updateField('last_name', e.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Email Address</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={e => updateField('email', e.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Phone Number</label>
-                <input
-                  type="text"
-                  value={formData.phone_number}
-                  onChange={e => updateField('phone_number', e.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Gender</label>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council State</label>
                 <select
-                  value={formData.gender}
-                  onChange={e => updateField('gender', e.target.value)}
+                  value={formData.bar_council_state}
+                  onChange={e => updateField('bar_council_state', e.target.value)}
                   className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
                 >
-                  <option value="">Select Gender</option>
-                  <option value="M">Male</option>
-                  <option value="F">Female</option>
-                  <option value="O">Other</option>
+                  <option value="">Select State</option>
+                  {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Date of Birth</label>
+            </div>
+          </div>
+
+          <div className="md:col-span-2 pt-4 border-t border-gray-100">
+            <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Address Information</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 1</label>
                 <input
-                  type="date"
-                  value={formData.date_of_birth}
-                  onChange={e => updateField('date_of_birth', e.target.value)}
-                  max={new Date().toISOString().split('T')[0]}
+                  type="text"
+                  value={formData.address_line_1}
+                  onChange={e => updateField('address_line_1', e.target.value)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 2</label>
+                <input
+                  type="text"
+                  value={formData.address_line_2}
+                  onChange={e => updateField('address_line_2', e.target.value)}
                   className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Aadhar Number</label>
-                <AadharInput
-                  value={formData.aadhar_number}
-                  onChange={v => updateField('aadhar_number', v)}
-                />
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Country</label>
+                <div className="relative group">
+                  <select
+                    value={formData.country}
+                    onChange={e => {
+                      updateField('country', e.target.value);
+                      updateField('state', '');
+                      updateField('city', '');
+                    }}
+                    className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                  >
+                    <option value="">Select Country</option>
+                    {Country.getAllCountries().map(c => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                </div>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">PAN Number</label>
-                <PANInput
-                  value={formData.pan_number}
-                  onChange={v => updateField('pan_number', v)}
-                />
-              </div>
-
-              <div className="md:col-span-2 pt-4 border-t border-gray-100">
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Professional Registration</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council Reg</label>
-                    <input
-                      type="text"
-                      value={formData.bar_council_registration}
-                      onChange={e => updateField('bar_council_registration', e.target.value)}
-                      placeholder="e.g. MH/1234/2020"
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council State</label>
-                    <select
-                      value={formData.bar_council_state}
-                      onChange={e => updateField('bar_council_state', e.target.value)}
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
-                    >
-                      <option value="">Select State</option>
-                      {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">State</label>
+                <div className="relative group">
+                  <select
+                    value={formData.state}
+                    disabled={!formData.country}
+                    onChange={e => {
+                      updateField('state', e.target.value);
+                      updateField('city', '');
+                    }}
+                    className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none disabled:opacity-50"
+                  >
+                    <option value="">Select State</option>
+                    {formData.country && State.getStatesOfCountry(formData.country).map(s => <option key={s.isoCode} value={s.isoCode}>{s.name}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
                 </div>
               </div>
-
-              <div className="md:col-span-2 pt-4 border-t border-gray-100">
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Address Information</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 1</label>
-                    <input
-                      type="text"
-                      value={formData.address_line_1}
-                      onChange={e => updateField('address_line_1', e.target.value)}
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 2</label>
-                    <input
-                      type="text"
-                      value={formData.address_line_2}
-                      onChange={e => updateField('address_line_2', e.target.value)}
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Country</label>
-                    <div className="relative group">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">City</label>
+                <div className="relative group">
+                  {formData.country && formData.state && City.getCitiesOfState(formData.country, formData.state).length > 0 ? (
+                    <>
                       <select
-                        value={formData.country}
-                        onChange={e => {
-                          updateField('country', e.target.value);
-                          updateField('state', '');
-                          updateField('city', '');
-                        }}
+                        value={formData.city}
+                        onChange={e => updateField('city', e.target.value)}
                         className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
                       >
-                        <option value="">Select Country</option>
-                        {Country.getAllCountries().map(c => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
+                        <option value="">Select City</option>
+                        {City.getCitiesOfState(formData.country, formData.state).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                        <option value="Other">Other</option>
                       </select>
                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">State</label>
-                    <div className="relative group">
-                      <select
-                        value={formData.state}
-                        disabled={!formData.country}
-                        onChange={e => {
-                          updateField('state', e.target.value);
-                          updateField('city', '');
-                        }}
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none disabled:opacity-50"
-                      >
-                        <option value="">Select State</option>
-                        {formData.country && State.getStatesOfCountry(formData.country).map(s => <option key={s.isoCode} value={s.isoCode}>{s.name}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">City</label>
-                    <div className="relative group">
-                      {formData.country && formData.state && City.getCitiesOfState(formData.country, formData.state).length > 0 ? (
-                        <>
-                          <select
-                            value={formData.city}
-                            onChange={e => updateField('city', e.target.value)}
-                            className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
-                          >
-                            <option value="">Select City</option>
-                            {City.getCitiesOfState(formData.country, formData.state).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                            <option value="Other">Other</option>
-                          </select>
-                          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
-                        </>
-                      ) : (
-                        <input
-                          type="text"
-                          value={formData.city}
-                          onChange={e => updateField('city', e.target.value)}
-                          placeholder="Specify city..."
-                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                        />
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Postal Code</label>
+                    </>
+                  ) : (
                     <input
                       type="text"
-                      value={formData.postal_code}
-                      onChange={e => updateField('postal_code', e.target.value.replace(/\D/g, ''))}
-                      placeholder="e.g. 400001"
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]"
+                      value={formData.city}
+                      onChange={e => updateField('city', e.target.value)}
+                      placeholder="Specify city..."
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
                     />
-                  </div>
+                  )}
                 </div>
               </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Postal Code</label>
+                <input
+                  type="text"
+                  value={formData.postal_code}
+                  onChange={e => updateField('postal_code', e.target.value.replace(/\D/g, ''))}
+                  placeholder="e.g. 400001"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]"
+                />
+              </div>
             </div>
+          </div>
+        </div>
 
-            {error && <p className="text-xs font-semibold text-red-500 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
-            {success && <p className="text-xs font-semibold text-emerald-600 bg-emerald-50 p-3 rounded-lg border border-emerald-100">{success}</p>}
+        {error && <p className="text-xs font-semibold text-red-500 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
+        {success && <p className="text-xs font-semibold text-emerald-600 bg-emerald-50 p-3 rounded-lg border border-emerald-100">{success}</p>}
 
-            <div className="flex justify-end pt-2">
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex items-center gap-2 rounded-xl bg-[#0e2340] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
-                style={{ backgroundColor: accent }}
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {loading ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </form>
-        </Panel>
+        <div className="flex justify-end pt-2">
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex items-center gap-2 rounded-xl bg-[#0e2340] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
+            style={{ backgroundColor: accent }}
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {loading ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
+    </Panel>
       }
       right={
         <div className="space-y-6">
           {systemData ? (
-            <Panel title="System Status" subtitle="Read-only account properties.">
-              <div className="space-y-6">
-                <div className="flex flex-col gap-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f]">Verifications</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge label={systemData.is_active ? 'Active' : 'Inactive'} tone={systemData.is_active ? 'success' : 'default'} />
-                    <Badge label={systemData.is_email_verified ? 'Email Verified' : 'Email Unverified'} tone={systemData.is_email_verified ? 'success' : 'warning'} />
-                    <Badge label={systemData.is_phone_verified ? 'Phone Verified' : 'Phone Unverified'} tone={systemData.is_phone_verified ? 'success' : 'warning'} />
-                    <Badge label={systemData.is_document_verified ? 'Docs Verified' : 'Docs Unverified'} tone={systemData.is_document_verified ? 'success' : 'warning'} />
-                    <Badge label={systemData.password_set ? 'Password Locked' : 'No Password'} tone={systemData.password_set ? 'info' : 'warning'} />
+             <Panel title="System Status" subtitle="Read-only account properties.">
+               <div className="space-y-6">
+                  <div className="flex flex-col gap-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f]">Verifications</p>
+                    <div className="flex flex-wrap gap-2">
+                       <Badge label={systemData.is_active ? 'Active' : 'Inactive'} tone={systemData.is_active ? 'success' : 'default'} />
+                       <Badge label={systemData.is_email_verified ? 'Email Verified' : 'Email Unverified'} tone={systemData.is_email_verified ? 'success' : 'warning'} />
+                       <Badge label={systemData.is_phone_verified ? 'Phone Verified' : 'Phone Unverified'} tone={systemData.is_phone_verified ? 'success' : 'warning'} />
+                       <Badge label={systemData.is_document_verified ? 'Docs Verified' : 'Docs Unverified'} tone={systemData.is_document_verified ? 'success' : 'warning'} />
+                       <Badge label={systemData.password_set ? 'Password Locked' : 'No Password'} tone={systemData.password_set ? 'info' : 'warning'} />
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-4 pt-4 border-t border-gray-100">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">Platform Username</p>
-                    <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed truncate">{systemData.username || '-'}</p>
+                  <div className="space-y-4 pt-4 border-t border-gray-100">
+                     <div>
+                       <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">Platform Username</p>
+                       <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed truncate">{systemData.username || '-'}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">System Role</p>
+                       <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed capitalize">{systemData.user_type ? systemData.user_type.replace('_', ' ') : '-'}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">Primary Firm Affinity</p>
+                       <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed truncate">{systemData.firm_name || 'Unassigned'}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">Account Registry Date</p>
+                       <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed">{systemData.created_at ? new Date(systemData.created_at).toLocaleDateString() : '-'}</p>
+                     </div>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">System Role</p>
-                    <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed capitalize">{systemData.user_type ? systemData.user_type.replace('_', ' ') : '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">Primary Firm Affinity</p>
-                    <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed truncate">{systemData.firm_name || 'Unassigned'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">Account Registry Date</p>
-                    <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed">{systemData.created_at ? new Date(systemData.created_at).toLocaleDateString() : '-'}</p>
-                  </div>
-                </div>
-              </div>
-            </Panel>
+               </div>
+             </Panel>
           ) : (
-            <InfoAside accent={accent} title="Identity Info" items={['Update your personal details.', 'Change your core contact mechanisms.']} />
+             <InfoAside accent={accent} title="Identity Info" items={['Update your personal details.', 'Change your core contact mechanisms.']} />
           )}
         </div>
       }
@@ -2854,7 +2622,7 @@ export function CasesDirectoryPage({ accent, viewBase, category }: AccentProps &
         if (category) {
           results = results.filter((c: any) => c.category === category);
         }
-
+        
         setCases(results);
       } catch (err: any) {
         setError(err.message);

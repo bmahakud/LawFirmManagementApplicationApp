@@ -5,14 +5,14 @@ import Link from 'next/link';
 import {
   Building2, Users, Briefcase, FileSignature, Shield, ArrowLeft,
   Edit, Save, X, Calendar, DollarSign, Download, Clock, Loader2,
-  Mail, Phone, MapPin, Globe, Hash
+  Mail, Phone, MapPin, Globe, Hash, Upload, Trash2
 } from 'lucide-react';
 import {
   BarChart, Bar, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { customFetch } from '@/lib/fetch';
-import { API } from '@/lib/api';
+import { API, API_BASE_URL } from '@/lib/api';
 import { useTopbarTitle } from '@/components/platform/TopbarContext';
 
 const BRAND = '#0e2340';
@@ -23,6 +23,7 @@ interface FirmDetail {
   firm_code: string;
   city: string;
   state: string;
+  logo: string | null;
   country: string;
   address: string;
   postal_code: string;
@@ -84,6 +85,9 @@ export default function PlatformOwnerFirmOverviewPage({
     postal_code: '',
   });
 
+  const [logoFile, setLogoFile] = useState<File | null | 'REMOVE'>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
   useEffect(() => {
     const fetchFirm = async () => {
       try {
@@ -107,6 +111,7 @@ export default function PlatformOwnerFirmOverviewPage({
           country: data.country || 'India',
           postal_code: data.postal_code || '',
         });
+        setLogoPreview(data.logo ? (data.logo.startsWith('http') ? data.logo : `${API_BASE_URL}${data.logo}`) : null);
       } catch (err: any) {
         setError(err.message || 'Failed to load firm details');
         console.error(err);
@@ -120,16 +125,48 @@ export default function PlatformOwnerFirmOverviewPage({
   const handleSave = async () => {
     try {
       setLoading(true);
-      const response = await customFetch(API.FIRMS.DETAIL(firmId), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editedDetails),
-      });
+      
+      let response;
+      if (logoFile instanceof File) {
+          const formData = new FormData();
+          Object.entries(editedDetails).forEach(([key, val]) => {
+              formData.append(key, String(val));
+          });
+          formData.append('logo', logoFile);
+          response = await customFetch(API.FIRMS.DETAIL(firmId), {
+            method: 'PATCH',
+            body: formData,
+          });
+      } else {
+          const payload = logoFile === 'REMOVE' ? { ...editedDetails, logo: null } : editedDetails;
+          response = await customFetch(API.FIRMS.DETAIL(firmId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+      }
+
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.detail || data.message || 'Failed to update firm details');
       }
       setFirm(data);
+      setEditedDetails({
+        firm_name: data.firm_name,
+        email: data.email,
+        phone_number: data.phone_number,
+        subscription_type: data.subscription_type,
+        is_active: data.is_active,
+        website: data.website || '',
+        address: data.address || '',
+        city: data.city || '',
+        state: data.state || '',
+        country: data.country || 'India',
+        postal_code: data.postal_code || '',
+      });
+      setLogoFile(null);
+      setLogoPreview(data.logo ? (data.logo.startsWith('http') ? data.logo : `${API_BASE_URL}${data.logo}`) : null);
+
       alert('Firm details updated successfully');
     } catch (err: any) {
       setError(err.message || 'Failed to update firm details');
@@ -175,10 +212,26 @@ export default function PlatformOwnerFirmOverviewPage({
             <ArrowLeft className="w-5 h-5 text-gray-700" />
           </Link>
 
-          <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm min-w-[320px]">
-            <div>
+          <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm min-w-[320px] flex gap-5">
+            {firm.logo ? (
+              <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gray-50 border border-gray-100 shrink-0 hidden sm:block">
+                <img
+                  src={firm.logo.startsWith('http') ? firm.logo : `${API_BASE_URL}${firm.logo}`}
+                  alt={firm.firm_name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(firm.firm_name)}&background=0e2340&color=fff`;
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="w-16 h-16 rounded-2xl bg-[#0e2340] items-center justify-center text-white text-2xl font-bold shrink-0 shadow-sm shadow-[#0e2340]/10 hidden sm:flex">
+                {firm.firm_name.charAt(0)}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
               <div className="flex justify-between items-start">
-                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{firm.firm_name}</h1>
+                <h1 className="text-2xl font-bold text-gray-900 tracking-tight truncate">{firm.firm_name}</h1>
               </div>
               <p className="text-gray-500 text-sm mt-1 mb-4 border-b border-gray-100 pb-3 flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${firm.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-red-400'}`} />
@@ -318,6 +371,45 @@ export default function PlatformOwnerFirmOverviewPage({
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Edit className="w-5 h-5 text-gray-400" /> Edit Firm Profile</h2>
             <p className="text-sm text-gray-500 mt-1">Update the core contact identity and metadata for this law firm.</p>
           </div>
+
+          <div className="flex items-center gap-6 mb-6">
+            <div className="relative group w-24 h-24 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+              <input type="file" accept="image/*" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                      setLogoFile(file);
+                      setLogoPreview(URL.createObjectURL(file));
+                  }
+              }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+              {logoPreview ? (
+                <>
+                  <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Upload className="w-6 h-6 text-white" />
+                  </div>
+                </>
+              ) : (
+                <Upload className="w-8 h-8 text-gray-300 group-hover:text-gray-400 transition-colors" />
+              )}
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Firm Logo</h3>
+              <p className="text-xs text-gray-500 mt-1 mb-3">Upload a square image (max 5MB).</p>
+              {logoPreview && (
+                <button
+                  type="button"
+                  onClick={() => {
+                      setLogoFile('REMOVE');
+                      setLogoPreview(null);
+                  }}
+                  className="text-xs font-semibold text-red-500 hover:text-red-600 flex items-center gap-1 bg-red-50 px-2 py-1 rounded"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Remove Logo
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
@@ -446,19 +538,23 @@ export default function PlatformOwnerFirmOverviewPage({
 
             <div className="pt-4 border-t border-gray-100 mt-6 flex gap-3 justify-end">
               <button
-                onClick={() => setEditedDetails({
-                  firm_name: firm.firm_name,
-                  email: firm.email,
-                  phone_number: firm.phone_number,
-                  subscription_type: firm.subscription_type,
-                  is_active: firm.is_active,
-                  website: firm.website || '',
-                  address: firm.address || '',
-                  city: firm.city || '',
-                  state: firm.state || '',
-                  country: firm.country || 'India',
-                  postal_code: firm.postal_code || '',
-                })}
+                onClick={() => {
+                  setEditedDetails({
+                    firm_name: firm.firm_name,
+                    email: firm.email,
+                    phone_number: firm.phone_number,
+                    subscription_type: firm.subscription_type,
+                    is_active: firm.is_active,
+                    website: firm.website || '',
+                    address: firm.address || '',
+                    city: firm.city || '',
+                    state: firm.state || '',
+                    country: firm.country || 'India',
+                    postal_code: firm.postal_code || '',
+                  });
+                  setLogoFile(null);
+                  setLogoPreview(firm.logo ? (firm.logo.startsWith('http') ? firm.logo : `${API_BASE_URL}${firm.logo}`) : null);
+                }}
                 className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Discard Changes
