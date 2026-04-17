@@ -344,33 +344,33 @@ export default function RegisterWizard() {
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Phone Number</label>
-                <input 
-                  name="phone_number" 
-                  type="tel" 
-                  required 
-                  value={formData.phone_number} 
-                  onChange={handleInputChange} 
+                <input
+                  name="phone_number"
+                  type="tel"
+                  required
+                  value={formData.phone_number}
+                  onChange={handleInputChange}
                   maxLength={10}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#0e2340]/20 focus:border-[#0e2340] text-[15px] font-medium text-slate-900 placeholder-slate-400" 
-                  placeholder="9876543210" 
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#0e2340]/20 focus:border-[#0e2340] text-[15px] font-medium text-slate-900 placeholder-slate-400"
+                  placeholder="9876543210"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Password</label>
-                <PasswordInput 
-                  value={formData.password} 
-                  onChange={v => setFormData(p => ({ ...p, password: v }))} 
-                  required 
+                <PasswordInput
+                  value={formData.password}
+                  onChange={v => setFormData(p => ({ ...p, password: v }))}
+                  required
                   autoComplete="new-password"
                   className="!bg-white !border-gray-200"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Confirm Password</label>
-                <PasswordInput 
-                  value={formData.password_confirm} 
-                  onChange={v => setFormData(p => ({ ...p, password_confirm: v }))} 
-                  required 
+                <PasswordInput
+                  value={formData.password_confirm}
+                  onChange={v => setFormData(p => ({ ...p, password_confirm: v }))}
+                  required
                   autoComplete="new-password"
                   className="!bg-white !border-gray-200"
                 />

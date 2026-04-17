@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Briefcase, Users, FileText, CheckSquare, ArrowRight,
-  Gavel, Calendar, Building2, UserCheck, Clock,
-  CheckCircle2, Loader2, AlertCircle
+  Gavel, Calendar, Building2, UserCheck, MapPin, Phone, Mail, Clock,
+  CheckCircle2, Loader2, AlertCircle, Activity
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid
@@ -74,6 +74,8 @@ export default function SuperAdminDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [branches, setBranches] = useState<any[]>([]);
+  const [recent_activity, setRecentActivity] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -85,6 +87,24 @@ export default function SuperAdminDashboard() {
           throw new Error(json.detail || json.message || 'Failed to load dashboard');
         }
         setData(json);
+
+        // Fetch branches
+        try {
+          const branchRes = await customFetch('/api/firms/branches/');
+          if (branchRes.ok) {
+            const branchData = await branchRes.json();
+            setBranches(branchData.results || branchData || []);
+          }
+        } catch (_) {}
+
+        // Fetch recent activity
+        try {
+          const actRes = await customFetch('/api/firms/branches/user-activities/?page_size=5');
+          if (actRes.ok) {
+            const actData = await actRes.json();
+            setRecentActivity(actData.results || []);
+          }
+        } catch (_) {}
       } catch (err: any) {
         setError(err.message || 'Failed to load dashboard');
         console.error('Dashboard fetch error:', err);
@@ -128,6 +148,19 @@ export default function SuperAdminDashboard() {
   };
   
   const teamMembers = cards.total_team || cards.team_members || 0;
+
+  const formatTimeAgo = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - d.getTime()) / 60000);
+    if (diff < 1) return 'Just now';
+    if (diff < 60) return `${diff}m ago`;
+    const hours = Math.floor(diff / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days === 1) return 'Yesterday';
+    return `${days}d ago`;
+  };
 
   // Chart data
   const caseStatusData = [
@@ -400,6 +433,94 @@ export default function SuperAdminDashboard() {
               </div>
             </div>
           </div>
+
+
+          {/* Branches Section */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between bg-[#FAFAF9]">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-[#0e2340]" />
+                <h2 className="text-sm font-bold text-gray-900">Firm Branches ({(data as any)?.firm_info?.total_branches ?? branches.length})</h2>
+              </div>
+            </div>
+            <div className="p-0 flex-1 overflow-auto">
+              {branches.length > 0 ? (
+                <div className="divide-y divide-gray-50">
+                  {branches.map(branch => (
+                    <div key={branch.id} className="p-4 hover:bg-gray-50/50 transition-colors">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="text-sm font-bold text-gray-900 capitalize">{branch.branch_name || 'Unnamed Branch'}</h3>
+                          {branch.branch_code && <p className="text-[10px] text-gray-400 font-mono mt-0.5">{branch.branch_code}</p>}
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold ${branch.is_active ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                          {branch.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-3">
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                          <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                          <span className="truncate">{branch.city || 'N/A'}, {branch.state || 'N/A'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                          <Phone className="w-3.5 h-3.5 text-gray-400" />
+                          <span className="truncate">{branch.phone_number || 'No phone'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500 col-span-2">
+                          <Mail className="w-3.5 h-3.5 text-gray-400" />
+                          <span className="truncate">{branch.email || 'No email'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-10 text-gray-400">
+                  <MapPin className="w-8 h-8 mb-2 opacity-50" />
+                  <span className="text-sm">No branches configured</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Recent Activity Section */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between bg-[#FAFAF9]">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-[#0e2340]" />
+                <h2 className="text-sm font-bold text-gray-900">Recent Activity</h2>
+              </div>
+            </div>
+            <div className="p-4 max-h-[350px] overflow-y-auto custom-scrollbar">
+              {recent_activity.length > 0 ? (
+                <div className="space-y-4">
+                  {recent_activity.map((activity, index) => (
+                    <div key={index} className="flex gap-4 relative">
+                      {index !== recent_activity.length - 1 && (
+                         <div className="absolute top-8 bottom-[-16px] left-[15px] w-px bg-gray-100" />
+                      )}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 border-2 border-white ${activity.action === 'login' ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-500'}`}>
+                        {activity.action === 'login' ? <UserCheck size={14} /> : <Clock size={14} />}
+                      </div>
+                      <div className="flex-1 pb-1">
+                        <div className="flex justify-between items-start">
+                           <p className="text-sm font-semibold text-gray-900">{activity.description}</p>
+                           <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider shrink-0 mt-0.5">{formatTimeAgo(activity.created_at)}</p>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">By <span className="font-semibold text-gray-700">{activity.user__email}</span></p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-10 text-gray-400">
+                  <Activity className="w-8 h-8 mb-2 opacity-50" />
+                  <span className="text-sm">No recent activity</span>
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
 
       </div>

@@ -52,7 +52,7 @@ import {
 } from '@/components/platform/mock-data';
 import { customFetch } from '@/lib/fetch';
 import DocumentManager from '@/components/platform/DocumentManager';
-import { API } from '@/lib/api';
+import { API, API_BASE_URL } from '@/lib/api';
 import { Loader2, PlusCircle, Save, ChevronDown } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 import { Country, State, City } from 'country-state-city';
@@ -95,7 +95,7 @@ type TableColumn = {
   label: string;
 };
 
-type TableRow = Record<string, string | undefined> & {
+type TableRow = Record<string, React.ReactNode | string | undefined> & {
   viewHref?: string;
 };
 
@@ -205,7 +205,7 @@ function DataTable({
 
 function InfoAside({ accent, title, items }: AccentProps & { title: string; items: string[] }) {
   return (
-    <Panel title={title} subtitle="Implementation placeholder">
+    <Panel title={title}>
       <div className="space-y-3">
         {items.map((item) => (
           <div key={item} className="flex items-start gap-3 rounded-xl border border-gray-100 bg-[#f7f8fa] p-4">
@@ -488,26 +488,45 @@ export function BillingHubPage({
   );
 }
 
-export function SettingsPageTemplate({
+export function ProfilePageTemplate({
   accent,
   title,
   description,
 }: AccentProps & { title: string; description: string }) {
   return (
     <div className="space-y-8">
-      <PageSection eyebrow="Settings" title={title} description={description} />
-      <SplitPanels
-        left={
-          <div className="space-y-8">
-            <ProfileInformationPanel accent={accent} />
-            <ChangePasswordPanel accent={accent} />
-            <Panel title="My Documents" subtitle="Upload and manage your personal and professional documents.">
-              <DocumentManager accent={accent} showUpload={true} />
-            </Panel>
-          </div>
-        }
-        right={<InfoAside accent={accent} title="Preference Areas" items={['Identity and verification', 'Notification and reminder preferences', 'Access control visibility and internal audit reminders']} />}
-      />
+      <PageSection eyebrow="User Profile" title={title} description={description} />
+      <ProfileInformationPanel accent={accent} />
+    </div>
+  );
+}
+
+export function SettingsPageTemplate({
+  accent,
+  title,
+  description,
+  children,
+  hideRightPanel,
+  rightPanel,
+}: AccentProps & { title: string; description: string; children?: React.ReactNode; hideRightPanel?: boolean; rightPanel?: React.ReactNode }) {
+  const leftContent = (
+    <div className="space-y-8">
+      <ChangePasswordPanel accent={accent} />
+      {children}
+    </div>
+  );
+
+  return (
+    <div className="space-y-8">
+      <PageSection eyebrow="Account Settings" title={title} description={description} />
+      {hideRightPanel ? (
+        <div className="w-full">{leftContent}</div>
+      ) : (
+        <SplitPanels
+          left={leftContent}
+          right={rightPanel !== undefined ? rightPanel : <InfoAside accent={accent} title="Security" items={['Change your account password', 'Enforce robust authentication standards']} />}
+        />
+      )}
     </div>
   );
 }
@@ -530,15 +549,15 @@ export function CasesPage({
       try {
         setLoading(true);
         let url = API.CASES.LIST;
-        
+
         // If filtering by assigned advocate, add query parameter
         if (filterByAssignedAdvocate) {
           url = `${url}?assigned_to_me=true`;
         }
-        
+
         const response = await customFetch(url);
         const data = await response.json();
-        
+
         // Handle both paginated and non-paginated responses
         const casesList = Array.isArray(data) ? data : (data.results || []);
         setCases(casesList);
@@ -718,10 +737,10 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
         setLoading(true);
         let url = API.USERS.LIST;
         const params = new URLSearchParams();
-        
+
         if (debouncedSearch) params.set('search', debouncedSearch);
         if (role) params.set('user_type', role);
-        
+
         if (params.toString()) {
           url = `${url}?${params.toString()}`;
         }
@@ -743,7 +762,7 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
 
   const handleCreateJoinLink = async () => {
     if (!role) return;
-    
+
     try {
       setCreatingLink(true);
       const payload = {
@@ -785,8 +804,30 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
     const activeMembership = u.available_firms?.find((m: any) => m.is_active || m.branch_name);
     const branchName = activeMembership?.branch_name || 'N/A';
 
+    // Format Display Identity
+    const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
+    const initials = `${(u.first_name || u.username || '').charAt(0)}${(u.last_name || '').charAt(0)}`.toUpperCase() || 'U';
+
+    let avatarUrl = null;
+    if (u.profile_image) {
+      avatarUrl = u.profile_image.startsWith('http') ? u.profile_image : `${API_BASE_URL}${u.profile_image}`;
+    }
+
     return {
-      name: `${u.first_name} ${u.last_name}`,
+      name: (
+        <div className="flex items-center gap-3">
+          {avatarUrl ? (
+            <div className="w-8 h-8 rounded-lg shrink-0 overflow-hidden border border-gray-100 bg-white">
+              <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-[#984c1f] text-[11px] font-bold shrink-0 uppercase tracking-widest">
+              {initials}
+            </div>
+          )}
+          <span className="font-semibold text-gray-800 truncate">{fullName}</span>
+        </div>
+      ),
       role: u.user_type,
       practice: u.practice_area || 'N/A',
       firm: u.firm_name || 'N/A',
@@ -915,6 +956,8 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
 
 export function UserDetailPage({ accent, userId }: AccentProps & { userId: string }) {
   const [user, setUser] = useState<any>(null);
+  const [profileFile, setProfileFile] = useState<File | null | 'REMOVE'>(null);
+  const [profilePreview, setProfilePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -928,6 +971,7 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
         if (!response.ok) throw new Error(data.detail || 'Failed to fetch user details');
 
         setUser(data);
+        setProfilePreview(data.profile_image ? (data.profile_image.startsWith('http') ? data.profile_image : `${API_BASE_URL}${data.profile_image}`) : null);
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -991,11 +1035,27 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
     setError('');
 
     try {
-      const response = await customFetch(API.USERS.DETAIL(userId), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editData),
-      });
+      let response;
+      if (profileFile instanceof File) {
+        const fData = new FormData();
+        Object.entries(editData).forEach(([key, val]) => {
+          if (val !== null && val !== undefined && val !== '') {
+            fData.append(key, String(val));
+          }
+        });
+        fData.append('profile_image', profileFile);
+        response = await customFetch(API.USERS.DETAIL(userId), {
+          method: 'PATCH',
+          body: fData,
+        });
+      } else {
+        const finalPayload = profileFile === 'REMOVE' ? { ...editData, profile_image: null } : editData;
+        response = await customFetch(API.USERS.DETAIL(userId), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(finalPayload),
+        });
+      }
 
       if (!response.ok) {
         const data = await response.json();
@@ -1005,6 +1065,7 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
       const updatedUser = await response.json();
       setUser(updatedUser);
       setIsEditing(false);
+      setProfileFile(null);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -1106,59 +1167,107 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
           <div className="space-y-6">
             <Panel title="Identity & Contact" subtitle="Basic personal and role information.">
               {isEditing ? (
-                <div className="grid gap-5 md:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">First Name</label>
-                    <input value={editData.first_name} onChange={e => updateField('first_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
+                <>
+                  <div className="flex items-center gap-6 mb-6 pb-6 border-b border-gray-100 mt-2">
+                    <div className="relative group w-20 h-20 rounded-full border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                      <input type="file" accept="image/*" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setProfileFile(file);
+                          setProfilePreview(URL.createObjectURL(file));
+                        }
+                      }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                      {profilePreview ? (
+                        <>
+                          <img src={profilePreview} alt="Profile" className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="text-white text-[10px] uppercase font-bold tracking-wider">Change</span>
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wider group-hover:text-gray-500">Photo</span>
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">Profile Image</h3>
+                      <p className="text-xs text-gray-500 mt-1 mb-2">Upload a square image (max 5MB).</p>
+                      {profilePreview && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProfileFile('REMOVE');
+                            setProfilePreview(null);
+                          }}
+                          className="text-xs font-semibold text-red-500 hover:text-red-600 bg-red-50 px-2 py-1 rounded"
+                        >
+                          Remove Photo
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Last Name</label>
-                    <input value={editData.last_name} onChange={e => updateField('last_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Phone</label>
-                    <input
-                      value={editData.phone_number}
-                      onChange={e => updateField('phone_number', e.target.value.replace(/\D/g, '').slice(0, 10))}
-                      maxLength={10}
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Gender</label>
-                    <select value={editData.gender} onChange={e => updateField('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none">
-                      <option value="">Select Gender</option>
-                      <option value="M">Male</option>
-                      <option value="F">Female</option>
-                      <option value="O">Other</option>
-                    </select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Date of Birth</label>
-                    <input
-                      type="date"
-                      value={editData.date_of_birth || ''}
-                      onChange={e => updateField('date_of_birth', e.target.value)}
-                      max={new Date().toISOString().split('T')[0]}
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                    />
-                  </div>
-                  {user.user_type === 'admin' && branches.length > 0 && (
-                    <div className="md:col-span-2 pt-2 border-t border-gray-100">
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Assigned Branch</label>
-                      <select
-                        value={editData.branch_id}
-                        onChange={e => updateField('branch_id', e.target.value)}
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
-                      >
-                        <option value="">Select Branch</option>
-                        {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name}</option>)}
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">First Name</label>
+                      <input value={editData.first_name} onChange={e => updateField('first_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Last Name</label>
+                      <input value={editData.last_name} onChange={e => updateField('last_name', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors" />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Phone</label>
+                      <input
+                        value={editData.phone_number}
+                        onChange={e => updateField('phone_number', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        maxLength={10}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Gender</label>
+                      <select value={editData.gender} onChange={e => updateField('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none">
+                        <option value="">Select Gender</option>
+                        <option value="M">Male</option>
+                        <option value="F">Female</option>
+                        <option value="O">Other</option>
                       </select>
                     </div>
-                  )}
-                </div>
+                    <div className="md:col-span-2">
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Date of Birth</label>
+                      <input
+                        type="date"
+                        value={editData.date_of_birth || ''}
+                        onChange={e => updateField('date_of_birth', e.target.value)}
+                        max={new Date().toISOString().split('T')[0]}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                      />
+                    </div>
+                    {user.user_type === 'admin' && branches.length > 0 && (
+                      <div className="md:col-span-2 pt-2 border-t border-gray-100">
+                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Assigned Branch</label>
+                        <select
+                          value={editData.branch_id}
+                          onChange={e => updateField('branch_id', e.target.value)}
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                        >
+                          <option value="">Select Branch</option>
+                          {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name}</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </>
               ) : (
-                <DetailList items={profileItems} columns={2} />
+                <div className="flex flex-col md:flex-row gap-8 items-start">
+                  {profilePreview && (
+                    <div className="shrink-0 w-32 h-32 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                      <img src={profilePreview} alt="Profile" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <div className="flex-1 w-full">
+                    <DetailList items={profileItems} columns={2} />
+                  </div>
+                </div>
               )}
             </Panel>
 
@@ -1337,11 +1446,6 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
           </div>
         }
       />
-
-      {/* User Documents Section */}
-      <Panel title="User Documents" subtitle="Personal and professional documents uploaded by this user.">
-        <DocumentManager accent={accent} userId={userId} showUpload={false} />
-      </Panel>
     </div>
   );
 }
@@ -1761,20 +1865,34 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
   const [creatingLink, setCreatingLink] = useState(false);
   const [joinLink, setJoinLink] = useState<any>(null);
 
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 500);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   useEffect(() => {
     const fetchClients = async () => {
       try {
         setLoading(true);
-        const response = await customFetch(API.USERS.LIST);
+        let url = API.USERS.LIST;
+        const params = new URLSearchParams();
+
+        if (debouncedSearch) params.set('search', debouncedSearch);
+        if (role) params.set('user_type', role);
+
+        if (params.toString()) {
+          url = `${url}?${params.toString()}`;
+        }
+
+        const response = await customFetch(url);
         const data = await response.json();
 
         if (!response.ok) throw new Error(data.detail || 'Failed to fetch clients');
 
-        let results = data.results || data;
-        if (role) {
-          results = results.filter((u: any) => u.user_type === role);
-        }
-        setClients(results);
+        setClients(data.results || data);
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -1782,11 +1900,11 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
       }
     };
     fetchClients();
-  }, [role]);
+  }, [role, debouncedSearch]);
 
   const handleCreateJoinLink = async () => {
     if (!role) return;
-    
+
     try {
       setCreatingLink(true);
       const payload = {
@@ -1823,14 +1941,37 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
     alert('Link copied to clipboard!');
   };
 
-  const rows = clients.map((u, i) => ({
-    client: `${u.first_name} ${u.last_name}`,
-    matter: 'N/A', // Linking to real matters would require another API call or field
-    phone: u.phone_number,
-    email: u.email,
-    status: u.is_active ? 'Active' : 'Inactive',
-    viewHref: viewBase ? `${viewBase}/${u.id}` : undefined,
-  }));
+  const rows = clients.map((u, i) => {
+    const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
+    const initials = `${(u.first_name || u.username || '').charAt(0)}${(u.last_name || '').charAt(0)}`.toUpperCase() || 'C';
+
+    let avatarUrl = null;
+    if (u.profile_image) {
+      avatarUrl = u.profile_image.startsWith('http') ? u.profile_image : `${API_BASE_URL}${u.profile_image}`;
+    }
+
+    return {
+      client: (
+        <div className="flex items-center gap-3">
+          {avatarUrl ? (
+            <div className="w-8 h-8 rounded-lg shrink-0 overflow-hidden border border-gray-100 bg-white">
+              <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-[#6366f1] text-[11px] font-bold shrink-0 uppercase tracking-widest">
+              {initials}
+            </div>
+          )}
+          <span className="font-semibold text-gray-800 truncate">{fullName}</span>
+        </div>
+      ),
+      matter: 'N/A',
+      phone: u.phone_number || '--',
+      email: u.email || '--',
+      status: u.is_active ? 'Active' : 'Inactive',
+      viewHref: viewBase ? `${viewBase}/${u.id}` : undefined,
+    };
+  });
 
   return (
     <div className="space-y-8">
@@ -1862,7 +2003,7 @@ export function ClientsPage({ accent, viewBase, role }: AccentProps & { viewBase
         }
       />
       <MetricGrid accent={accent} metrics={[{ label: 'Total Clients', value: clients.length.toString() }, { label: 'Active', value: clients.filter(c => c.is_active).length.toString() }, { label: 'Pending Docs', value: '0' }, { label: 'New This Month', value: '0' }]} />
-      <Panel title="Client Register" subtitle="Current clients, lead matters, and contact status." actions={<SearchBar placeholder="Search clients, phone, or matter..." />}>
+      <Panel title="Client Register" subtitle="Current clients, lead matters, and contact status." actions={<SearchBar placeholder="Search clients, phone, or matter..." value={search} onChange={setSearch} />}>
         {loading ? (
           <div className="flex flex-col items-center justify-center p-20">
             <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
@@ -1960,10 +2101,11 @@ export function ReportsPage({ accent }: AccentProps) {
 export function DocumentLibraryPage({ accent, roleTitle, viewBase }: AccentProps & { roleTitle: string; viewBase?: string }) {
   return (
     <div className="space-y-8">
-      <PageSection eyebrow="Documents" title={`${roleTitle} Document Library`} description="Upload and manage your personal and professional documents." />
-      <Panel title="My Documents" subtitle="Personal and professional documents for verification and record keeping.">
-        <DocumentManager accent={accent} showUpload={true} />
-      </Panel>
+      <PageSection eyebrow="Documents" title={`${roleTitle} Document Library`} description="Browse document types, version history, and upload ownership." />
+      <SplitPanels
+        left={<Panel title="Document Register" subtitle="FIR, petitions, evidence, orders, agreements, and affidavits."><DocumentHistory rows={documentRows} viewBase={viewBase} /></Panel>}
+        right={<InfoAside accent={accent} title="Library Notes" items={['Each document captures upload date and uploader identity.', 'Version history is visible for review and audit.', 'Document type filters are represented in this mock through grouped rows.']} />}
+      />
     </div>
   );
 }
@@ -2196,6 +2338,8 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
+    email: '',
+    phone_number: '',
     gender: '',
     date_of_birth: '',
     aadhar_number: '',
@@ -2215,34 +2359,72 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
   const [success, setSuccess] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
 
+  const [profileFile, setProfileFile] = useState<File | null | 'REMOVE'>(null);
+  const [profilePreview, setProfilePreview] = useState<string | null>(null);
+  const [systemData, setSystemData] = useState<any>(null);
+
   useEffect(() => {
+    let currentUserId: string | null = null;
     const details = localStorage.getItem('user_details');
     if (details) {
       try {
         const user = JSON.parse(details);
+        currentUserId = user.id;
         setUserId(user.id);
-        setFormData(prev => ({
-          ...prev,
-          first_name: user.first_name || '',
-          last_name: user.last_name || '',
-          gender: user.gender || '',
-          date_of_birth: user.date_of_birth || '',
-          aadhar_number: user.aadhar_number || '',
-          pan_number: user.pan_number || '',
-          address_line_1: user.address_line_1 || '',
-          address_line_2: user.address_line_2 || '',
-          city: user.city || '',
-          state: user.state || '',
-          country: user.country || 'India',
-          postal_code: user.postal_code || '',
-          bar_council_registration: user.bar_council_registration || '',
-          bar_council_state: user.bar_council_state || '',
-        }));
       } catch (e) {
         console.error('Error parsing user_details:', e);
       }
     }
-    setFetching(false);
+
+    if (currentUserId) {
+      setFetching(true);
+      customFetch(API.USERS.DETAIL(currentUserId))
+        .then((res) => {
+          if (!res.ok) throw new Error('Network error');
+          return res.json();
+        })
+        .then((user) => {
+          setFormData(prev => ({
+            ...prev,
+            first_name: user.first_name || '',
+            last_name: user.last_name || '',
+            email: user.email || '',
+            phone_number: user.phone_number || '',
+            gender: user.gender || '',
+            date_of_birth: user.date_of_birth || '',
+            aadhar_number: user.aadhar_number || '',
+            pan_number: user.pan_number || '',
+            address_line_1: user.address_line_1 || '',
+            address_line_2: user.address_line_2 || '',
+            city: user.city || '',
+            state: user.state || '',
+            country: user.country || 'India',
+            postal_code: user.postal_code || '',
+            bar_council_registration: user.bar_council_registration || '',
+            bar_council_state: user.bar_council_state || '',
+          }));
+          setProfilePreview(user.profile_image ? (user.profile_image.startsWith('http') ? user.profile_image : `${API_BASE_URL}${user.profile_image}`) : null);
+          setSystemData({
+            username: user.username,
+            user_type: user.user_type,
+            firm_name: user.firm_name,
+            is_email_verified: user.is_email_verified,
+            is_phone_verified: user.is_phone_verified,
+            is_document_verified: user.is_document_verified,
+            is_active: user.is_active,
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+            password_set: user.password_set
+          });
+          // Optionally update localStorage if the profile has silently drifted
+          localStorage.setItem('user_details', JSON.stringify({ ...JSON.parse(details || '{}'), ...user }));
+          window.dispatchEvent(new Event('profile_updated'));
+        })
+        .catch(err => console.error('Error fetching live user data:', err))
+        .finally(() => setFetching(false));
+    } else {
+      setFetching(false);
+    }
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2262,11 +2444,27 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
       if (!payload.aadhar_number) payload.aadhar_number = null;
       if (!payload.pan_number) payload.pan_number = null;
 
-      const response = await customFetch(API.USERS.DETAIL(userId), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      let response;
+      if (profileFile instanceof File) {
+        const fData = new FormData();
+        Object.entries(payload).forEach(([key, val]) => {
+          if (val !== null && val !== undefined) {
+            fData.append(key, String(val));
+          }
+        });
+        fData.append('profile_image', profileFile);
+        response = await customFetch(API.USERS.DETAIL(userId), {
+          method: 'PATCH',
+          body: fData,
+        });
+      } else {
+        const finalPayload = profileFile === 'REMOVE' ? { ...payload, profile_image: null } : payload;
+        response = await customFetch(API.USERS.DETAIL(userId), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(finalPayload),
+        });
+      }
 
       const data = await response.json();
       if (!response.ok) {
@@ -2275,6 +2473,7 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
 
       setSuccess('Profile updated successfully');
       localStorage.setItem('user_details', JSON.stringify(data));
+      window.dispatchEvent(new Event('profile_updated'));
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -2291,206 +2490,306 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
   if (fetching) return <div className="p-8 text-center text-sm text-gray-400 font-medium">Loading profile...</div>;
 
   return (
-    <Panel title="Profile Information" subtitle="Update your personal details and identity information.">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">First Name</label>
-            <input
-              type="text"
-              value={formData.first_name}
-              onChange={e => updateField('first_name', e.target.value)}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Last Name</label>
-            <input
-              type="text"
-              value={formData.last_name}
-              onChange={e => updateField('last_name', e.target.value)}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Gender</label>
-            <select
-              value={formData.gender}
-              onChange={e => updateField('gender', e.target.value)}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
-            >
-              <option value="">Select Gender</option>
-              <option value="M">Male</option>
-              <option value="F">Female</option>
-              <option value="O">Other</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Date of Birth</label>
-            <input
-              type="date"
-              value={formData.date_of_birth}
-              onChange={e => updateField('date_of_birth', e.target.value)}
-              max={new Date().toISOString().split('T')[0]}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Aadhar Number</label>
-            <AadharInput
-              value={formData.aadhar_number}
-              onChange={v => updateField('aadhar_number', v)}
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">PAN Number</label>
-            <PANInput
-              value={formData.pan_number}
-              onChange={v => updateField('pan_number', v)}
-            />
-          </div>
-
-          <div className="md:col-span-2 pt-4 border-t border-gray-100">
-            <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Professional Registration</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <SplitPanels
+      left={
+        <Panel title="Profile Information" subtitle="Update your personal details and identity information.">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="flex items-center gap-6 mb-6 pb-6 border-b border-gray-100 mt-2">
+              <div className="relative group w-20 h-20 rounded-full border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                <input type="file" accept="image/*" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setProfileFile(file);
+                    setProfilePreview(URL.createObjectURL(file));
+                  }
+                }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                {profilePreview ? (
+                  <>
+                    <img src={profilePreview} alt="Profile" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-white text-[10px] uppercase font-bold tracking-wider">Change</span>
+                    </div>
+                  </>
+                ) : (
+                  <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wider group-hover:text-gray-500">Photo</span>
+                )}
+              </div>
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council Reg</label>
+                <h3 className="text-sm font-semibold text-gray-900">Profile Image</h3>
+                <p className="text-xs text-gray-500 mt-1 mb-2">Upload a square image (max 5MB).</p>
+                {profilePreview && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileFile('REMOVE');
+                      setProfilePreview(null);
+                    }}
+                    className="text-xs font-semibold text-red-500 hover:text-red-600 bg-red-50 px-2 py-1 rounded"
+                  >
+                    Remove Photo
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-6">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">First Name</label>
                 <input
                   type="text"
-                  value={formData.bar_council_registration}
-                  onChange={e => updateField('bar_council_registration', e.target.value)}
-                  placeholder="e.g. MH/1234/2020"
+                  value={formData.first_name}
+                  onChange={e => updateField('first_name', e.target.value)}
                   className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council State</label>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Last Name</label>
+                <input
+                  type="text"
+                  value={formData.last_name}
+                  onChange={e => updateField('last_name', e.target.value)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Email Address</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={e => updateField('email', e.target.value)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Phone Number</label>
+                <input
+                  type="text"
+                  value={formData.phone_number}
+                  onChange={e => updateField('phone_number', e.target.value)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Gender</label>
                 <select
-                  value={formData.bar_council_state}
-                  onChange={e => updateField('bar_council_state', e.target.value)}
+                  value={formData.gender}
+                  onChange={e => updateField('gender', e.target.value)}
                   className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
                 >
-                  <option value="">Select State</option>
-                  {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  <option value="">Select Gender</option>
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                  <option value="O">Other</option>
                 </select>
               </div>
-            </div>
-          </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Date of Birth</label>
+                <input
+                  type="date"
+                  value={formData.date_of_birth}
+                  onChange={e => updateField('date_of_birth', e.target.value)}
+                  max={new Date().toISOString().split('T')[0]}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Aadhar Number</label>
+                <AadharInput
+                  value={formData.aadhar_number}
+                  onChange={v => updateField('aadhar_number', v)}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">PAN Number</label>
+                <PANInput
+                  value={formData.pan_number}
+                  onChange={v => updateField('pan_number', v)}
+                />
+              </div>
 
-          <div className="md:col-span-2 pt-4 border-t border-gray-100">
-            <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Address Information</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 1</label>
-                <input
-                  type="text"
-                  value={formData.address_line_1}
-                  onChange={e => updateField('address_line_1', e.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 2</label>
-                <input
-                  type="text"
-                  value={formData.address_line_2}
-                  onChange={e => updateField('address_line_2', e.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Country</label>
-                <div className="relative group">
-                  <select
-                    value={formData.country}
-                    onChange={e => {
-                      updateField('country', e.target.value);
-                      updateField('state', '');
-                      updateField('city', '');
-                    }}
-                    className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
-                  >
-                    <option value="">Select Country</option>
-                    {Country.getAllCountries().map(c => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">State</label>
-                <div className="relative group">
-                  <select
-                    value={formData.state}
-                    disabled={!formData.country}
-                    onChange={e => {
-                      updateField('state', e.target.value);
-                      updateField('city', '');
-                    }}
-                    className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none disabled:opacity-50"
-                  >
-                    <option value="">Select State</option>
-                    {formData.country && State.getStatesOfCountry(formData.country).map(s => <option key={s.isoCode} value={s.isoCode}>{s.name}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">City</label>
-                <div className="relative group">
-                  {formData.country && formData.state && City.getCitiesOfState(formData.country, formData.state).length > 0 ? (
-                    <>
-                      <select
-                        value={formData.city}
-                        onChange={e => updateField('city', e.target.value)}
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
-                      >
-                        <option value="">Select City</option>
-                        {City.getCitiesOfState(formData.country, formData.state).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                        <option value="Other">Other</option>
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
-                    </>
-                  ) : (
+              <div className="md:col-span-2 pt-4 border-t border-gray-100">
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Professional Registration</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council Reg</label>
                     <input
                       type="text"
-                      value={formData.city}
-                      onChange={e => updateField('city', e.target.value)}
-                      placeholder="Specify city..."
+                      value={formData.bar_council_registration}
+                      onChange={e => updateField('bar_council_registration', e.target.value)}
+                      placeholder="e.g. MH/1234/2020"
                       className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
                     />
-                  )}
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council State</label>
+                    <select
+                      value={formData.bar_council_state}
+                      onChange={e => updateField('bar_council_state', e.target.value)}
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                    >
+                      <option value="">Select State</option>
+                      {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Postal Code</label>
-                <input
-                  type="text"
-                  value={formData.postal_code}
-                  onChange={e => updateField('postal_code', e.target.value.replace(/\D/g, ''))}
-                  placeholder="e.g. 400001"
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]"
-                />
+
+              <div className="md:col-span-2 pt-4 border-t border-gray-100">
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Address Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 1</label>
+                    <input
+                      type="text"
+                      value={formData.address_line_1}
+                      onChange={e => updateField('address_line_1', e.target.value)}
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Address Line 2</label>
+                    <input
+                      type="text"
+                      value={formData.address_line_2}
+                      onChange={e => updateField('address_line_2', e.target.value)}
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Country</label>
+                    <div className="relative group">
+                      <select
+                        value={formData.country}
+                        onChange={e => {
+                          updateField('country', e.target.value);
+                          updateField('state', '');
+                          updateField('city', '');
+                        }}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                      >
+                        <option value="">Select Country</option>
+                        {Country.getAllCountries().map(c => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">State</label>
+                    <div className="relative group">
+                      <select
+                        value={formData.state}
+                        disabled={!formData.country}
+                        onChange={e => {
+                          updateField('state', e.target.value);
+                          updateField('city', '');
+                        }}
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none disabled:opacity-50"
+                      >
+                        <option value="">Select State</option>
+                        {formData.country && State.getStatesOfCountry(formData.country).map(s => <option key={s.isoCode} value={s.isoCode}>{s.name}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">City</label>
+                    <div className="relative group">
+                      {formData.country && formData.state && City.getCitiesOfState(formData.country, formData.state).length > 0 ? (
+                        <>
+                          <select
+                            value={formData.city}
+                            onChange={e => updateField('city', e.target.value)}
+                            className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                          >
+                            <option value="">Select City</option>
+                            {City.getCitiesOfState(formData.country, formData.state).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                            <option value="Other">Other</option>
+                          </select>
+                          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                        </>
+                      ) : (
+                        <input
+                          type="text"
+                          value={formData.city}
+                          onChange={e => updateField('city', e.target.value)}
+                          placeholder="Specify city..."
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Postal Code</label>
+                    <input
+                      type="text"
+                      value={formData.postal_code}
+                      onChange={e => updateField('postal_code', e.target.value.replace(/\D/g, ''))}
+                      placeholder="e.g. 400001"
+                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {error && <p className="text-xs font-semibold text-red-500 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
-        {success && <p className="text-xs font-semibold text-emerald-600 bg-emerald-50 p-3 rounded-lg border border-emerald-100">{success}</p>}
+            {error && <p className="text-xs font-semibold text-red-500 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
+            {success && <p className="text-xs font-semibold text-emerald-600 bg-emerald-50 p-3 rounded-lg border border-emerald-100">{success}</p>}
 
-        <div className="flex justify-end pt-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex items-center gap-2 rounded-xl bg-[#0e2340] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
-            style={{ backgroundColor: accent }}
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {loading ? 'Saving...' : 'Save Changes'}
-          </button>
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex items-center gap-2 rounded-xl bg-[#0e2340] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-all shadow-sm disabled:opacity-50"
+                style={{ backgroundColor: accent }}
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {loading ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
+        </Panel>
+      }
+      right={
+        <div className="space-y-6">
+          {systemData ? (
+            <Panel title="System Status" subtitle="Read-only account properties.">
+              <div className="space-y-6">
+                <div className="flex flex-col gap-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f]">Verifications</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge label={systemData.is_active ? 'Active' : 'Inactive'} tone={systemData.is_active ? 'success' : 'default'} />
+                    <Badge label={systemData.is_email_verified ? 'Email Verified' : 'Email Unverified'} tone={systemData.is_email_verified ? 'success' : 'warning'} />
+                    <Badge label={systemData.is_phone_verified ? 'Phone Verified' : 'Phone Unverified'} tone={systemData.is_phone_verified ? 'success' : 'warning'} />
+                    <Badge label={systemData.is_document_verified ? 'Docs Verified' : 'Docs Unverified'} tone={systemData.is_document_verified ? 'success' : 'warning'} />
+                    <Badge label={systemData.password_set ? 'Password Locked' : 'No Password'} tone={systemData.password_set ? 'info' : 'warning'} />
+                  </div>
+                </div>
+                <div className="space-y-4 pt-4 border-t border-gray-100">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">Platform Username</p>
+                    <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed truncate">{systemData.username || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">System Role</p>
+                    <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed capitalize">{systemData.user_type ? systemData.user_type.replace('_', ' ') : '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">Primary Firm Affinity</p>
+                    <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed truncate">{systemData.firm_name || 'Unassigned'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-1.5">Account Registry Date</p>
+                    <p className="text-sm font-medium text-gray-900 border border-gray-100 bg-gray-50/50 rounded-xl px-3.5 py-3 cursor-not-allowed">{systemData.created_at ? new Date(systemData.created_at).toLocaleDateString() : '-'}</p>
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          ) : (
+            <InfoAside accent={accent} title="Identity Info" items={['Update your personal details.', 'Change your core contact mechanisms.']} />
+          )}
         </div>
-      </form>
-    </Panel>
+      }
+    />
   );
 }
 
@@ -2555,7 +2854,7 @@ export function CasesDirectoryPage({ accent, viewBase, category }: AccentProps &
         if (category) {
           results = results.filter((c: any) => c.category === category);
         }
-        
+
         setCases(results);
       } catch (err: any) {
         setError(err.message);
@@ -2627,3 +2926,4 @@ export function CasesDirectoryPage({ accent, viewBase, category }: AccentProps &
     </div>
   );
 }
+

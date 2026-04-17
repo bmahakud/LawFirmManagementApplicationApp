@@ -28,9 +28,8 @@ const userSubItems = [
 
 const bottomNavItems = [
   { label: 'Documents', path: '/super-admin/documents', icon: FileText },
-  { label: 'Billing',   path: '/super-admin/billing',   icon: CreditCard      },
-  { label: 'Reports',   path: '/super-admin/reports',   icon: BarChart2       },
-  { label: 'Settings',  path: '/super-admin/settings',  icon: Settings        },
+  { label: 'Billing', path: '/super-admin/billing', icon: CreditCard },
+  { label: 'Reports', path: '/super-admin/reports', icon: BarChart2 },
 ];
 
 const mockFirmBranches = [
@@ -81,12 +80,10 @@ export default function SuperAdminSidebar() {
   const myFirmsActive = pathname.startsWith('/super-admin/my-firms');
 
   const navRow = (active: boolean) =>
-    `group relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer ${
-      active ? 'bg-[#984c1f]/10 text-[#984c1f]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+    `group relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer ${active ? 'bg-[#984c1f]/10 text-[#984c1f]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
     }`;
   const iconBox = (active: boolean) =>
-    `w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-      active ? 'bg-[#984c1f]/15' : 'bg-gray-100 group-hover:bg-gray-200'
+    `w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${active ? 'bg-[#984c1f]/15' : 'bg-gray-100 group-hover:bg-gray-200'
     }`;
   const iconColor = (active: boolean) =>
     `w-4 h-4 ${active ? 'text-[#984c1f]' : 'text-gray-400 group-hover:text-gray-600'}`;
@@ -151,9 +148,8 @@ export default function SuperAdminSidebar() {
                 const active = pathname.startsWith(path);
                 return (
                   <Link key={path} href={path}>
-                    <div className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 cursor-pointer ${
-                      active ? 'bg-[#984c1f]/10 text-[#984c1f]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
-                    }`}>
+                    <div className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 cursor-pointer ${active ? 'bg-[#984c1f]/10 text-[#984c1f]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                      }`}>
                       <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[#984c1f]' : 'text-gray-300 group-hover:text-gray-500'}`} />
                       <span className={`text-[13px] font-semibold ${active ? 'text-[#984c1f]' : ''}`}>{label}</span>
                       {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#984c1f]" />}
@@ -206,9 +202,8 @@ export default function SuperAdminSidebar() {
                 const active = pathname.startsWith(path);
                 return (
                   <Link key={path} href={path}>
-                    <div className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 cursor-pointer ${
-                      active ? 'bg-[#984c1f]/10 text-[#984c1f]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
-                    }`}>
+                    <div className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 cursor-pointer ${active ? 'bg-[#984c1f]/10 text-[#984c1f]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                      }`}>
                       <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[#984c1f]' : 'text-gray-300 group-hover:text-gray-500'}`} />
                       <span className={`text-[13px] font-semibold ${active ? 'text-[#984c1f]' : ''}`}>{label}</span>
                       {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#984c1f]" />}
@@ -235,25 +230,46 @@ export default function SuperAdminSidebar() {
             </Link>
           );
         })}
+
+        {(isActive('/super-admin/profile') || isActive('/super-admin/settings')) && (
+          <>
+            <div className="my-3 border-t border-gray-100" />
+            <div className="px-3 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">Account Context</span>
+            </div>
+            {[
+              { label: 'Profile', path: '/super-admin/profile', icon: UserCheck },
+              { label: 'Settings', path: '/super-admin/settings', icon: Settings }
+            ].map(({ label, path, icon: Icon }) => {
+              const active = isActive(path);
+              return (
+                <Link key={path} href={path}>
+                  <div className={navRow(active)}>
+                    {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#984c1f]" />}
+                    <div className="flex items-center gap-3">
+                      <div className={iconBox(active)}><Icon className={iconColor(active)} /></div>
+                      <span className="text-sm font-semibold">{label}</span>
+                    </div>
+                    {active && <ChevronRight className="w-3.5 h-3.5 text-[#984c1f]/40" />}
+                  </div>
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       <div className="border-t border-gray-100">
         <div className="px-4 py-3.5 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-[#984c1f] flex items-center justify-center text-white text-xs font-bold shrink-0">
-            FO
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-gray-900 truncate">Firm Owner</p>
-            <p className="text-[10px] text-gray-400 truncate">owner@chenlaw.com</p>
-          </div>
         </div>
         <div className="border-t border-gray-100 px-4 py-3">
           <button onClick={handleLogout} className="flex items-center gap-2 text-[#984c1f] hover:opacity-75 transition-opacity">
             <LogOut className="w-4 h-4" />
-            <span className="text-[13px] font-semibold">Sign Out</span>
+            <span className="text-[15px] font-semibold">Log Out</span>
           </button>
         </div>
       </div>
     </aside>
   );
 }
+
