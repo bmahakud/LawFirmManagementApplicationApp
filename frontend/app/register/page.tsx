@@ -20,6 +20,7 @@ export default function RegisterWizard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [configLoading, setConfigLoading] = useState(true);
 
   useEffect(() => {
     async function fetchConfig() {
@@ -31,6 +32,8 @@ export default function RegisterWizard() {
         }
       } catch (e) {
         console.error("Failed to fetch trial config:", e);
+      } finally {
+        setConfigLoading(false);
       }
     }
     fetchConfig();
@@ -117,6 +120,11 @@ export default function RegisterWizard() {
 
   const submitHandler = (e: React.FormEvent) => {
     e.preventDefault();
+    // Prevent submission if trial is disabled and user is trying to register as super_admin
+    if (!trialEnabled && registerType === 'super_admin') {
+      setError('Law firm registration is currently disabled. Please contact the platform owner.');
+      return;
+    }
     if (currentStep === stepsList.length - 1) {
       handleSubmit();
     } else {
@@ -452,7 +460,32 @@ export default function RegisterWizard() {
         </div>
 
         <div className="w-full max-w-2xl mx-auto">
-          {success ? (
+          {configLoading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="w-12 h-12 border-4 border-gray-200 border-t-[#0e2340] rounded-full animate-spin mb-4" />
+              <p className="text-gray-500 font-medium">Loading registration settings...</p>
+            </div>
+          ) : !trialEnabled ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+              className="bg-gray-50 border border-gray-200 rounded-2xl p-10 text-center space-y-5 shadow-xl"
+            >
+              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                <AlertCircle className="w-10 h-10 text-gray-400" />
+              </div>
+              <h3 className="text-3xl font-extrabold text-gray-900">Registration Temporarily Unavailable</h3>
+              <p className="text-gray-600 font-medium text-lg">New law firm registrations are currently disabled by the platform administrator.</p>
+              <p className="text-gray-500 text-sm">Please contact the platform owner for more information or to request access.</p>
+              <div className="pt-4">
+                <Link 
+                  href="/login"
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl shadow-lg text-[15px] font-bold text-white bg-[#0e2340] hover:bg-[#1a3a5c] transition-all"
+                >
+                  Go to Login
+                </Link>
+              </div>
+            </motion.div>
+          ) : success ? (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
               className="bg-green-50 border border-green-200 rounded-2xl p-10 text-center space-y-5 shadow-xl"
@@ -522,7 +555,6 @@ export default function RegisterWizard() {
               )}
             </>
           )}
-
         </div>
       </div>
     </div>

@@ -815,6 +815,27 @@ class GlobalConfigurationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     http_method_names = ['get', 'patch', 'put']
     
+    def get_permissions(self):
+        """Allow public access to the public_settings action"""
+        if self.action == 'public_settings':
+            return [permissions.AllowAny()]
+        return super().get_permissions()
+    
+    @action(detail=False, methods=['get'], url_path='public')
+    def public_settings(self, request):
+        """Public endpoint to get trial settings for registration page"""
+        try:
+            config = GlobalConfiguration.get_settings()
+            return Response({
+                'is_free_trial_enabled': config.is_free_trial_enabled,
+                'trial_period_days': config.trial_period_days
+            })
+        except Exception as e:
+            return Response({
+                'is_free_trial_enabled': True,
+                'trial_period_days': 15
+            })
+    
     def get_queryset(self):
         """Only platform owner can access"""
         if self.request.user.user_type != 'platform_owner':

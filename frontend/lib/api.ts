@@ -58,6 +58,7 @@ export const API = {
   },
   CONFIG: {
     GET: "/api/config/settings/",
+    PUBLIC: "/api/config/settings/public/",
     UPDATE: "/api/config/update_settings/"
   },
   CASES: {
