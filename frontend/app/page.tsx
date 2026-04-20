@@ -10,6 +10,8 @@ import {
   UserCheck, FileText, Gavel, Headphones, Lock,
   TrendingUp, Mail, MapPin,
 } from "lucide-react";
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
 
 /* ─────────────────────────────────────────
    DESIGN SYSTEM
@@ -277,6 +279,22 @@ export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeVisual, setActiveVisual] = useState(0);
   const [scrolled, setScrolled] = useState(false);
+  const [trialEnabled, setTrialEnabled] = useState(true);
+
+  useEffect(() => {
+    async function fetchConfig() {
+      try {
+        const response = await customFetch(API.CONFIG.GET);
+        if (response.ok) {
+          const data = await response.json();
+          setTrialEnabled(data.is_free_trial_enabled);
+        }
+      } catch (e) {
+        console.error("Failed to fetch trial config:", e);
+      }
+    }
+    fetchConfig();
+  }, []);
 
   // ── Scroll & Mouse Motion Values ──────────────────────────────────────────
   const featureSectionRef = useRef<HTMLElement>(null);
@@ -486,9 +504,16 @@ export default function LandingPage() {
               ))}
               <div className="pt-4 border-t border-gray-100 flex flex-col gap-3">
                 <Link href="/login" className="text-sm font-medium text-gray-600 text-center py-2">Log In</Link>
-                <Link href="/register"
-                  className="bg-[var(--navy)] text-white rounded-full text-center text-sm font-semibold py-3"
-                  onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
+                {trialEnabled ? (
+                  <Link href="/register"
+                    className="bg-[var(--navy)] text-white rounded-full text-center text-sm font-semibold py-3"
+                    onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
+                ) : (
+                  <button
+                    disabled
+                    className="bg-gray-300 text-gray-500 rounded-full text-center text-sm font-semibold py-3 cursor-not-allowed opacity-60"
+                  >Registration Disabled</button>
+                )}
               </div>
             </motion.div>
           )}
@@ -546,13 +571,22 @@ export default function LandingPage() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-3 mb-10">
-                <Link
-                  href="/register"
-                  className="group bg-[var(--navy)] text-white px-8 py-4 rounded-full font-semibold text-base hover:bg-[var(--navy-mid)] hover:shadow-xl hover:shadow-[var(--navy)]/20 transition-all flex items-center justify-center gap-2.5"
-                >
-                  Contact Us
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
+                {trialEnabled ? (
+                  <Link
+                    href="/register"
+                    className="group bg-[var(--navy)] text-white px-8 py-4 rounded-full font-semibold text-base hover:bg-[var(--navy-mid)] hover:shadow-xl hover:shadow-[var(--navy)]/20 transition-all flex items-center justify-center gap-2.5"
+                  >
+                    Contact Us
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                ) : (
+                  <button
+                    disabled
+                    className="bg-gray-300 text-gray-500 px-8 py-4 rounded-full font-semibold text-base cursor-not-allowed opacity-60 flex items-center justify-center gap-2.5"
+                  >
+                    Registration Disabled
+                  </button>
+                )}
                 <button className="group border border-gray-200 bg-white text-gray-700 px-8 py-4 rounded-full font-semibold text-base hover:border-gray-300 hover:shadow-md transition-all flex items-center justify-center gap-2.5">
                   <div className="w-8 h-8 rounded-full bg-[var(--navy)] flex items-center justify-center">
                     <Play className="w-3.5 h-3.5 text-white fill-white ml-0.5" />
@@ -1134,18 +1168,27 @@ export default function LandingPage() {
                 Join hundreds of law firms that have transformed their practice with AntLegal
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
-                <Link
-                  href="/register"
-                  className="group bg-white text-[var(--navy)] px-9 py-4 rounded-full font-bold text-base hover:shadow-2xl transition-all flex items-center justify-center gap-2"
-                >
-                  Contact Us
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
+                {trialEnabled ? (
+                  <Link
+                    href="/register"
+                    className="group bg-white text-[var(--navy)] px-9 py-4 rounded-full font-bold text-base hover:shadow-2xl transition-all flex items-center justify-center gap-2"
+                  >
+                    Contact Us
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                ) : (
+                  <button
+                    disabled
+                    className="bg-gray-300 text-gray-500 px-9 py-4 rounded-full font-bold text-base cursor-not-allowed opacity-60 flex items-center justify-center gap-2"
+                  >
+                    Registration Disabled
+                  </button>
+                )}
                 <button className="border-2 border-white/20 text-white px-9 py-4 rounded-full font-bold text-base hover:bg-white/8 hover:border-white/30 transition-all">
                   Schedule Demo
                 </button>
               </div>
-              <p className="text-xs text-white/30">No credit card required · 14-day free trial · Cancel anytime</p>
+              <p className="text-xs text-white/30">{trialEnabled ? 'No credit card required · 14-day free trial · Cancel anytime' : 'Contact platform owner for registration access'}</p>
             </div>
           </motion.div>
         </div>
