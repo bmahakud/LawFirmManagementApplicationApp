@@ -47,16 +47,16 @@ export default function Topbar() {
           const last = user.last_name || '';
           const initials = `${first.charAt(0)}${last.charAt(0)}`.toUpperCase() || 'PO';
           const name = first || last ? `${first} ${last}`.trim() : 'Platform Owner';
-          
+
           let avatarUrl = null;
           if (user.profile_image) {
-              avatarUrl = user.profile_image.startsWith('http') ? user.profile_image : `${API_BASE_URL}${user.profile_image}`;
+            avatarUrl = user.profile_image.startsWith('http') ? user.profile_image : `${API_BASE_URL}${user.profile_image}`;
           }
           setUserDetails({ initials, name, avatarUrl });
-        } catch(e) {}
+        } catch (e) { }
       }
     };
-    
+
     syncProfile();
     window.addEventListener('profile_updated', syncProfile);
 
@@ -73,11 +73,10 @@ export default function Topbar() {
   }, []);
 
   return (
-    <header className="h-[72px] bg-white border-b border-gray-100 flex items-center justify-between px-8 shrink-0 sticky top-0 z-10">
-      <div>
-        <h1 className="text-base font-bold text-[#0e2340] leading-tight">{page.title}</h1>
-        <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{page.sub}</p>
-      </div>
+    <header className="h-[72px] bg-white border-b border-gray-100 flex items-center justify-between px-8 shrink-0 sticky top-0 z-30">      <div>
+      <h1 className="text-base font-bold text-[#0e2340] leading-tight">{page.title}</h1>
+      <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{page.sub}</p>
+    </div>
 
       <div className="flex items-center gap-2">
 
@@ -90,26 +89,26 @@ export default function Topbar() {
 
         {/* Profile Dropdown */}
         <div className="relative" ref={profileRef}>
-          <button 
+          <button
             onClick={() => setIsProfileOpen(!isProfileOpen)}
             className="flex items-center gap-2.5 pl-1 pr-3 py-1.5 rounded-xl hover:bg-gray-50 transition-colors"
           >
             {userDetails.avatarUrl ? (
-                <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-gray-100 bg-white">
-                    <img src={userDetails.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
-                </div>
+              <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-gray-100 bg-white">
+                <img src={userDetails.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+              </div>
             ) : (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0e2340] to-[#1a3a5c] flex items-center justify-center text-white text-xs font-bold shrink-0">
-                  {userDetails.initials}
-                </div>
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0e2340] to-[#1a3a5c] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                {userDetails.initials}
+              </div>
             )}
             <span className="text-sm font-semibold text-[#0e2340] hidden sm:block max-w-[120px] text-left leading-tight break-words line-clamp-2">{userDetails.name}</span>
           </button>
 
           {isProfileOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50">
-              <Link 
-                href="/platform-owner/profile" 
+              <Link
+                href="/platform-owner/profile"
                 className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                 onClick={() => setIsProfileOpen(false)}
               >
@@ -118,8 +117,8 @@ export default function Topbar() {
                 </div>
                 Profile
               </Link>
-              <Link 
-                href="/platform-owner/settings" 
+              <Link
+                href="/platform-owner/settings"
                 className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                 onClick={() => setIsProfileOpen(false)}
               >
@@ -127,12 +126,12 @@ export default function Topbar() {
                 Settings
               </Link>
               <div className="h-px bg-gray-100 my-1" />
-              <button 
+              <button
                 onClick={async () => {
                   setIsProfileOpen(false);
                   try {
                     await customFetch(API.AUTH.LOGOUT, { method: 'POST' });
-                  } catch (error) {} finally {
+                  } catch (error) { } finally {
                     localStorage.removeItem('auth_token');
                     localStorage.removeItem('user_details');
                     router.push('/login');

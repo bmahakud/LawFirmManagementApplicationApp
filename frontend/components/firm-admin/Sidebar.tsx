@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Scale, LayoutDashboard, Briefcase, FileText,
-  UserCheck, Bell, MessageSquare, LogOut, ChevronRight, Users, ChevronDown
+  UserCheck, Bell, MessageSquare, LogOut, ChevronRight, Users, ChevronDown, User, Settings
 } from 'lucide-react';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
@@ -154,6 +154,34 @@ export default function FirmAdminSidebar() {
             </Link>
           );
         })}
+
+        {/* Account Context Section (Mirroring Super Admin) */}
+        {(isActive('/firm-admin/profile') || isActive('/firm-admin/settings')) && (
+          <>
+            <div className="my-3 border-t border-gray-100" />
+            <div className="px-3 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">Account Context</span>
+            </div>
+            {[
+              { label: 'Profile', path: '/firm-admin/profile', icon: User },
+              { label: 'Settings', path: '/firm-admin/settings', icon: Settings }
+            ].map(({ label, path, icon: Icon }) => {
+              const active = isActive(path);
+              return (
+                <Link key={path} href={path}>
+                  <div className={navRow(active)}>
+                    {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#2a4365]" />}
+                    <div className="flex items-center gap-3">
+                      <div className={iconBox(active)}><Icon className={iconColor(active)} /></div>
+                      <span className="text-sm font-semibold">{label}</span>
+                    </div>
+                    {active && <ChevronRight className="w-3.5 h-3.5 text-[#2a4365]/40" />}
+                  </div>
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       <div className="border-t border-gray-100">

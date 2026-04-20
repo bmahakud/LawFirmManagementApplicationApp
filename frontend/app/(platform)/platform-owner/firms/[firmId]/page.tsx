@@ -59,7 +59,7 @@ export default function PlatformOwnerFirmOverviewPage({
 }) {
   const { firmId } = use(params);
 
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Billing' | 'Settings'>('Overview');
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Billing'>('Overview');
   const [firm, setFirm] = useState<FirmDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -125,25 +125,25 @@ export default function PlatformOwnerFirmOverviewPage({
   const handleSave = async () => {
     try {
       setLoading(true);
-      
+
       let response;
       if (logoFile instanceof File) {
-          const formData = new FormData();
-          Object.entries(editedDetails).forEach(([key, val]) => {
-              formData.append(key, String(val));
-          });
-          formData.append('logo', logoFile);
-          response = await customFetch(API.FIRMS.DETAIL(firmId), {
-            method: 'PATCH',
-            body: formData,
-          });
+        const formData = new FormData();
+        Object.entries(editedDetails).forEach(([key, val]) => {
+          formData.append(key, String(val));
+        });
+        formData.append('logo', logoFile);
+        response = await customFetch(API.FIRMS.DETAIL(firmId), {
+          method: 'PATCH',
+          body: formData,
+        });
       } else {
-          const payload = logoFile === 'REMOVE' ? { ...editedDetails, logo: null } : editedDetails;
-          response = await customFetch(API.FIRMS.DETAIL(firmId), {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
+        const payload = logoFile === 'REMOVE' ? { ...editedDetails, logo: null } : editedDetails;
+        response = await customFetch(API.FIRMS.DETAIL(firmId), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
       }
 
       const data = await response.json();
@@ -277,12 +277,6 @@ export default function PlatformOwnerFirmOverviewPage({
           >
             Billing
           </button>
-          <button
-            onClick={() => setActiveTab('Settings')}
-            className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all ${activeTab === 'Settings' ? 'bg-[#0e2340] text-white shadow' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}
-          >
-            Settings
-          </button>
         </div>
       </div>
 
@@ -375,11 +369,11 @@ export default function PlatformOwnerFirmOverviewPage({
           <div className="flex items-center gap-6 mb-6">
             <div className="relative group w-24 h-24 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
               <input type="file" accept="image/*" onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                      setLogoFile(file);
-                      setLogoPreview(URL.createObjectURL(file));
-                  }
+                const file = e.target.files?.[0];
+                if (file) {
+                  setLogoFile(file);
+                  setLogoPreview(URL.createObjectURL(file));
+                }
               }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
               {logoPreview ? (
                 <>
@@ -399,8 +393,8 @@ export default function PlatformOwnerFirmOverviewPage({
                 <button
                   type="button"
                   onClick={() => {
-                      setLogoFile('REMOVE');
-                      setLogoPreview(null);
+                    setLogoFile('REMOVE');
+                    setLogoPreview(null);
                   }}
                   className="text-xs font-semibold text-red-500 hover:text-red-600 flex items-center gap-1 bg-red-50 px-2 py-1 rounded"
                 >

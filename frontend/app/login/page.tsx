@@ -99,7 +99,15 @@ export default function LoginPage() {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.detail || data.message || 'Login failed. Please check your credentials.');
+          let errorMsg = data.detail || data.message;
+          if (data.non_field_errors && Array.isArray(data.non_field_errors)) {
+            if (data.non_field_errors.includes("User account is inactive")) {
+              errorMsg = "Your account is inactive please contact your admin for details";
+            } else {
+              errorMsg = data.non_field_errors[0];
+            }
+          }
+          throw new Error(errorMsg || 'Login failed. Please check your credentials.');
         }
 
         if (data.token) localStorage.setItem("auth_token", data.token);
@@ -144,7 +152,15 @@ export default function LoginPage() {
           const data = await response.json();
 
           if (!response.ok) {
-            throw new Error(data.detail || data.message || data.error || 'Invalid OTP. Please try again.');
+            let errorMsg = data.detail || data.message || data.error;
+            if (data.non_field_errors && Array.isArray(data.non_field_errors)) {
+              if (data.non_field_errors.includes("User account is inactive")) {
+                errorMsg = "Your account is inactive please contact your admin for details";
+              } else {
+                errorMsg = data.non_field_errors[0];
+              }
+            }
+            throw new Error(errorMsg || 'Invalid OTP. Please try again.');
           }
 
           // Handle both response structures:

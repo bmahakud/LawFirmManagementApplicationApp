@@ -78,7 +78,8 @@ export default function CreateFirmForm() {
     setFieldErrors({});
 
     try {
-      const fullPhoneNumber = `${phoneCode} ${form.phone_number}`.trim();
+      const cleanedPhoneNumber = form.phone_number.replace(/\D/g, '');
+      const fullPhoneNumber = `${phoneCode} ${cleanedPhoneNumber}`.trim();
       const countryName = countries.find(c => c.isoCode === form.country)?.name || form.country;
       const stateName = states.find(s => s.isoCode === form.state)?.name || form.state;
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ReactNode, useMemo, useState } from 'react';
-import { ArrowRight, Search, Clock, Eye, EyeOff, Hash, CreditCard, Lock } from 'lucide-react';
+import { ArrowRight, Search, Clock, Eye, EyeOff, Hash, CreditCard, Lock, Smartphone, CheckCircle2 } from 'lucide-react';
 
 type Tone = 'default' | 'success' | 'warning' | 'danger' | 'info';
 
@@ -469,6 +469,57 @@ export function PasswordInput({
       >
         {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
       </button>
+    </div>
+  );
+}
+
+export function PhoneInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  className?: string;
+}) {
+  const handleFormat = (val: string) => {
+    // Keep only digits and limit to 10
+    const clean = val.replace(/\D/g, '').slice(0, 10);
+    onChange(clean);
+  };
+
+  const isComplete = value.replace(/\D/g, '').length === 10;
+
+  return (
+    <div className="relative group">
+      {/* India Flag & Prefix */}
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 border-r border-gray-100 pr-3 mr-3 pointer-events-none">
+        <span className="text-base">🇮🇳</span>
+        <span className="text-xs font-bold text-gray-400">+91</span>
+      </div>
+      
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => handleFormat(e.target.value)}
+        placeholder="98765 43210"
+        maxLength={10}
+        className={classNames(
+          "h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-[84px] pr-10 text-sm text-gray-800 font-semibold outline-none focus:bg-white focus:border-[#0e2340] focus:ring-4 focus:ring-[#0e2340]/5 transition-all shadow-sm shadow-[#0e2340]/[0.02] text-black",
+          isComplete ? "border-emerald-500/30 bg-emerald-50/5" : "",
+          className
+        )}
+      />
+
+      {/* Success/Status Indicator */}
+      {isComplete ? (
+        <CheckCircle2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500" />
+      ) : (
+        <Smartphone className={classNames(
+          "absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors",
+          value.length > 0 ? "text-gray-400" : "text-gray-300"
+        )} />
+      )}
     </div>
   );
 }

@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Scale, Clock, MessageSquare, Download, Calendar, FileText, Loader2, AlertCircle } from 'lucide-react';
+import {
+  Scale, FileText, Loader2, AlertCircle, ArrowRight,
+  MessageSquare, Calendar, Briefcase, User, Download,
+  Clock, CheckCircle2,
+} from 'lucide-react';
 import Link from 'next/link';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
@@ -10,23 +14,42 @@ interface DashboardData {
   role: string;
   role_display: string;
   user_name: string;
+  user_id: string;
   cards: {
-    my_cases?: number;
-    active_cases?: number;
-    next_hearing?: string;
-    new_messages?: number;
-    unpaid_invoices?: number;
-    upcoming_hearings?: number;
+    my_cases: number;
+    open_cases: number;
+    in_progress_cases: number;
+    closed_cases: number;
+    my_documents: number;
+    upcoming_hearings: number;
   };
-  client_info?: {
+  client_info: {
     id: string;
     name: string;
     email: string;
     phone: string;
     assigned_advocate: string | null;
   };
-  recent_cases?: any[];
+  recent_cases: Array<{
+    id: string;
+    case_title: string;
+    case_number: string;
+    status: string;
+    next_hearing_date: string | null;
+    updated_at: string;
+  }>;
 }
+
+
+
+const DARK = '#1f2937';
+
+const quickLinks = [
+  { label: 'My Cases', href: '/client/cases', icon: Briefcase, desc: 'Track your active matters' },
+  { label: 'Documents', href: '/client/documents', icon: FileText, desc: 'View shared files & uploads' },
+  { label: 'Hearings', href: '/client/calendar', icon: Calendar, desc: 'Upcoming court dates' },
+  { label: 'Messages', href: '/client/messaging', icon: MessageSquare, desc: 'Chat with your advocate' },
+];
 
 export default function ClientDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -55,9 +78,9 @@ export default function ClientDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-[60vh] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-[#1f2937]" />
           <p className="text-sm text-gray-400 font-medium">Loading dashboard…</p>
         </div>
       </div>
@@ -66,7 +89,7 @@ export default function ClientDashboard() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="min-h-[60vh] flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-12 text-center max-w-md">
           <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
           <p className="text-sm text-red-500 font-medium">{error || 'Failed to load dashboard'}</p>
@@ -75,101 +98,179 @@ export default function ClientDashboard() {
     );
   }
 
-  const { cards, client_info } = data;
+  const { cards, client_info, user_name, recent_cases } = data;
+  const firstName = (user_name || client_info?.name || 'Client')?.split(' ')[0] || 'Client';
+
+  const stats = [
+    {
+      label: 'My Cases',
+      val: cards.my_cases || 0,
+      icon: Scale,
+      bg: 'bg-[#1f2937]',
+      lightBg: 'bg-[#1f2937]/5',
+      textColor: 'text-[#1f2937]',
+      href: '/client/cases',
+    },
+    {
+      label: 'In Progress',
+      val: cards.in_progress_cases || 0,
+      icon: Clock,
+      bg: 'bg-indigo-600',
+      lightBg: 'bg-indigo-50',
+      textColor: 'text-indigo-600',
+      href: '/client/cases?status=in_progress',
+    },
+    {
+      label: 'Upcoming Hearings',
+      val: cards.upcoming_hearings || 0,
+      icon: Calendar,
+      bg: 'bg-amber-500',
+      lightBg: 'bg-amber-50',
+      textColor: 'text-amber-600',
+      href: '/client/calendar',
+    },
+    {
+      label: 'My Documents',
+      val: cards.my_documents || 0,
+      icon: FileText,
+      bg: 'bg-emerald-600',
+      lightBg: 'bg-emerald-50',
+      textColor: 'text-emerald-600',
+      href: '/client/documents',
+    },
+  ];
 
   return (
-    <div className="space-y-8 max-w-5xl">
-      {/* Client Info Header */}
-      {client_info && (
-        <div className="bg-gradient-to-r from-[#1f2937] to-[#111827] rounded-2xl p-6 text-white shadow-lg">
-          <h2 className="text-2xl font-bold">Welcome, {client_info.name}</h2>
-          {client_info.assigned_advocate && (
-            <p className="text-sm text-white/80 mt-1">Your Advocate: {client_info.assigned_advocate}</p>
-          )}
-        </div>
-      )}
+    <div className="space-y-6 max-w-6xl">
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { label: 'Active Cases',   val: cards?.my_cases || cards?.active_cases || 0,     icon: Scale,     color: 'bg-[#1f2937]' },
-          { label: 'Next Hearing',   val: cards?.next_hearing || 'N/A', icon: Calendar,  color: 'bg-indigo-600' },
-          { label: 'New Messages',   val: cards?.new_messages || 0,     icon: MessageSquare, color: 'bg-emerald-600' },
-          { label: 'Unpaid Invoices',val: cards?.unpaid_invoices || 0,  icon: Clock,     color: 'bg-gray-400' },
-        ].map((stat, i) => (
-          <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 relative overflow-hidden group">
-            <div className={`w-12 h-12 ${stat.color} rounded-xl flex items-center justify-center mb-4 text-white shadow-sm transition-transform group-hover:scale-110`}>
-              <stat.icon className="w-6 h-6" />
-            </div>
-            <p className="text-3xl font-bold text-gray-900">{stat.val}</p>
-            <p className="text-sm font-medium text-gray-500 mt-1">{stat.label}</p>
+      {/* ── WELCOME HEADER ── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg shrink-0"
+            style={{ background: `linear-gradient(135deg, #374151, ${DARK})` }}
+          >
+            {firstName.charAt(0).toUpperCase()}
           </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Welcome, {firstName}!</h1>
+            <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+              {client_info?.assigned_advocate ? (
+                <>
+                  <User className="w-3 h-3" />
+                  Your Advocate: <span className="text-gray-600 font-semibold">{client_info.assigned_advocate}</span>
+                </>
+              ) : (
+                "Your legal dashboard overview"
+              )}
+            </p>
+          </div>
+        </div>
+        <div className="hidden md:flex items-center gap-2">
+          <Link
+            href="/client/cases"
+            className="text-xs font-semibold text-[#1f2937] border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-1.5"
+          >
+            <Briefcase className="w-3.5 h-3.5" /> View My Cases
+          </Link>
+        </div>
+      </div>
+
+      {/* ── STAT CARDS ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((s, i) => (
+          <Link key={i} href={s.href} className="group block">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:border-gray-200 hover:shadow-md transition-all">
+              <div className={`w-10 h-10 rounded-xl ${s.lightBg} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                <s.icon className={`w-5 h-5 ${s.textColor}`} />
+              </div>
+              <p className="text-2xl font-bold text-gray-900">
+                {typeof s.val === 'number' ? s.val.toLocaleString() : s.val}
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">{s.label}</p>
+            </div>
+          </Link>
         ))}
       </div>
 
+      {/* ── CASE TIMELINE / UPDATES ── */}
+      {/* ── CASE UPDATES ── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-gray-900">Case Updates: Doe vs Corporate Ltd</h2>
-          <span className="bg-emerald-50 text-emerald-600 text-xs font-bold px-3 py-1 rounded-full border border-emerald-100">Hearing Stage</span>
+          <h2 className="text-sm font-bold text-gray-900">Recent Case Activity</h2>
+          <Link href="/client/cases" className="text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors">
+            View All
+          </Link>
         </div>
-        <div className="p-6 space-y-8">
-          {[
-            { date: '12 May 2024', status: 'Next Hearing Scheduled', desc: 'Please ensure you are present at the City Civil Court by 10 AM.', current: true },
-            { date: '01 May 2024', status: 'Draft Petition Filed',   desc: 'Adv. S. Sharma filed the petition in registry.', current: false },
-            { date: '15 Apr 2024', status: 'Case Initiated',         desc: 'Initial documents submitted and verified.', current: false },
-          ].map((item, idx) => (
-            <div key={idx} className="relative flex gap-4">
-              <div className="flex flex-col items-center">
-                <div className={`w-4 h-4 rounded-full border-2 bg-white ${item.current ? 'border-indigo-600 shadow-[0_0_0_4px_rgba(79,70,229,0.1)]' : 'border-gray-300'}`} />
-                {idx !== 2 && <div className="w-0.5 h-full bg-gray-100 mt-2" />}
-              </div>
-              <div className="pb-2">
-                <span className="text-xs font-bold text-gray-400">{item.date}</span>
-                <p className={`text-sm font-bold mt-1 ${item.current ? 'text-indigo-600' : 'text-gray-900'}`}>{item.status}</p>
-                <p className="text-sm text-gray-500 mt-1">{item.desc}</p>
-              </div>
+        <div className="p-6 space-y-6">
+          {recent_cases && recent_cases.length > 0 ? (
+            recent_cases.map((item, idx) => (
+              <Link key={item.id} href={`/client/cases/${item.id}`} className="group relative flex gap-4 hover:bg-gray-50/50 p-2 -m-2 rounded-xl transition-colors">
+                <div className="flex flex-col items-center">
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 bg-white border-indigo-600 shadow-[0_0_0_4px_rgba(79,70,229,0.1)]`}
+                  />
+                  {idx !== recent_cases.length - 1 && <div className="w-0.5 h-full bg-gray-100 mt-2" />}
+                </div>
+                <div className="pb-2 flex-grow">
+                  <span className="text-xs font-bold text-gray-400">
+                    Updated {new Date(item.updated_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                  <p className="text-sm font-bold mt-1 text-gray-900 group-hover:text-indigo-600 transition-colors">
+                    {item.case_title}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs text-gray-500 font-medium">No: {item.case_number}</span>
+                    <span className="w-1 h-1 rounded-full bg-gray-300" />
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${item.status === 'open' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {item.status}
+                    </span>
+                  </div>
+                  {item.next_hearing_date && (
+                    <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 font-semibold bg-amber-50 px-2 py-1 rounded-lg w-fit">
+                      <Calendar className="w-3 h-3" />
+                      Next Hearing: {new Date(item.next_hearing_date).toLocaleDateString()}
+                    </div>
+                  )}
+                </div>
+                <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all self-center" />
+              </Link>
+            ))
+          ) : (
+            <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+              <p className="text-sm text-gray-400 font-medium">No recent case activity found.</p>
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── QUICK ACTIONS ── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-50">
+          <h2 className="text-sm font-bold text-gray-900">Quick Access</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Jump to any section of your portal</p>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 divide-x divide-y divide-gray-50">
+          {quickLinks.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="group flex flex-col gap-3 p-5 hover:bg-gray-50/80 transition-colors"
+            >
+              <div className="w-10 h-10 rounded-xl bg-[#1f2937]/5 flex items-center justify-center group-hover:bg-[#1f2937]/10 transition-colors">
+                <item.icon className="w-5 h-5 text-[#1f2937]" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900 group-hover:text-[#1f2937] transition-colors">{item.label}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{item.desc}</p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-[#1f2937] group-hover:translate-x-1 transition-all mt-auto" />
+            </Link>
           ))}
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100">
-            <h2 className="text-sm font-bold text-gray-900">Recent Documents</h2>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {[
-              { name: 'Initial_Petition_Signed.pdf', size: '2.4 MB' },
-              { name: 'Evidence_Annexure_A.pdf',     size: '5.1 MB' },
-            ].map(doc => (
-              <div key={doc.name} className="flex items-center justify-between px-6 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">{doc.name}</p>
-                    <p className="text-xs text-gray-500">{doc.size}</p>
-                  </div>
-                </div>
-                <button className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                  <Download className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
 
-        <div className="bg-gradient-to-br from-[#1f2937] to-[#111827] rounded-2xl border border-gray-800 shadow-lg p-6 text-white flex flex-col justify-between">
-          <div>
-            <h2 className="text-lg font-bold">Need Help?</h2>
-            <p className="text-sm text-gray-400 mt-2">Send a direct message to your assigned advocate. We usually reply within 2 hours.</p>
-          </div>
-          <Link href="/client/messaging" className="mt-6 bg-white text-gray-900 font-bold py-3 px-4 rounded-xl text-center text-sm shadow-sm hover:shadow-md transition-all flex justify-center items-center gap-2">
-            <MessageSquare className="w-4 h-4" /> Message Advocate
-          </Link>
-        </div>
-      </div>
     </div>
   );
 }

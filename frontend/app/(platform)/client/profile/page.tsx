@@ -7,8 +7,9 @@ import {
 } from 'lucide-react';
 import { customFetch } from '@/lib/fetch';
 import { API, API_BASE_URL } from '@/lib/api';
-import { AadharInput, PANInput } from '@/components/platform/ui';
+import { AadharInput, PANInput, PhoneInput } from '@/components/platform/ui';
 import { Country, State, City } from 'country-state-city';
+import { useTopbarTitle } from '@/components/platform/TopbarContext';
 
 const ACCENT = '#1f2937';
 
@@ -20,14 +21,14 @@ const GENDERS = [
 ];
 
 export default function ClientProfilePage() {
-  const [user, setUser]               = useState<any>(null);
-  const [loading, setLoading]         = useState(true);
-  const [saving, setSaving]           = useState(false);
-  const [error, setError]             = useState('');
-  const [success, setSuccess]         = useState('');
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [profileFile, setProfileFile] = useState<File | null | 'REMOVE'>(null);
-  const [preview, setPreview]         = useState<string | null>(null);
-  const [form, setForm]               = useState<any>({});
+  const [preview, setPreview] = useState<string | null>(null);
+  const [form, setForm] = useState<any>({});
 
   /* ── Fetch profile ── */
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function ClientProfilePage() {
         const stored = localStorage.getItem('user_details');
         let userId: string | null = null;
         if (stored) {
-          try { userId = JSON.parse(stored)?.id; } catch (_) {}
+          try { userId = JSON.parse(stored)?.id; } catch (_) { }
         }
 
         // Fetch user list filtered by client type and find self
@@ -53,19 +54,19 @@ export default function ClientProfilePage() {
           ? (me.profile_image.startsWith('http') ? me.profile_image : `${API_BASE_URL}${me.profile_image}`)
           : null);
         setForm({
-          first_name:              me.first_name || '',
-          last_name:               me.last_name  || '',
-          phone_number:            me.phone_number || '',
-          gender:                  me.gender || '',
-          date_of_birth:           me.date_of_birth || '',
-          address_line_1:          me.address_line_1 || '',
-          address_line_2:          me.address_line_2 || '',
-          country:                 me.country || '',
-          state:                   me.state || '',
-          city:                    me.city || '',
-          postal_code:             me.postal_code || '',
-          aadhar_number:           me.aadhar_number || '',
-          pan_number:              me.pan_number || '',
+          first_name: me.first_name || '',
+          last_name: me.last_name || '',
+          phone_number: me.phone_number || '',
+          gender: me.gender || '',
+          date_of_birth: me.date_of_birth || '',
+          address_line_1: me.address_line_1 || '',
+          address_line_2: me.address_line_2 || '',
+          country: me.country || '',
+          state: me.state || '',
+          city: me.city || '',
+          postal_code: me.postal_code || '',
+          aadhar_number: me.aadhar_number || '',
+          pan_number: me.pan_number || '',
         });
       } catch (e: any) {
         setError(e.message || 'Failed to load profile');
@@ -74,6 +75,9 @@ export default function ClientProfilePage() {
       }
     })();
   }, []);
+
+  const fullName = `${form.first_name || ''} ${form.last_name || ''}`.trim() || user?.username || '';
+  useTopbarTitle(fullName, fullName ? 'Client Profile' : '');
 
   const set = (key: string, val: string) => setForm((f: any) => ({ ...f, [key]: val }));
 
@@ -87,12 +91,23 @@ export default function ClientProfilePage() {
       if (profileFile instanceof File) {
         const fd = new FormData();
         Object.entries(form).forEach(([k, v]) => {
-          if (v !== null && v !== undefined && v !== '') fd.append(k, String(v));
+          if (v !== null && v !== undefined && v !== '') {
+            let val = String(v);
+            if (k === 'aadhar_number') val = val.replace(/\s/g, '');
+            if (k === 'phone_number') val = val.replace(/\D/g, '');
+            fd.append(k, val);
+          }
         });
         fd.append('profile_image', profileFile);
         response = await customFetch(API.USERS.DETAIL(user.id), { method: 'PATCH', body: fd });
       } else {
         const payload: any = { ...form };
+        if (payload.aadhar_number) {
+          payload.aadhar_number = payload.aadhar_number.replace(/\s/g, '');
+        }
+        if (payload.phone_number) {
+          payload.phone_number = payload.phone_number.replace(/\D/g, '');
+        }
         if (profileFile === 'REMOVE') payload.profile_image = null;
         response = await customFetch(API.USERS.DETAIL(user.id), {
           method: 'PATCH',
@@ -147,9 +162,7 @@ export default function ClientProfilePage() {
 
       {/* ── Page header ── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-4">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white" style={{ background: ACCENT }}>
-          <User className="w-5 h-5" />
-        </div>
+
         <div>
           <h1 className="text-base font-bold text-gray-900">My Profile</h1>
           <p className="text-xs text-gray-400 mt-0.5">Update your personal details and identity information.</p>
@@ -209,7 +222,7 @@ export default function ClientProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
                 { key: 'first_name', label: 'First Name' },
-                { key: 'last_name',  label: 'Last Name'  },
+                { key: 'last_name', label: 'Last Name' },
               ].map(({ key, label }) => (
                 <div key={key}>
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</label>
@@ -220,8 +233,7 @@ export default function ClientProfilePage() {
 
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-400">Phone</label>
-                <input value={form.phone_number} onChange={e => set('phone_number', e.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 text-sm font-semibold text-gray-900 outline-none focus:border-[#1f2937] transition-colors" />
+                <PhoneInput value={form.phone_number} onChange={v => set('phone_number', v)} />
               </div>
 
               <div>
@@ -302,7 +314,7 @@ export default function ClientProfilePage() {
           </div>
 
           {/* Feedback + Submit */}
-          {error   && <p className="text-xs font-semibold text-red-500 bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
+          {error && <p className="text-xs font-semibold text-red-500 bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
           {success && (
             <p className="text-xs font-semibold text-emerald-600 bg-emerald-50 p-3 rounded-xl border border-emerald-100 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4" /> {success}
@@ -328,11 +340,11 @@ export default function ClientProfilePage() {
             </div>
             <div className="p-5 space-y-3">
               {[
-                { icon: Mail,      label: 'Email',    value: user?.email },
-                { icon: Phone,     label: 'Phone',    value: user?.phone_number || '—' },
-                { icon: Building2, label: 'Firm',     value: user?.firm_name || '—' },
-                { icon: MapPin,    label: 'Username', value: user?.username },
-                { icon: Calendar,  label: 'Joined',   value: user?.created_at ? new Date(user.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' },
+                { icon: Mail, label: 'Email', value: user?.email },
+                { icon: Phone, label: 'Phone', value: user?.phone_number || '—' },
+                { icon: Building2, label: 'Firm', value: user?.firm_name || '—' },
+                { icon: MapPin, label: 'Username', value: user?.username },
+                { icon: Calendar, label: 'Joined', value: user?.created_at ? new Date(user.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' },
               ].map((row, i) => (
                 <div key={i} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                   <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
@@ -354,10 +366,10 @@ export default function ClientProfilePage() {
             </div>
             <div className="p-5 space-y-2">
               {[
-                { label: 'Email Verified',    ok: user?.is_email_verified },
-                { label: 'Phone Verified',    ok: user?.is_phone_verified },
-                { label: 'Documents Verified',ok: user?.is_document_verified },
-                { label: 'Account Active',    ok: user?.is_active },
+                { label: 'Email Verified', ok: user?.is_email_verified },
+                { label: 'Phone Verified', ok: user?.is_phone_verified },
+                { label: 'Documents Verified', ok: user?.is_document_verified },
+                { label: 'Account Active', ok: user?.is_active },
               ].map((v, i) => (
                 <div key={i} className="flex items-center justify-between py-1.5">
                   <span className="text-sm text-gray-600">{v.label}</span>

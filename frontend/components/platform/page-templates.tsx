@@ -38,6 +38,7 @@ import {
   PasswordInput,
   AadharInput,
   PANInput,
+  PhoneInput,
 } from '@/components/platform/ui';
 import {
   activityRows,
@@ -853,23 +854,25 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
         actions={
           <div className="flex gap-3">
             <ActionLink href={`${viewBase}/new`} label={`Add ${role || 'Member'}`} />
-            <button
-              onClick={handleCreateJoinLink}
-              disabled={creatingLink}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {creatingLink ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Link2 className="h-4 w-4" />
-                  Join with Link
-                </>
-              )}
-            </button>
+            {role !== 'super_admin' && role !== 'partner_manager' && (
+              <button
+                onClick={handleCreateJoinLink}
+                disabled={creatingLink}
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {creatingLink ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="h-4 w-4" />
+                    Join with Link
+                  </>
+                )}
+              </button>
+            )}
           </div>
         }
       />
@@ -956,6 +959,7 @@ export function TeamPage({ accent, viewBase, role }: AccentProps & { viewBase?: 
 
 export function UserDetailPage({ accent, userId }: AccentProps & { userId: string }) {
   const [user, setUser] = useState<any>(null);
+  const [viewer, setViewer] = useState<any>(null);
   const [profileFile, setProfileFile] = useState<File | null | 'REMOVE'>(null);
   const [profilePreview, setProfilePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -979,6 +983,12 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
       }
     };
     fetchUser();
+
+    // Identify current viewer
+    const details = localStorage.getItem('user_details');
+    if (details) {
+      try { setViewer(JSON.parse(details)); } catch (e) { console.error('Error parsing viewer details:', e); }
+    }
   }, [userId]);
 
   const [branches, setBranches] = useState<any[]>([]);
@@ -997,6 +1007,9 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
   const [saving, setSaving] = useState(false);
+
+  // Access Control: Platform Owner cannot edit Super Admin
+  const canEdit = !(viewer?.user_type === 'platform_owner' && user?.user_type === 'super_admin');
 
   // Push user's full name into the topbar dynamically
   const fullName = user ? `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() : '';
@@ -1035,10 +1048,20 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
     setError('');
 
     try {
+      const payload: any = { ...editData };
+      
+      // Payload cleaning for backend compatibility
+      if (payload.aadhar_number) {
+        payload.aadhar_number = payload.aadhar_number.replace(/\s/g, '');
+      }
+      if (payload.phone_number) {
+        payload.phone_number = payload.phone_number.replace(/\D/g, '');
+      }
+
       let response;
       if (profileFile instanceof File) {
         const fData = new FormData();
-        Object.entries(editData).forEach(([key, val]) => {
+        Object.entries(payload).forEach(([key, val]) => {
           if (val !== null && val !== undefined && val !== '') {
             fData.append(key, String(val));
           }
@@ -1049,7 +1072,7 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
           body: fData,
         });
       } else {
-        const finalPayload = profileFile === 'REMOVE' ? { ...editData, profile_image: null } : editData;
+        const finalPayload = profileFile === 'REMOVE' ? { ...payload, profile_image: null } : payload;
         response = await customFetch(API.USERS.DETAIL(userId), {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -1152,12 +1175,14 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
               </button>
             </div>
           ) : (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 shadow-sm"
-            >
-              <PenTool className="h-4 w-4" /> Edit Profile
-            </button>
+            canEdit && (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 shadow-sm"
+              >
+                <PenTool className="h-4 w-4" /> Edit Profile
+              </button>
+            )
           )
         }
       />
@@ -1216,11 +1241,9 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
                     </div>
                     <div>
                       <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Phone</label>
-                      <input
+                      <PhoneInput
                         value={editData.phone_number}
-                        onChange={e => updateField('phone_number', e.target.value.replace(/\D/g, '').slice(0, 10))}
-                        maxLength={10}
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                        onChange={v => updateField('phone_number', v)}
                       />
                     </div>
                     <div>
@@ -1558,6 +1581,13 @@ export function TeamMemberFormPage({
 
       // Perfect Payload Handling: Send null for empty optional fields
       // This prevents the backend (UserFirmRole/UserInvitation) from crashing on empty strings
+      if (payload.aadhar_number) {
+        payload.aadhar_number = payload.aadhar_number.replace(/\s/g, '');
+      }
+      if (payload.phone_number) {
+        payload.phone_number = payload.phone_number.replace(/\D/g, '');
+      }
+      
       if (!payload.firm) payload.firm = null;
       if (!payload.date_of_birth) payload.date_of_birth = null;
       if (!payload.aadhar_number) payload.aadhar_number = null;
@@ -1618,13 +1648,9 @@ export function TeamMemberFormPage({
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Phone Number</label>
-                    <input
+                    <PhoneInput
                       value={formData.phone_number}
-                      onChange={e => update('phone_number', e.target.value.replace(/\D/g, '').slice(0, 10))}
-                      maxLength={10}
-                      required
-                      placeholder="9876543210"
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all"
+                      onChange={v => update('phone_number', v)}
                     />
                   </div>
                   {!fixedRole && (
@@ -2430,6 +2456,12 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
     }
   }, []);
 
+  const fullName = `${formData.first_name || ''} ${formData.last_name || ''}`.trim() || systemData?.username || '';
+  const userTypeLabel = systemData?.user_type
+    ? systemData.user_type.charAt(0).toUpperCase() + systemData.user_type.slice(1).replace('_', ' ')
+    : 'User';
+  useTopbarTitle(fullName, fullName ? `${userTypeLabel} Profile` : '');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userId) {
@@ -2442,7 +2474,15 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
 
     try {
       const payload: any = { ...formData };
+      
       // Payload cleaning for backend compatibility
+      if (payload.aadhar_number) {
+        payload.aadhar_number = payload.aadhar_number.replace(/\s/g, '');
+      }
+      if (payload.phone_number) {
+        payload.phone_number = payload.phone_number.replace(/\D/g, '');
+      }
+      
       if (!payload.date_of_birth) payload.date_of_birth = null;
       if (!payload.aadhar_number) payload.aadhar_number = null;
       if (!payload.pan_number) payload.pan_number = null;
@@ -2451,7 +2491,7 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
       if (profileFile instanceof File) {
         const fData = new FormData();
         Object.entries(payload).forEach(([key, val]) => {
-          if (val !== null && val !== undefined) {
+          if (val !== null && val !== undefined && val !== '') {
             fData.append(key, String(val));
           }
         });
@@ -2565,11 +2605,9 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Phone Number</label>
-                <input
-                  type="text"
+                <PhoneInput
                   value={formData.phone_number}
-                  onChange={e => updateField('phone_number', e.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                  onChange={v => updateField('phone_number', v)}
                 />
               </div>
               <div>

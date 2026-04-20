@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Scale, LayoutDashboard, Briefcase, FileText,
-  Calendar, MessageSquare, LogOut, ChevronRight, PenTool, Users, Plus
+  Calendar, MessageSquare, LogOut, ChevronRight, PenTool, Users, Plus,
+  UserCheck, Settings
 } from 'lucide-react';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
@@ -81,6 +82,40 @@ export default function AdvocateSidebar() {
             </div>
           </Link>
         </div>
+
+        {/* Account Context Section (Mirroring Super Admin) */}
+        {(isActive('/advocate/profile') || isActive('/advocate/settings')) && (
+          <>
+            <div className="my-3 border-t border-gray-100" />
+            <div className="px-3 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">Account Context</span>
+            </div>
+            {[
+              { label: 'Profile', path: '/advocate/profile', icon: UserCheck },
+              { label: 'Settings', path: '/advocate/settings', icon: Settings }
+            ].map(({ label, path, icon: Icon }) => {
+              const active = isActive(path);
+              return (
+                <Link key={path} href={path}>
+                  <div className={`group relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer ${
+                    active ? 'bg-[#4a1c40]/10 text-[#4a1c40]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                  }`}>
+                    {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#4a1c40]" />}
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                        active ? 'bg-[#4a1c40]/15' : 'bg-gray-100 group-hover:bg-gray-200'
+                      }`}>
+                        <Icon className={`w-4 h-4 ${active ? 'text-[#4a1c40]' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                      </div>
+                      <span className="text-sm font-semibold">{label}</span>
+                    </div>
+                    {active && <ChevronRight className="w-3.5 h-3.5 text-[#4a1c40]/40" />}
+                  </div>
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
       <div className="border-t border-gray-100 px-4 py-3">
         <button onClick={handleLogout} className="flex items-center gap-2 text-red-500 hover:opacity-75 transition-opacity px-2">
