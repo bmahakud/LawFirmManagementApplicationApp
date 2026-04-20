@@ -32,7 +32,7 @@ const containerVariants = {
     opacity: 1,
     transition: { staggerChildren: 0.1 }
   }
-};
+} as const;
 
 const itemVariants = {
   hidden: { y: 20, opacity: 0 },
@@ -41,7 +41,7 @@ const itemVariants = {
     opacity: 1,
     transition: { type: 'spring', stiffness: 100 }
   }
-};
+} as const;
 
 // ─── COMPONENT ──────────────────────────────────────────────────────────────
 export default function SuperAdminDashboard() {
@@ -222,7 +222,7 @@ export default function SuperAdminDashboard() {
                 {caseStatsData.map((d, i) => (
                   <div key={i} className="flex items-center justify-between group">
                     <div className="flex items-center gap-3">
-                      <span className="w-2.5 h-2.5 rounded-full ring-4 ring-offset-2 transition-all group-hover:scale-125" style={{ background: d.color, ringColor: `${d.color}10` }} />
+                      <span className="w-2.5 h-2.5 rounded-full ring-4 ring-offset-2 transition-all group-hover:scale-125" style={{ background: d.color, '--tw-ring-color': `${d.color}10` } as any} />
                       <span className="text-[11px] font-bold text-gray-400 group-hover:text-gray-900 transition-colors">{d.name}</span>
                     </div>
                     <span className="text-xs font-black text-gray-900">{d.value}</span>
