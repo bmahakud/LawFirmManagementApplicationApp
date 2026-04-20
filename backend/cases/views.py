@@ -76,6 +76,7 @@ class CaseViewSet(viewsets.ModelViewSet):
         # 2. Extract assignment data
         advocate = serializer.validated_data.get('assigned_advocate')
         branch = serializer.validated_data.get('branch')
+        client = serializer.validated_data.get('client')
         
         # 3. Validation: Advocate must belong to the same firm
         if advocate and advocate.firm != user.firm:
@@ -95,7 +96,12 @@ class CaseViewSet(viewsets.ModelViewSet):
         # 5. Save Case
         case = serializer.save(firm=user.firm, branch=branch)
         
-        # 6. Log activity
+        # 6. Auto-assign client to advocate if not already assigned
+        if advocate and client and not client.assigned_advocate:
+            client.assigned_advocate = advocate
+            client.save()
+        
+        # 7. Log activity
         CaseActivity.objects.create(
             case=case,
             performed_by=user,
@@ -104,9 +110,20 @@ class CaseViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        old_status = self.get_object().status
+        old_case = self.get_object()
+        old_status = old_case.status
+        old_advocate = old_case.assigned_advocate
+        
         case = serializer.save()
         new_status = case.status
+        new_advocate = case.assigned_advocate
+        
+        # Auto-assign client to advocate if advocate changed and client has no advocate
+        if new_advocate and new_advocate != old_advocate:
+            client = case.client
+            if not client.assigned_advocate:
+                client.assigned_advocate = new_advocate
+                client.save()
         
         if old_status != new_status:
             CaseActivity.objects.create(
