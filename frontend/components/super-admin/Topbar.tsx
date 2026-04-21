@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, LogOut, Settings, UserCheck } from 'lucide-react';
+import { Bell, LogOut, Settings, UserCheck, Menu } from 'lucide-react';
 import { customFetch } from '@/lib/fetch';
 import { API, API_BASE_URL } from '@/lib/api';
 
@@ -91,11 +91,21 @@ export default function SuperAdminTopbar() {
     };
   }, []);
 
+  const { toggleSidebar } = useTopbar();
+
   return (
-    <header className="h-[72px] bg-white border-b border-gray-100 flex items-center justify-between px-8 shrink-0 sticky top-0 z-30">
-      <div>
-        <h1 className="text-base font-bold text-[#984c1f] leading-tight">{page.title}</h1>
-        <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{page.sub}</p>
+    <header className="h-[72px] bg-white border-b border-gray-100 flex items-center justify-between px-4 sm:px-8 shrink-0 sticky top-0 z-30">
+      <div className="flex items-center gap-4">
+        <button
+          onClick={toggleSidebar}
+          className="p-2 rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 lg:hidden transition-colors"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <div>
+          <h1 className="text-base font-bold text-[#984c1f] leading-tight">{page.title}</h1>
+          <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{page.sub}</p>
+        </div>
       </div>
       <div className="flex items-center gap-2">
         <button className="relative w-9 h-9 rounded-xl bg-[#f7f8fa] border border-gray-100 flex items-center justify-center hover:bg-gray-100 transition-colors">

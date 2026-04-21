@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Bell, LogOut, Settings, User } from 'lucide-react';
+import { Bell, LogOut, Settings, User, Menu } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { resolveRouteMeta } from '@/components/platform/route-meta';
 import { customFetch } from '@/lib/fetch';
 import { API, API_BASE_URL } from '@/lib/api';
+import { useTopbar } from '@/components/platform/TopbarContext';
 
 const pageTitles = [
   { match: '/client/dashboard', title: 'Dashboard',  sub: 'Track your case progress and messages securely.' },
@@ -22,6 +23,7 @@ const pageTitles = [
 export default function ClientTopbar() {
   const pathname   = usePathname();
   const router     = useRouter();
+  const { toggleSidebar } = useTopbar();
   const page       = resolveRouteMeta(pathname, pageTitles, { title: 'Welcome', sub: 'Track your case progress.' });
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -103,10 +105,18 @@ export default function ClientTopbar() {
   }, []);
 
   return (
-    <header className="h-[72px] bg-white border-b border-gray-100 flex items-center justify-between px-8 shrink-0 sticky top-0 z-30">
-      <div>
-        <h1 className="text-base font-bold text-[#1f2937] leading-tight">{page.title}</h1>
-        <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{page.sub}</p>
+    <header className="h-[72px] bg-white border-b border-gray-100 flex items-center justify-between px-4 sm:px-8 shrink-0 sticky top-0 z-30">
+      <div className="flex items-center gap-4">
+        <button
+          onClick={toggleSidebar}
+          className="p-2 rounded-xl bg-gray-50 text-gray-500 hover:bg-gray-100 lg:hidden transition-colors"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <div>
+          <h1 className="text-base font-bold text-[#1f2937] leading-tight">{page.title}</h1>
+          <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{page.sub}</p>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">

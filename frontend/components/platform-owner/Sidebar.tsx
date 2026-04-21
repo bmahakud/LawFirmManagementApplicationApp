@@ -11,8 +11,10 @@ import {
   Scale, LayoutDashboard, Building2, BarChart3,
   Settings, ChevronRight, LogOut, Users,
   TrendingUp, ChevronDown, UserCheck, CreditCard,
-  ShieldCheck,
+  ShieldCheck, X
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useTopbar } from '@/components/platform/TopbarContext';
 
 const userSubItems = [
   { label: 'Firm Owner', path: '/platform-owner/users/super-admin', icon: ShieldCheck },
@@ -28,6 +30,7 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { isSidebarOpen, closeSidebar } = useTopbar();
 
   const [userMenuOpen, setUserMenuOpen] = useState(
     () => pathname.startsWith('/platform-owner/users/super-admin') ||
@@ -74,11 +77,10 @@ export default function Sidebar() {
   const iconColor = (active: boolean) =>
     `w-4 h-4 ${active ? 'text-[#0e2340]' : 'text-gray-400 group-hover:text-gray-600'}`;
 
-  return (
-    <aside className="w-64 h-screen bg-white border-r border-gray-100 flex flex-col shrink-0 sticky top-0">
-
+  const sidebarContent = (
+    <aside className="w-64 h-full bg-white border-r border-gray-100 flex flex-col overflow-hidden">
       {/* Logo */}
-      <div className="px-6 py-6 border-b border-gray-100">
+      <div className="px-6 py-6 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 bg-[#0e2340] rounded-lg flex items-center justify-center shadow-md">
             <Scale className="w-4 h-4 text-white" />
@@ -87,22 +89,25 @@ export default function Sidebar() {
             Ant<span className="text-[#0e2340]">Legal</span>
           </span>
         </div>
-        <div className="mt-3">
-          <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">
-            Platform Owner
-          </span>
-        </div>
+        <button onClick={closeSidebar} className="lg:hidden p-2 text-gray-400 hover:text-gray-600">
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
+        <div className="px-3 mb-3 lg:hidden">
+          <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">
+            Platform Owner
+          </span>
+        </div>
 
         {/* Dashboard */}
         {(() => {
           const { label, path, icon: Icon } = navItems[0];
           const active = isActive(path);
           return (
-            <Link href={path}>
+            <Link href={path} onClick={closeSidebar}>
               <div className={navRow(active)}>
                 {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#0e2340]" />}
                 <div className="flex items-center gap-3">
@@ -119,7 +124,7 @@ export default function Sidebar() {
         {(() => {
           const active = pathname.startsWith('/platform-owner/firms');
           return (
-            <Link href="/platform-owner/firms">
+            <Link href="/platform-owner/firms" onClick={closeSidebar}>
               <div className={navRow(active)}>
                 {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#0e2340]" />}
                 <div className="flex items-center gap-3">
@@ -162,7 +167,7 @@ export default function Sidebar() {
                   {userSubItems.map(({ label, path, icon: Icon }) => {
                     const active = pathname.startsWith(path);
                     return (
-                      <Link key={path} href={path}>
+                      <Link key={path} href={path} onClick={closeSidebar}>
                         <div className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 cursor-pointer ${active ? 'bg-[#0e2340]/8 text-[#0e2340]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
                           }`}>
                           <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[#0e2340]' : 'text-gray-300 group-hover:text-gray-500'}`} />
@@ -182,7 +187,7 @@ export default function Sidebar() {
         {navItems.slice(1).map(({ label, path, icon: Icon }) => {
           const active = isActive(path);
           return (
-            <Link key={path} href={path}>
+            <Link key={path} href={path} onClick={closeSidebar}>
               <div className={navRow(active)}>
                 {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#0e2340]" />}
                 <div className="flex items-center gap-3">
@@ -207,7 +212,7 @@ export default function Sidebar() {
             ].map(({ label, path, icon: Icon }) => {
               const active = isActive(path);
               return (
-                <Link key={path} href={path}>
+                <Link key={path} href={path} onClick={closeSidebar}>
                   <div className={navRow(active)}>
                     {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[22px] rounded-r-full bg-[#0e2340]" />}
                     <div className="flex items-center gap-3">
@@ -224,14 +229,43 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom user card */}
-      <div className="border-t border-gray-100">
-        <div className="border-t border-gray-100 px-4 py-3">
-          <button onClick={handleLogout} className="flex items-center gap-2 text-[#0e2340] hover:opacity-75 transition-opacity">
-            <LogOut className="w-4 h-4" />
-            <span className="text-[15px] font-semibold">Log Out</span>
-          </button>
-        </div>
+      <div className="border-t border-gray-100 px-4 py-3">
+        <button onClick={handleLogout} className="flex items-center gap-2 text-[#0e2340] hover:opacity-75 transition-opacity">
+          <LogOut className="w-4 h-4" />
+          <span className="text-[15px] font-semibold">Log Out</span>
+        </button>
       </div>
     </aside>
+  );
+
+  return (
+    <>
+      <div className="hidden lg:flex w-64 h-screen shrink-0 sticky top-0">
+        {sidebarContent}
+      </div>
+
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeSidebar}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="absolute inset-y-0 left-0 w-64 shadow-2xl"
+            >
+              {sidebarContent}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
