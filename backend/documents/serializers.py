@@ -44,11 +44,20 @@ class UserDocumentListSerializer(serializers.ModelSerializer):
     client_name = serializers.CharField(source='client.get_full_name', read_only=True)
     case_title = serializers.CharField(source='case.case_title', read_only=True)
     document_type_display = serializers.CharField(source='get_document_type_display', read_only=True)
+    file_url = serializers.SerializerMethodField()
     
     class Meta:
         model = UserDocument
         fields = [
             'id', 'document_title', 'document_type', 'document_type_display',
             'document_category', 'uploaded_by_name', 'client_name', 'case_title',
-            'verification_status', 'uploaded_at', 'is_deleted', 'version'
+            'verification_status', 'uploaded_at', 'is_deleted', 'version', 'file_url'
         ]
+    
+    def get_file_url(self, obj):
+        if obj.document_file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.document_file.url)
+            return obj.document_file.url
+        return None
