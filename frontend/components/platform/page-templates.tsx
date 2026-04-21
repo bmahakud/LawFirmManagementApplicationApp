@@ -19,6 +19,13 @@ import {
   Link2,
   Copy,
   X,
+  Loader2,
+  ChevronLeft,
+  ExternalLink,
+  Download,
+  PlusCircle,
+  Save,
+  ChevronDown,
 } from 'lucide-react';
 import {
   ActivityFeed,
@@ -54,7 +61,6 @@ import {
 import { customFetch } from '@/lib/fetch';
 import DocumentManager from '@/components/platform/DocumentManager';
 import { API, API_BASE_URL } from '@/lib/api';
-import { Loader2, PlusCircle, Save, ChevronDown } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 import { Country, State, City } from 'country-state-city';
 import { useTopbarTitle } from '@/components/platform/TopbarContext';
@@ -2133,42 +2139,186 @@ export function DocumentLibraryPage({ accent, roleTitle, viewBase }: AccentProps
         description="Personal and professional documents for verification and record keeping." 
       />
       <Panel title="My Documents" subtitle="Upload and manage your documents">
-        <DocumentManager accent={accent} showUpload={true} />
+        <DocumentManager accent={accent} showUpload={true} viewBase={viewBase} />
       </Panel>
     </div>
   );
 }
 
-export function DocumentDetailPage({ accent, roleTitle }: AccentProps & { roleTitle: string }) {
+export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProps & { roleTitle: string; documentId: string }) {
+  const [doc, setDoc] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    const fetchDoc = async () => {
+      try {
+        setLoading(true);
+        const response = await customFetch(API.DOCUMENTS.DETAIL(documentId));
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Failed to fetch document');
+        setDoc(data);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDoc();
+  }, [documentId]);
+
+  const docTitle = doc?.document_title || 'Document';
+  useTopbarTitle(docTitle, docTitle ? 'Document Detail' : '');
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 animate-in fade-in">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-300" />
+        <p className="mt-4 text-sm text-gray-400 font-medium italic">Retreiving document metadata...</p>
+      </div>
+    );
+  }
+
+  if (error || !doc) {
+    return (
+      <div className="p-12 text-center text-red-500 bg-red-50 rounded-2xl border border-red-100">
+        <p className="text-sm font-semibold">Alert: {error || 'Document record not found'}</p>
+        <button onClick={() => window.history.back()} className="mt-4 text-sm font-bold text-[#0e2340] hover:underline">
+          Return to Library
+        </button>
+      </div>
+    );
+  }
+
+  const fileUrl = doc.file_url || doc.document_file;
+
+  const handleDownload = async () => {
+    try {
+      setDownloading(true);
+      const filename = doc.document_title || 'document';
+      const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(fileUrl)}&filename=${encodeURIComponent(filename)}`;
+      
+      // Trigger the download through the proxy
+      window.location.href = proxyUrl;
+    } catch (err) {
+      console.error('Download failed:', err);
+      window.open(fileUrl, '_blank');
+    } finally {
+      // Keep loading state for a moment to indicate download started
+      setTimeout(() => setDownloading(false), 2000);
+    }
+  };
+
   return (
-    <div className="space-y-8">
-      <PageSection eyebrow="Document Detail" title={`${roleTitle} Document Detail`} description="Review the selected document, version history, upload ownership, and linked matter context." />
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <PageSection
+        eyebrow="Library Archive"
+        title={doc.document_title}
+        description={`Detailed record for ${doc.document_type_display || doc.document_type}. Original file is stored securely.`}
+        actions={
+          <div className="flex gap-3">
+            <button
+              onClick={() => window.history.back()}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all active:scale-[0.98]"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Back
+            </button>
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#0e2340] px-5 py-2.5 text-sm font-bold text-white hover:opacity-90 shadow-lg transition-all active:scale-[0.98] disabled:opacity-50"
+              style={{ backgroundColor: accent }}
+            >
+              {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {downloading ? 'Downloading...' : 'Download Document'}
+            </button>
+          </div>
+        }
+      />
+
       <SplitPanels
         left={
-          <Panel title="Document Overview" subtitle="Metadata, version state, and linked case context.">
-            <DetailList
-              items={[
-                { label: 'Document Name', value: 'FIR Copy' },
-                { label: 'Type', value: 'FIR' },
-                { label: 'Current Version', value: 'v2' },
-                { label: 'Uploaded By', value: 'A. Sharma' },
-                { label: 'Uploaded On', value: '12 Mar 2026' },
-                { label: 'Linked Matter', value: 'State vs Mehta' },
-              ]}
-              columns={2}
-            />
-          </Panel>
+          <div className="space-y-6">
+            <Panel title="Identity & Classification" subtitle="Core document identifiers and types.">
+              <DetailList
+                columns={2}
+                items={[
+                  { label: 'Document Title', value: <span className="font-bold text-gray-900">{doc.document_title}</span> },
+                  { label: 'Type Display', value: <span className="font-semibold text-gray-700">{doc.document_type_display}</span> },
+                  { label: 'Internal ID', value: <span className="font-mono text-[10px] text-gray-400 uppercase">{doc.id}</span> },
+                  { label: 'Category', value: <span className="text-gray-500 italic">{doc.document_category || 'General Content'}</span> },
+                  { label: 'Version', value: <Badge label={`v${doc.version || 1}`} tone="info" /> },
+                  { label: 'Doc Number', value: <span className="font-semibold text-gray-700">{doc.document_number || '--'}</span> },
+                ]}
+              />
+            </Panel>
+
+            <Panel title="Origin & Lifecycle" subtitle="Creation details and maintenance timestamps.">
+              <DetailList
+                columns={2}
+                items={[
+                  { label: 'Uploaded By', value: <span className="font-semibold text-gray-700">{doc.uploaded_by_name}</span> },
+                  { label: 'Firm Reference', value: <span className="font-mono text-[10px] text-gray-400">{doc.firm}</span> },
+                  { label: 'Upload Date', value: <span className="text-gray-600 font-medium text-xs">{new Date(doc.uploaded_at).toLocaleString()}</span> },
+                  { label: 'Last Modified', value: <span className="text-gray-600 font-medium text-xs">{new Date(doc.updated_at).toLocaleString()}</span> },
+                  { label: 'Active Status', value: doc.is_deleted ? <Badge label="Deleted" tone="danger" /> : <Badge label="Normal" tone="success" /> },
+                ]}
+              />
+            </Panel>
+
+            {doc.description && (
+              <Panel title="Description / Notes" subtitle="Contextual information provided during archive.">
+                <div className="bg-[#f7f8fa] rounded-2xl p-5 border border-dashed border-gray-200">
+                  <p className="text-sm text-gray-600 italic leading-relaxed">"{doc.description}"</p>
+                </div>
+              </Panel>
+            )}
+          </div>
         }
         right={
-          <InfoAside
-            accent={accent}
-            title="Version Notes"
-            items={[
-              'Version lineage and uploader history are visible for audit review.',
-              'Download, share, and annotation actions can attach here later.',
-              'Client routes stay read-only while internal roles can layer review actions.',
-            ]}
-          />
+          <div className="space-y-6">
+            <Panel title="Verification Status" subtitle="Audit trails and compliance state.">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between p-4 bg-[#f7f8fa] rounded-2xl border border-gray-100">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Current State</span>
+                  <Badge
+                    label={(doc.verification_status || 'pending').toUpperCase()}
+                    tone={doc.verification_status === 'verified' ? 'success' : doc.verification_status === 'rejected' ? 'danger' : 'warning'}
+                  />
+                </div>
+
+                <DetailList
+                  columns={1}
+                  items={[
+                    { label: 'Verified By', value: <span className="font-semibold text-gray-700">{doc.verified_by || 'Not Reviewed'}</span> },
+                    { label: 'Review Timestamp', value: <span className="text-gray-600 font-medium text-xs">{doc.verified_at ? new Date(doc.verified_at).toLocaleString() : '--'}</span> },
+                  ]}
+                />
+
+                {doc.verification_notes && (
+                  <div className="pt-4 border-t border-gray-100">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Reviewer Feedback</p>
+                    <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl">
+                      <p className="text-sm text-amber-900 italic leading-relaxed">{doc.verification_notes}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Panel>
+
+            <InfoAside
+              accent={accent}
+              title="Audit Constraints"
+              items={[
+                'This metadata record is a read-only historical archive.',
+                'Direct file URLs may be session-restricted for data protection.',
+                'Deletion records are preserved for compliance audit trails.',
+                'Verification status impacts case accessibility and legal standing.',
+              ]}
+            />
+          </div>
         }
       />
     </div>

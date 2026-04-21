@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
@@ -9,11 +10,16 @@ type Document = {
   id: string;
   document_title: string;
   document_type: string;
+  document_type_display: string;
+  document_category: string | null;
   document_file: string;
+  file_url?: string;
   uploaded_by_name: string;
   uploaded_at: string;
   verification_status: string;
   description?: string;
+  is_deleted: boolean;
+  version: number;
 };
 
 type DocumentManagerProps = {
@@ -22,10 +28,11 @@ type DocumentManagerProps = {
   clientId?: string;
   caseId?: string;
   showUpload?: boolean;
+  viewBase?: string;
   userDocuments?: Document[]; // Optional: pass documents from parent (e.g., from profile API)
 };
 
-export default function DocumentManager({ accent, userId, clientId, caseId, showUpload = true, userDocuments }: DocumentManagerProps) {
+export default function DocumentManager({ accent, userId, clientId, caseId, showUpload = true, viewBase, userDocuments }: DocumentManagerProps) {
   const [documents, setDocuments] = useState<Document[]>(userDocuments || []);
   const [loading, setLoading] = useState(!userDocuments); // Don't load if documents are provided
   const [uploading, setUploading] = useState(false);
@@ -329,15 +336,13 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 {getStatusBadge(doc.verification_status)}
-                <a
-                  href={doc.document_file}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  href={`${viewBase || '/super-admin/documents'}/${doc.id}`}
                   className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <Eye className="w-3.5 h-3.5" />
                   View
-                </a>
+                </Link>
               </div>
             </div>
           ))}
