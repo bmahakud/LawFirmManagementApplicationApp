@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, GlobalConfiguration, UserFirmRole, FirmJoinLink
+from .models import CustomUser, LoginCredential, OTPVerification, UserInvitation, GlobalConfiguration, UserFirmRole, FirmJoinLink, AdvocateParalegalAssignment
 from firms.models import Firm
 import random
 import string
@@ -15,6 +15,23 @@ class UserFirmRoleSerializer(serializers.ModelSerializer):
         model = UserFirmRole
         fields = ['id', 'firm', 'firm_name', 'branch', 'branch_name', 'user_type', 'is_active', 'is_last_active']
         read_only_fields = ['id', 'is_last_active']
+
+
+class AdvocateParalegalAssignmentSerializer(serializers.ModelSerializer):
+    advocate_name = serializers.CharField(source='advocate.get_full_name', read_only=True)
+    paralegal_name = serializers.CharField(source='paralegal.get_full_name', read_only=True)
+    paralegal_email = serializers.CharField(source='paralegal.email', read_only=True)
+    paralegal_phone = serializers.CharField(source='paralegal.phone_number', read_only=True)
+    firm_name = serializers.CharField(source='firm.firm_name', read_only=True)
+    
+    class Meta:
+        model = AdvocateParalegalAssignment
+        fields = [
+            'id', 'advocate', 'advocate_name', 'paralegal', 'paralegal_name', 
+            'paralegal_email', 'paralegal_phone', 'firm', 'firm_name', 
+            'assigned_by', 'is_active', 'created_at'
+        ]
+        read_only_fields = ['id', 'assigned_by', 'created_at']
 
 
 class UserBriefSerializer(serializers.ModelSerializer):
@@ -50,6 +67,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'city', 'state', 'country', 'postal_code', 'firm', 'firm_name',
             'available_firms', 'uploaded_documents',
             'aadhar_number', 'pan_number', 'bar_council_registration', 'bar_council_state',
+            'hourly_rate', 'consultation_fee', 'case_fee', 'fee_currency',
             'is_phone_verified', 'is_email_verified', 'is_document_verified',
             'is_active', 'created_at', 'updated_at', 'password_set', 'profile_image'
         ]
@@ -77,7 +95,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'email', 'phone_number', 'first_name', 'last_name', 'password',
             'password_confirm', 'date_of_birth', 'gender', 'address_line_1',
             'address_line_2', 'city', 'state', 'country', 'postal_code',
-            'firm_name', 'firm_address', 'firm_logo', 'branch_id', 'profile_image'
+            'firm_name', 'firm_address', 'firm_logo', 'branch_id', 'profile_image',
+            'bar_council_registration', 'bar_council_state', 
+            'hourly_rate', 'consultation_fee', 'case_fee'
         ]
     
     def validate(self, data):
@@ -158,6 +178,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 trial_end_date=trial_end_date,
                 subscription_end_date=subscription_end_date
             )
+        
+        # Check if this is advocate registration (no firm, but has bar_council_registration)
+        if not firm_name and validated_data.get('bar_council_registration'):
+            user_type = 'advocate'
         
         user = CustomUser.objects.create_user(
             username=validated_data['email'],

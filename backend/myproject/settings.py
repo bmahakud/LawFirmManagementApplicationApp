@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "clients",
     "tasks",
     "subscriptions",
+    "calendar_events",
     "django_filters",
 ]
 

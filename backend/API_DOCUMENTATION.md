@@ -81,6 +81,32 @@ POST /api/users/register/
 }
 ```
 
+#### Register as Advocate (Self-Registration)
+```
+POST /api/users/register/
+{
+    "email": "advocate@example.com",
+    "phone_number": "+919876543210",
+    "first_name": "Jane",
+    "last_name": "Smith",
+    "password": "securepass123",
+    "password_confirm": "securepass123",
+    "bar_council_registration": "BAR123456",
+    "bar_council_state": "Maharashtra",
+    "date_of_birth": "1985-05-20",
+    "gender": "F",
+    "address_line_1": "456 Legal Ave",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "country": "India",
+    "postal_code": "400001",
+    "hourly_rate": 5000.00,
+    "consultation_fee": 2000.00,
+    "case_fee": 50000.00
+}
+```
+Note: Providing `bar_council_registration` automatically registers the user as an advocate.
+
 #### Set Password (for users added by admin)
 ```
 POST /api/auth/set_password/

@@ -125,7 +125,113 @@ class Case(models.Model):
     def save(self, *args, **kwargs):
         if not self.case_title and self.case_number:
             self.case_title = f"Case {self.case_number}"
+        
+        # Track if next_hearing_date changed
+        is_new = self.pk is None
+        old_hearing_date = None
+        
+        if not is_new:
+            try:
+                old_case = Case.objects.get(pk=self.pk)
+                old_hearing_date = old_case.next_hearing_date
+            except Case.DoesNotExist:
+                pass
+        
         super().save(*args, **kwargs)
+        
+        # Auto-create calendar event if hearing date is added or changed
+        if self.next_hearing_date and (is_new or old_hearing_date != self.next_hearing_date):
+            self._create_or_update_hearing_calendar_event(old_hearing_date)
+    
+    def _create_or_update_hearing_calendar_event(self, old_hearing_date):
+        """Create or update calendar event for hearing date"""
+        from calendar_events.models import CalendarEvent
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Calculate end time (2 hours after start by default)
+        end_datetime = self.next_hearing_date + timedelta(hours=2)
+        
+        # Build event title
+        event_title = f"Hearing: {self.case_title or self.case_number}"
+        
+        # Build location
+        location = self.court_name or "Court"
+        if self.court_no:
+            location += f" - Court No. {self.court_no}"
+        
+        # Build description
+        description = f"Court hearing for case: {self.case_title or self.case_number}\n"
+        if self.case_number:
+            description += f"Case Number: {self.case_number}\n"
+        if self.cnr_number:
+            description += f"CNR Number: {self.cnr_number}\n"
+        if self.judge_name:
+            description += f"Judge: {self.judge_name}\n"
+        if self.petitioner_name:
+            description += f"Petitioner: {self.petitioner_name}\n"
+        if self.respondent_name:
+            description += f"Respondent: {self.respondent_name}\n"
+        
+        # Check if calendar event already exists for this case and old hearing date
+        existing_event = None
+        if old_hearing_date:
+            existing_event = CalendarEvent.objects.filter(
+                case=self,
+                event_type='hearing',
+                start_datetime=old_hearing_date
+            ).first()
+        
+        if existing_event:
+            # Update existing event
+            existing_event.title = event_title
+            existing_event.description = description
+            existing_event.start_datetime = self.next_hearing_date
+            existing_event.end_datetime = end_datetime
+            existing_event.location = location
+            existing_event.court_name = self.court_name or ""
+            existing_event.save()
+            
+            # Assign to advocate, paralegal, and client
+            assigned_users = []
+            if self.assigned_advocate:
+                assigned_users.append(self.assigned_advocate)
+            if self.assigned_paralegal:
+                assigned_users.append(self.assigned_paralegal)
+            if self.client and self.client.user_account:
+                assigned_users.append(self.client.user_account)
+            
+            existing_event.assigned_to.set(assigned_users)
+        else:
+            # Create new calendar event
+            calendar_event = CalendarEvent.objects.create(
+                title=event_title,
+                description=description,
+                event_type='hearing',
+                priority='high',
+                status='scheduled',
+                start_datetime=self.next_hearing_date,
+                end_datetime=end_datetime,
+                location=location,
+                court_name=self.court_name or "",
+                firm=self.firm,
+                case=self,
+                client=self.client,
+                created_by=None,  # System-generated
+                reminder_time=self.next_hearing_date - timedelta(hours=24)  # 24 hours before
+            )
+            
+            # Assign to advocate, paralegal, and client
+            assigned_users = []
+            if self.assigned_advocate:
+                assigned_users.append(self.assigned_advocate)
+            if self.assigned_paralegal:
+                assigned_users.append(self.assigned_paralegal)
+            if self.client and self.client.user_account:
+                assigned_users.append(self.client.user_account)
+            
+            if assigned_users:
+                calendar_event.assigned_to.set(assigned_users)
 
 
 class CaseActivity(models.Model):
@@ -161,6 +267,114 @@ class Hearing(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    def save(self, *args, **kwargs):
+        # Track if hearing_date changed
+        is_new = self.pk is None
+        old_hearing_date = None
+        
+        if not is_new:
+            try:
+                old_hearing = Hearing.objects.get(pk=self.pk)
+                old_hearing_date = old_hearing.hearing_date
+            except Hearing.DoesNotExist:
+                pass
+        
+        super().save(*args, **kwargs)
+        
+        # Auto-create calendar event if hearing date is added or changed
+        if self.hearing_date and (is_new or old_hearing_date != self.hearing_date):
+            self._create_or_update_hearing_calendar_event(old_hearing_date)
+    
+    def _create_or_update_hearing_calendar_event(self, old_hearing_date):
+        """Create or update calendar event for this hearing"""
+        from calendar_events.models import CalendarEvent
+        from datetime import timedelta
+        
+        # Calculate end time (2 hours after start by default)
+        end_datetime = self.hearing_date + timedelta(hours=2)
+        
+        # Build event title
+        event_title = f"Hearing: {self.purpose}"
+        if self.case.case_title:
+            event_title = f"{self.case.case_title} - {self.purpose}"
+        
+        # Build location
+        location = self.case.court_name or "Court"
+        if self.case.court_no:
+            location += f" - Court No. {self.case.court_no}"
+        
+        # Build description
+        description = f"Purpose: {self.purpose}\n"
+        description += f"Case: {self.case.case_title or self.case.case_number}\n"
+        if self.case.case_number:
+            description += f"Case Number: {self.case.case_number}\n"
+        if self.case.cnr_number:
+            description += f"CNR Number: {self.case.cnr_number}\n"
+        if self.case.judge_name:
+            description += f"Judge: {self.case.judge_name}\n"
+        if self.judge_remarks:
+            description += f"\nRemarks: {self.judge_remarks}\n"
+        
+        # Check if calendar event already exists for this hearing
+        existing_event = CalendarEvent.objects.filter(
+            case=self.case,
+            event_type='hearing',
+            start_datetime=old_hearing_date if old_hearing_date else self.hearing_date,
+            title__icontains=self.purpose[:50]  # Match by purpose
+        ).first()
+        
+        if existing_event:
+            # Update existing event
+            existing_event.title = event_title
+            existing_event.description = description
+            existing_event.start_datetime = self.hearing_date
+            existing_event.end_datetime = end_datetime
+            existing_event.location = location
+            existing_event.court_name = self.case.court_name or ""
+            existing_event.status = 'scheduled' if self.status == 'scheduled' else 'completed'
+            existing_event.save()
+            
+            # Update assigned users
+            assigned_users = []
+            if self.case.assigned_advocate:
+                assigned_users.append(self.case.assigned_advocate)
+            if self.case.assigned_paralegal:
+                assigned_users.append(self.case.assigned_paralegal)
+            if self.case.client and self.case.client.user_account:
+                assigned_users.append(self.case.client.user_account)
+            
+            existing_event.assigned_to.set(assigned_users)
+        else:
+            # Create new calendar event
+            calendar_event = CalendarEvent.objects.create(
+                title=event_title,
+                description=description,
+                event_type='hearing',
+                priority='high',
+                status='scheduled' if self.status == 'scheduled' else 'completed',
+                start_datetime=self.hearing_date,
+                end_datetime=end_datetime,
+                location=location,
+                court_name=self.case.court_name or "",
+                firm=self.case.firm,
+                case=self.case,
+                client=self.case.client,
+                created_by=None,  # System-generated
+                reminder_time=self.hearing_date - timedelta(hours=24)  # 24 hours before
+            )
+            
+            # Assign to advocate, paralegal, and client
+            assigned_users = []
+            if self.case.assigned_advocate:
+                assigned_users.append(self.case.assigned_advocate)
+            if self.case.assigned_paralegal:
+                assigned_users.append(self.case.assigned_paralegal)
+            if self.case.client and self.case.client.user_account:
+                assigned_users.append(self.case.client.user_account)
+            
+            if assigned_users:
+                calendar_event.assigned_to.set(assigned_users)
 
 class CaseDraft(models.Model):
     """Tracking drafts and petitions"""
