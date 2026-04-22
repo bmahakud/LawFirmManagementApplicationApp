@@ -54,6 +54,34 @@ class CustomUser(AbstractUser):
         related_name='users'
     )
     
+    # Advocate Fee Details (only for advocates)
+    hourly_rate = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        help_text="Hourly rate for advocate services"
+    )
+    consultation_fee = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        help_text="One-time co nsultation fee"
+    )
+    case_fee = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        help_text="Fixed fee per case"
+    )
+    fee_currency = models.CharField(
+        max_length=3, 
+        default='INR',
+        help_text="Currency code (e.g., INR, USD)"
+    )
+    
     # Document/Verification
     aadhar_number = models.CharField(max_length=12, blank=True, unique=True, null=True)
     pan_number = models.CharField(max_length=10, blank=True, unique=True, null=True)
@@ -264,6 +292,44 @@ class UserFirmRole(models.Model):
     
     def __str__(self):
         return f"{self.user.email} - {self.firm.firm_name} ({self.get_user_type_display()})"
+
+
+class AdvocateParalegalAssignment(models.Model):
+    """Many-to-many relationship between advocates and paralegals"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    advocate = models.ForeignKey(
+        CustomUser, 
+        on_delete=models.CASCADE, 
+        related_name='assigned_paralegals',
+        limit_choices_to={'user_type': 'advocate'}
+    )
+    paralegal = models.ForeignKey(
+        CustomUser, 
+        on_delete=models.CASCADE, 
+        related_name='assigned_advocates',
+        limit_choices_to={'user_type': 'paralegal'}
+    )
+    firm = models.ForeignKey('firms.Firm', on_delete=models.CASCADE, related_name='advocate_paralegal_assignments')
+    assigned_by = models.ForeignKey(
+        CustomUser, 
+        on_delete=models.SET_NULL, 
+        null=True,
+        related_name='paralegal_assignments_made'
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('advocate', 'paralegal', 'firm')
+        indexes = [
+            models.Index(fields=['advocate', 'firm']),
+            models.Index(fields=['paralegal', 'firm']),
+            models.Index(fields=['is_active']),
+        ]
+    
+    def __str__(self):
+        return f"{self.paralegal.get_full_name()} assigned to {self.advocate.get_full_name()} at {self.firm.firm_name}"
 
 class GlobalConfiguration(models.Model):
     """System-wide configuration settings"""

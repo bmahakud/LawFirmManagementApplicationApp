@@ -12,6 +12,14 @@ class Firm(models.Model):
         ('enterprise', 'Enterprise'),
     ]
     
+    # Subscription-based branch limits
+    BRANCH_LIMITS = {
+        'trial': 1,
+        'basic': 3,
+        'professional': 10,
+        'enterprise': 999,  # Unlimited
+    }
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     firm_name = models.CharField(max_length=255, unique=True)
     firm_code = models.CharField(max_length=50, unique=True)
@@ -73,6 +81,25 @@ class Firm(models.Model):
             return True
             
         return False
+    
+    def get_branch_limit(self):
+        """Get the maximum number of branches allowed for current subscription"""
+        return self.BRANCH_LIMITS.get(self.subscription_type, 1)
+    
+    def get_current_branch_count(self):
+        """Get the current number of active branches"""
+        return self.branches.filter(is_active=True).count()
+    
+    def can_create_branch(self):
+        """Check if firm can create more branches based on subscription"""
+        return self.get_current_branch_count() < self.get_branch_limit()
+    
+    def get_remaining_branches(self):
+        """Get the number of branches that can still be created"""
+        limit = self.get_branch_limit()
+        current = self.get_current_branch_count()
+        remaining = limit - current
+        return max(0, remaining)
 
 class Branch(models.Model):
     """Branch within a law firm"""

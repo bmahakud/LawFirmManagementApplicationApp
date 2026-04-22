@@ -40,6 +40,11 @@
       "key": "case_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "event_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -565,6 +570,140 @@
               ]
             },
             "description": "Switch active firm context for users who belong to multiple firms."
+          },
+          "response": []
+        },
+        {
+          "name": "Register as Advocate (Self-Registration)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"advocate@example.com\",\n  \"phone_number\": \"+919876543210\",\n  \"first_name\": \"Jane\",\n  \"last_name\": \"Smith\",\n  \"password\": \"securepass123\",\n  \"password_confirm\": \"securepass123\",\n  \"bar_council_registration\": \"BAR123456\",\n  \"bar_council_state\": \"Maharashtra\",\n  \"date_of_birth\": \"1985-05-20\",\n  \"gender\": \"F\",\n  \"address_line_1\": \"456 Legal Ave\",\n  \"city\": \"Mumbai\",\n  \"state\": \"Maharashtra\",\n  \"country\": \"India\",\n  \"postal_code\": \"400001\",\n  \"hourly_rate\": 5000.00,\n  \"consultation_fee\": 2000.00,\n  \"case_fee\": 50000.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/register/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "register",
+                ""
+              ]
+            },
+            "description": "Advocate self-registration endpoint. Providing bar_council_registration automatically registers as advocate."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Advocates (Platform-wide)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/all_advocates/?search=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "all_advocates",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Search by name, email, phone, bar registration, city, or state"
+                }
+              ]
+            },
+            "description": "Get all advocates across the platform. Super Admin/Admin can use this to add existing advocates to their firm. Supports search parameter."
+          },
+          "response": []
+        },
+        {
+          "name": "Link Existing Advocate to Firm",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"existing_user_id\": \"advocate-uuid-here\",\n  \"user_type\": \"advocate\",\n  \"branch_id\": \"optional-branch-uuid\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/add_user/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "add_user",
+                ""
+              ]
+            },
+            "description": "Link an existing advocate to your firm. Use existing_user_id to link already registered advocate."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Advocate Fee Details",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hourly_rate\": 6000.00,\n  \"consultation_fee\": 2500.00,\n  \"case_fee\": 60000.00,\n  \"fee_currency\": \"INR\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/{{user_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{user_id}}",
+                ""
+              ]
+            },
+            "description": "Update advocate fee details including hourly rate, consultation fee, and case fee."
           },
           "response": []
         }
@@ -1739,6 +1878,386 @@
                 }
               ]
             }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "9. Calendar & Events",
+      "description": "Calendar events for hearings, meetings, deadlines, and tasks",
+      "item": [
+        {
+          "name": "Create Calendar Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Court Hearing - Case ABC\",\n  \"description\": \"First hearing for property dispute case\",\n  \"event_type\": \"hearing\",\n  \"priority\": \"high\",\n  \"start_datetime\": \"2026-04-25T10:00:00Z\",\n  \"end_datetime\": \"2026-04-25T12:00:00Z\",\n  \"location\": \"District Court Room 5\",\n  \"court_name\": \"Delhi District Court\",\n  \"case\": \"{{case_id}}\",\n  \"assigned_to\": [\"{{user_id}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                ""
+              ]
+            },
+            "description": "Create a calendar event. Event types: hearing, meeting, deadline, task, consultation, filing, other"
+          },
+          "response": []
+        },
+        {
+          "name": "List All Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/?search=&event_type=&status=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Search by title, description, location"
+                },
+                {
+                  "key": "event_type",
+                  "value": "",
+                  "description": "Filter by: hearing, meeting, deadline, task, consultation, filing, other"
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "Filter by: scheduled, completed, cancelled, rescheduled"
+                }
+              ]
+            },
+            "description": "List calendar events with search and filters. Results based on user permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Month View",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/month_view/?year=2026&month=4",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                "month_view",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "year",
+                  "value": "2026"
+                },
+                {
+                  "key": "month",
+                  "value": "4"
+                }
+              ]
+            },
+            "description": "Get all events for a specific month"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Week View",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/week_view/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                "week_view",
+                ""
+              ]
+            },
+            "description": "Get events for current week"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Day View",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/day_view/?date=2026-04-21",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                "day_view",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2026-04-21",
+                  "description": "Date in YYYY-MM-DD format"
+                }
+              ]
+            },
+            "description": "Get events for a specific day"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Today's Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/today/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                "today",
+                ""
+              ]
+            },
+            "description": "Get all events scheduled for today"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Upcoming Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/upcoming/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                "upcoming",
+                ""
+              ]
+            },
+            "description": "Get upcoming events for next 30 days"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Event Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/{{event_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                "{{event_id}}",
+                ""
+              ]
+            },
+            "description": "Get details of a specific calendar event"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Event",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Event Title\",\n  \"start_datetime\": \"2026-04-25T11:00:00Z\",\n  \"status\": \"rescheduled\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/{{event_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                "{{event_id}}",
+                ""
+              ]
+            },
+            "description": "Update calendar event details"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Event as Completed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/{{event_id}}/mark_completed/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                "{{event_id}}",
+                "mark_completed",
+                ""
+              ]
+            },
+            "description": "Mark an event as completed"
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/{{event_id}}/cancel/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                "{{event_id}}",
+                "cancel",
+                ""
+              ]
+            },
+            "description": "Cancel a calendar event"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Event",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendar/events/{{event_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "calendar",
+                "events",
+                "{{event_id}}",
+                ""
+              ]
+            },
+            "description": "Delete a calendar event"
           },
           "response": []
         }

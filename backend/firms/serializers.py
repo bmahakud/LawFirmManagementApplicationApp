@@ -29,6 +29,10 @@ class BranchSerializer(serializers.ModelSerializer):
 class FirmSerializer(serializers.ModelSerializer):
     branches = BranchSerializer(many=True, read_only=True)
     super_admin_details = serializers.SerializerMethodField()
+    branch_limit = serializers.SerializerMethodField()
+    current_branch_count = serializers.SerializerMethodField()
+    remaining_branches = serializers.SerializerMethodField()
+    can_create_branch = serializers.SerializerMethodField()
     
     class Meta:
         model = Firm
@@ -36,9 +40,11 @@ class FirmSerializer(serializers.ModelSerializer):
             'id', 'firm_name', 'firm_code', 'city', 'state', 'country',
             'address', 'postal_code', 'registration_number', 'logo', 'practice_areas',
             'phone_number', 'email', 'website', 'subscription_type', 'is_active',
-            'branches', 'super_admin_details', 'created_at', 'updated_at'
+            'branches', 'super_admin_details', 'branch_limit', 'current_branch_count',
+            'remaining_branches', 'can_create_branch', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'branch_limit', 
+                           'current_branch_count', 'remaining_branches', 'can_create_branch']
 
     def get_super_admin_details(self, obj):
         from accounts.models import CustomUser
@@ -49,3 +55,15 @@ class FirmSerializer(serializers.ModelSerializer):
         if super_admin:
             return UserBriefSerializer(super_admin).data
         return None
+    
+    def get_branch_limit(self, obj):
+        return obj.get_branch_limit()
+    
+    def get_current_branch_count(self, obj):
+        return obj.get_current_branch_count()
+    
+    def get_remaining_branches(self, obj):
+        return obj.get_remaining_branches()
+    
+    def get_can_create_branch(self, obj):
+        return obj.can_create_branch()

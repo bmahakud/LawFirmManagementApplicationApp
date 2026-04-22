@@ -618,6 +618,30 @@ class BranchViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.user_type not in ['platform_owner', 'super_admin', 'admin']:
             raise PermissionDenied('Only Platform Owner or Firm Admins can create branches')
+        
+        # Get the firm for this branch
+        firm_id = self.request.data.get('firm')
+        if not firm_id:
+            raise PermissionDenied('Firm is required')
+        
+        try:
+            firm = Firm.objects.get(id=firm_id)
+        except Firm.DoesNotExist:
+            raise PermissionDenied('Firm not found')
+        
+        # Check subscription-based branch limit
+        if not firm.can_create_branch():
+            current_count = firm.get_current_branch_count()
+            limit = firm.get_branch_limit()
+            from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
+            raise DRFPermissionDenied({
+                'error': f'Branch limit reached. Your {firm.subscription_type} plan allows {limit} branch(es). You currently have {current_count} active branch(es).',
+                'current_branches': current_count,
+                'branch_limit': limit,
+                'subscription_type': firm.subscription_type,
+                'upgrade_message': 'Please upgrade your subscription to create more branches.'
+            })
+        
         serializer.save()
     
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])

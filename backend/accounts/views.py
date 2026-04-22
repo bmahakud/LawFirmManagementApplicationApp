@@ -135,13 +135,19 @@ class CustomUserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny], url_name='register')
     def register(self, request):
-        """Client self-registration"""
+        """Client, Advocate, and Super Admin self-registration"""
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             password = request.data.get('password')
             user = serializer.save()
             token, _ = Token.objects.get_or_create(user=user)
-            reg_type = "Super Admin (Firm Owner)" if user.user_type == 'super_admin' else "Client"
+            
+            if user.user_type == 'super_admin':
+                reg_type = "Super Admin (Firm Owner)"
+            elif user.user_type == 'advocate':
+                reg_type = "Advocate"
+            else:
+                reg_type = "Client"
             
             # Send Welcome Email
             subject = f"Welcome to AntLegal - Account Created"
@@ -169,6 +175,71 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         user = request.user
         data = request.data
         user_type_to_add = data.get('user_type')
+        existing_user_id = data.get('existing_user_id')  # For linking existing advocates
+        
+        # ============================================================================
+        # LINK EXISTING ADVOCATE TO FIRM
+        # ============================================================================
+        if existing_user_id and user_type_to_add == 'advocate':
+            if user.user_type not in ['super_admin', 'admin']:
+                return Response(
+                    {'error': 'Only Super Admin or Admin can add advocates to firm'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            try:
+                existing_advocate = CustomUser.objects.get(id=existing_user_id, user_type='advocate')
+            except CustomUser.DoesNotExist:
+                return Response(
+                    {'error': 'Advocate not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            firm = user.firm
+            if not firm:
+                return Response(
+                    {'error': 'You must be associated with a firm'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if advocate is already in this firm
+            if UserFirmRole.objects.filter(user=existing_advocate, firm=firm).exists():
+                return Response(
+                    {'error': 'This advocate is already part of your firm'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create UserFirmRole mapping
+            branch_id = data.get('branch_id')
+            branch = None
+            if branch_id:
+                branch = Branch.objects.filter(id=branch_id, firm=firm).first()
+            
+            membership = UserFirmRole.objects.create(
+                user=existing_advocate,
+                firm=firm,
+                user_type='advocate',
+                branch=branch
+            )
+            
+            # If this is their first firm, set it as active
+            if existing_advocate.firm_memberships.count() == 1:
+                membership.is_last_active = True
+                membership.save()
+                existing_advocate.firm = firm
+                existing_advocate.save()
+            
+            log_audit(
+                user, 
+                'add_advocate', 
+                f"Added existing advocate {existing_advocate.get_full_name()} to {firm.firm_name}"
+            )
+            
+            return Response({
+                'user': CustomUserSerializer(existing_advocate).data,
+                'membership': UserFirmRoleSerializer(membership).data,
+                'message': f'Advocate added to {firm.firm_name} successfully.'
+            }, status=status.HTTP_200_OK)
         
         # ============================================================================
         # ROLE-BASED USER CREATION HIERARCHY
@@ -252,7 +323,21 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
-        # ADVOCATE, PARALEGAL, CLIENT cannot add users
+        # ADVOCATE can add: PARALEGAL (within their firm)
+        elif user.user_type == 'advocate':
+            if user_type_to_add != 'paralegal':
+                return Response(
+                    {'error': 'Advocate can only add Paralegal users'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            firm = user.firm
+            if not firm:
+                return Response(
+                    {'error': 'Advocate must be associated with a firm'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # PARALEGAL, CLIENT cannot add users
         else:
             return Response(
                 {'error': f'{user.get_user_type_display()} cannot add users'},
@@ -391,6 +476,19 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 assigned_advocate=advocate_obj,
                 user_account=new_user
             )
+        
+        # ============================================================================
+        # AUTO-ASSIGN PARALEGAL TO ADVOCATE (when advocate adds a paralegal)
+        # ============================================================================
+        if user_type_to_add == 'paralegal' and user.user_type == 'advocate':
+            from .models import AdvocateParalegalAssignment
+            AdvocateParalegalAssignment.objects.create(
+                advocate=user,
+                paralegal=new_user,
+                firm=firm,
+                assigned_by=user,
+                is_active=True
+            )
 
         # Create invitation (only if new or new to this firm)
         invitation = UserInvitation.objects.create(
@@ -494,6 +592,211 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             
             return Response({'message': 'Password changed successfully'})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_name='assign_paralegal')
+    def assign_paralegal(self, request):
+        """Assign a paralegal to an advocate"""
+        from .models import AdvocateParalegalAssignment
+        from .serializers import AdvocateParalegalAssignmentSerializer
+        
+        user = request.user
+        paralegal_id = request.data.get('paralegal_id')
+        advocate_id = request.data.get('advocate_id')
+        
+        # If advocate is making the request, they can only assign to themselves
+        if user.user_type == 'advocate':
+            advocate_id = user.id
+        elif user.user_type not in ['super_admin', 'admin']:
+            return Response(
+                {'error': 'Only Advocate, Super Admin, or Admin can assign paralegals'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if not paralegal_id:
+            return Response({'error': 'paralegal_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not advocate_id:
+            return Response({'error': 'advocate_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            paralegal = CustomUser.objects.get(id=paralegal_id, user_type='paralegal')
+            advocate = CustomUser.objects.get(id=advocate_id, user_type='advocate')
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'Paralegal or Advocate not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        firm = user.firm
+        if not firm:
+            return Response({'error': 'You must be associated with a firm'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if both are in the same firm
+        if not UserFirmRole.objects.filter(user=paralegal, firm=firm).exists():
+            return Response({'error': 'Paralegal is not part of your firm'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not UserFirmRole.objects.filter(user=advocate, firm=firm).exists():
+            return Response({'error': 'Advocate is not part of your firm'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create or update assignment
+        assignment, created = AdvocateParalegalAssignment.objects.get_or_create(
+            advocate=advocate,
+            paralegal=paralegal,
+            firm=firm,
+            defaults={'assigned_by': user, 'is_active': True}
+        )
+        
+        if not created:
+            assignment.is_active = True
+            assignment.assigned_by = user
+            assignment.save()
+        
+        log_audit(user, 'assign_paralegal', f'Assigned {paralegal.get_full_name()} to {advocate.get_full_name()}')
+        
+        serializer = AdvocateParalegalAssignmentSerializer(assignment)
+        return Response({
+            'assignment': serializer.data,
+            'message': f'Paralegal assigned successfully'
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_name='unassign_paralegal')
+    def unassign_paralegal(self, request):
+        """Unassign a paralegal from an advocate"""
+        from .models import AdvocateParalegalAssignment
+        
+        user = request.user
+        assignment_id = request.data.get('assignment_id')
+        
+        if not assignment_id:
+            return Response({'error': 'assignment_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            assignment = AdvocateParalegalAssignment.objects.get(id=assignment_id)
+        except AdvocateParalegalAssignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check permissions
+        if user.user_type == 'advocate' and assignment.advocate.id != user.id:
+            return Response({'error': 'You can only unassign paralegals from yourself'}, status=status.HTTP_403_FORBIDDEN)
+        elif user.user_type not in ['advocate', 'super_admin', 'admin']:
+            return Response({'error': 'Insufficient permissions'}, status=status.HTTP_403_FORBIDDEN)
+        
+        assignment.is_active = False
+        assignment.save()
+        
+        log_audit(user, 'unassign_paralegal', f'Unassigned {assignment.paralegal.get_full_name()} from {assignment.advocate.get_full_name()}')
+        
+        return Response({'message': 'Paralegal unassigned successfully'}, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated], url_name='my_paralegals')
+    def my_paralegals(self, request):
+        """Get paralegals assigned to the logged-in advocate"""
+        from .models import AdvocateParalegalAssignment
+        from .serializers import AdvocateParalegalAssignmentSerializer
+        
+        user = request.user
+        
+        if user.user_type != 'advocate':
+            return Response({'error': 'Only advocates can view their assigned paralegals'}, status=status.HTTP_403_FORBIDDEN)
+        
+        assignments = AdvocateParalegalAssignment.objects.filter(
+            advocate=user,
+            is_active=True
+        )
+        
+        # Search
+        search = request.query_params.get('search', None)
+        if search:
+            assignments = assignments.filter(
+                Q(paralegal__first_name__icontains=search) |
+                Q(paralegal__last_name__icontains=search) |
+                Q(paralegal__email__icontains=search) |
+                Q(paralegal__phone_number__icontains=search)
+            )
+        
+        # Pagination
+        from rest_framework.pagination import PageNumberPagination
+        paginator = PageNumberPagination()
+        paginator.page_size = 20
+        result_page = paginator.paginate_queryset(assignments, request)
+        serializer = AdvocateParalegalAssignmentSerializer(result_page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+    
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated], url_name='my_advocates')
+    def my_advocates(self, request):
+        """Get advocates that the logged-in paralegal is assigned to"""
+        from .models import AdvocateParalegalAssignment
+        from .serializers import AdvocateParalegalAssignmentSerializer
+        
+        user = request.user
+        
+        if user.user_type != 'paralegal':
+            return Response({'error': 'Only paralegals can view their assigned advocates'}, status=status.HTTP_403_FORBIDDEN)
+        
+        assignments = AdvocateParalegalAssignment.objects.filter(
+            paralegal=user,
+            is_active=True
+        )
+        
+        # Search
+        search = request.query_params.get('search', None)
+        if search:
+            assignments = assignments.filter(
+                Q(advocate__first_name__icontains=search) |
+                Q(advocate__last_name__icontains=search) |
+                Q(advocate__email__icontains=search) |
+                Q(advocate__phone_number__icontains=search)
+            )
+        
+        # Pagination
+        from rest_framework.pagination import PageNumberPagination
+        paginator = PageNumberPagination()
+        paginator.page_size = 20
+        result_page = paginator.paginate_queryset(assignments, request)
+        serializer = AdvocateParalegalAssignmentSerializer(result_page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+    
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated], url_name='all_advocates')
+    def all_advocates(self, request):
+        """Get all advocates across the platform (for Super Admin/Admin to add to their firm)"""
+        user = request.user
+        
+        if user.user_type not in ['super_admin', 'admin', 'platform_owner']:
+            return Response(
+                {'error': 'Only Super Admin, Admin, or Platform Owner can view all advocates'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get all advocates
+        advocates = CustomUser.objects.filter(user_type='advocate')
+        
+        # If Super Admin/Admin, exclude advocates already in their firm
+        if user.user_type in ['super_admin', 'admin'] and user.firm:
+            # Get advocates not in this firm
+            advocates_in_firm = UserFirmRole.objects.filter(
+                firm=user.firm,
+                user_type='advocate'
+            ).values_list('user_id', flat=True)
+            
+            advocates = advocates.exclude(id__in=advocates_in_firm)
+        
+        # Search functionality
+        search = request.query_params.get('search', None)
+        if search:
+            advocates = advocates.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(phone_number__icontains=search) |
+                Q(bar_council_registration__icontains=search) |
+                Q(city__icontains=search) |
+                Q(state__icontains=search)
+            )
+        
+        # Pagination
+        from rest_framework.pagination import PageNumberPagination
+        paginator = PageNumberPagination()
+        paginator.page_size = 20
+        result_page = paginator.paginate_queryset(advocates, request)
+        serializer = CustomUserSerializer(result_page, many=True, context={'request': request})
+        return paginator.get_paginated_response(serializer.data)
 
 
 class AuthenticationViewSet(viewsets.ViewSet):
