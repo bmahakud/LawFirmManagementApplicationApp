@@ -12,15 +12,19 @@ import {
   ArrowDownLeft,
   CheckCircle2,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Plus
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { MOCK_PROFESSIONAL_INVOICES } from './mock-data';
 import { Badge, MetricCard, Panel, SearchBar } from './ui';
+import { TimeEntry } from '@/hooks/useTimeEntries';
 
 interface ProfessionalBillingHubProps {
   role?: 'super-admin' | 'admin';
   isLoading?: boolean;
+  entries?: TimeEntry[];
+  onAddEntry?: () => void;
+  onEntryClick?: (id: string) => void;
 }
 
 const STATUS_MAP = {
@@ -30,15 +34,22 @@ const STATUS_MAP = {
   draft: { tone: 'info' as const, icon: <FileText className="w-3.5 h-3.5" /> },
 };
 
-export default function ProfessionalBillingHub({ role = 'admin', isLoading = false }: ProfessionalBillingHubProps) {
+export default function ProfessionalBillingHub({ 
+  role = 'admin', 
+  isLoading = false,
+  entries = [],
+  onAddEntry,
+  onEntryClick,
+}: ProfessionalBillingHubProps) {
   const [query, setQuery] = useState('');
 
-  const filteredInvoices = useMemo(() => {
-    return MOCK_PROFESSIONAL_INVOICES.filter(inv => 
-      inv.client.toLowerCase().includes(query.toLowerCase()) || 
-      inv.id.toLowerCase().includes(query.toLowerCase())
+  const filteredEntries = useMemo(() => {
+    return (entries || []).filter(entry => 
+      (entry.case_title || '').toLowerCase().includes(query.toLowerCase()) || 
+      (entry.user_name || '').toLowerCase().includes(query.toLowerCase()) ||
+      (entry.description || '').toLowerCase().includes(query.toLowerCase())
     );
-  }, [query]);
+  }, [entries, query]);
 
   if (isLoading) {
     return (
@@ -65,11 +76,11 @@ export default function ProfessionalBillingHub({ role = 'admin', isLoading = fal
         {/* Main Ledger */}
         <div className="space-y-6">
           <Panel 
-            title="Professional Invoice Ledger" 
-            subtitle="Manage client billing, track payments, and export documentation."
+            title="Time Entries Ledger" 
+            subtitle="Manage billable hours, track case activities, and generate invoices."
             actions={
               <div className="flex items-center gap-3">
-                <SearchBar placeholder="Search invoices or clients..." value={query} onChange={setQuery} />
+                <SearchBar placeholder="Search entries, cases, or personnel..." value={query} onChange={setQuery} />
                 <button className="p-2 rounded-xl border border-gray-100 hover:bg-gray-50 text-gray-500 transition-all">
                   <Filter className="w-4 h-4" />
                 </button>
@@ -80,55 +91,53 @@ export default function ProfessionalBillingHub({ role = 'admin', isLoading = fal
               <table className="w-full min-w-[800px] text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50/50 border-y border-gray-100">
-                    <th className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Invoice</th>
-                    <th className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Entity</th>
-                    <th className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Amount</th>
+                    <th className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Entry Date</th>
+                    <th className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Case & Activity</th>
+                    <th className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Logged By</th>
                     <th className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest text-center">Status</th>
-                    <th className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Due Date</th>
-                    <th className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                    <th className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest text-right">Hours / Amount</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filteredInvoices.map((inv) => (
+                  {filteredEntries.map((entry) => (
                     <motion.tr 
-                      key={inv.id} 
-                      className="group hover:bg-gray-50/50 transition-colors"
+                      key={entry.id} 
+                      onClick={() => onEntryClick && onEntryClick(entry.id)}
+                      className="group hover:bg-gray-50/50 transition-colors cursor-pointer"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                     >
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
-                          <span className="text-sm font-bold text-gray-900 group-hover:text-[#0e2340] transition-colors">{inv.id}</span>
-                          <span className="text-[11px] text-gray-400 font-medium">Issue: {inv.date}</span>
+                          <span className="text-sm font-bold text-gray-900 group-hover:text-[#0e2340] transition-colors">{entry.date}</span>
+                          <span className="text-[11px] text-gray-400 font-medium uppercase">{entry.billable ? 'Billable' : 'Non-Billable'}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
-                          <span className="text-sm font-bold text-gray-800">{inv.client}</span>
-                          <span className="text-[11px] text-gray-400 font-medium">{inv.matter || 'General Retainer'}</span>
+                          <span className="text-sm font-bold text-gray-800">{entry.case_title || 'General Ad-hoc'}</span>
+                          <span className="text-[11px] text-gray-400 font-medium uppercase">{entry.activity_type.replace('_', ' ')}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 font-bold text-sm text-gray-700">{inv.amount}</td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm font-bold text-gray-700">{entry.user_name}</span>
+                      </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center">
-                          <Badge label={inv.status.toUpperCase()} tone={STATUS_MAP[inv.status].tone} />
+                          <Badge 
+                            label={entry.status.toUpperCase()} 
+                            tone={
+                               entry.status === 'submitted' ? 'info' :
+                               entry.status === 'approved' ? 'success' :
+                               entry.status === 'invoiced' ? 'warning' : 'neutral'
+                            } 
+                          />
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[13px] font-bold ${inv.status === 'overdue' ? 'text-red-500' : 'text-gray-500'}`}>
-                            {inv.due}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button className="p-2 rounded-xl text-gray-400 hover:text-[#0e2340] hover:bg-white border border-transparent hover:border-gray-100 transition-all shadow-sm">
-                            <Download className="w-4 h-4" />
-                          </button>
-                          <button className="p-2 rounded-xl text-gray-400 hover:text-[#0e2340] hover:bg-white border border-transparent hover:border-gray-100 transition-all shadow-sm">
-                            <Send className="w-4 h-4" />
-                          </button>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex flex-col items-end">
+                           <span className="font-bold text-sm text-gray-900">₹ {entry.amount || '0.00'}</span>
+                           <span className="text-[11px] text-gray-500 font-bold">{entry.hours} hrs @ ₹{entry.hourly_rate}/hr</span>
                         </div>
                       </td>
                     </motion.tr>
@@ -143,9 +152,9 @@ export default function ProfessionalBillingHub({ role = 'admin', isLoading = fal
         <div className="space-y-6">
           <Panel title="Quick Actions" subtitle="System controls">
             <div className="space-y-3">
-              <button className="w-full p-4 rounded-2xl bg-[#0e2340] text-white flex items-center justify-between group hover:shadow-xl hover:shadow-[#0e2340]/20 transition-all">
-                <span className="text-sm font-bold">Create Invoice</span>
-                <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              <button onClick={onAddEntry} className="w-full p-4 rounded-2xl bg-[#0e2340] text-white flex items-center justify-between group hover:shadow-xl hover:shadow-[#0e2340]/20 transition-all">
+                <span className="text-sm font-bold">Log Time Entry</span>
+                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
               </button>
               <button className="w-full p-4 rounded-2xl border border-gray-100 hover:bg-gray-50 text-gray-700 flex items-center justify-between group transition-all">
                 <span className="text-sm font-bold">Remittance Report</span>

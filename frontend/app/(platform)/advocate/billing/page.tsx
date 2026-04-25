@@ -46,11 +46,11 @@ export default function SuperAdminBillingPage() {
       )}
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
         <ProfessionalBillingHub 
-          role="super-admin" 
+          role="advocate" 
           isLoading={loading} 
           entries={entries}
-          onAddEntry={() => router.push('/super-admin/billing/log-time')}
-          onEntryClick={(id) => router.push(`/super-admin/billing/entries/${id}`)}
+          onAddEntry={() => router.push('/advocate/billing/log-time')}
+          onEntryClick={(id) => router.push(`/advocate/billing/entries/${id}`)}
         />
       </div>
     </div>

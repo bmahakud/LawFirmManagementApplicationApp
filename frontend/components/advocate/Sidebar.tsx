@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Scale, LayoutDashboard, Briefcase, FileText,
   Calendar, MessageSquare, LogOut, ChevronRight, PenTool, Users, Plus,
-  UserCheck, Settings, X
+  UserCheck, Settings, X, IndianRupee
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTopbar } from '@/components/platform/TopbarContext';
@@ -20,6 +20,7 @@ const navItems = [
   { label: 'Documents',    path: '/advocate/documents', icon: FileText },
   { label: 'Drafting',     path: '/advocate/drafting',  icon: PenTool },
   { label: 'Calendar',     path: '/advocate/calendar',  icon: Calendar },
+  { label: 'Time & Billing', path: '/advocate/billing', icon: IndianRupee },
   { label: 'Client Chat',  path: '/advocate/chat',      icon: MessageSquare },
 ];
 

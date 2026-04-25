@@ -84,6 +84,15 @@ export const API = {
     DETAIL: (id: string) => `/api/calendar/events/${id}/`,
     MARK_COMPLETED: (id: string) => `/api/calendar/events/${id}/mark_completed/`,
     CANCEL: (id: string) => `/api/calendar/events/${id}/cancel/`
+  },
+  BILLING: {
+    TIME_ENTRIES: {
+      LIST: "/api/billing/time-entries/",
+      CREATE: "/api/billing/time-entries/",
+      DETAIL: (id: string) => `/api/billing/time-entries/${id}/`,
+      MY_ENTRIES: (startDate: string, endDate: string) => `/api/billing/time-entries/my_entries/?start_date=${startDate}&end_date=${endDate}`,
+      UNBILLED: "/api/billing/time-entries/unbilled/",
+    }
   }
 };
 
