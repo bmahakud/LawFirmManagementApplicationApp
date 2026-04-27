@@ -882,7 +882,6 @@ class FinanceOverviewViewSet(viewsets.ViewSet):
             'client__id',
             'client__first_name',
             'client__last_name',
-            'client__company_name'
         ).annotate(
             total_revenue=Sum('total_amount'),
             invoice_count=Count('id')
@@ -891,7 +890,7 @@ class FinanceOverviewViewSet(viewsets.ViewSet):
         top_clients_data = [
             {
                 'client_id': str(client['client__id']),
-                'client_name': client['client__company_name'] or f"{client['client__first_name']} {client['client__last_name']}",
+                'client_name': f"{client['client__first_name']} {client['client__last_name']}".strip(),
                 'revenue': float(client['total_revenue']),
                 'invoice_count': client['invoice_count'],
                 'percentage': float((client['total_revenue'] / total_revenue * 100) if total_revenue > 0 else 0)
