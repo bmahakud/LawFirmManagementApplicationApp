@@ -1,0 +1,501 @@
+{
+  "info": {
+    "name": "Platform Invoices APIs",
+    "description": "Platform Owner bills Firms for subscription fees - Complete API collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://antlegal.anthemgt.com",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "firm_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "plan_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "invoice_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Create Platform Invoice",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"firm\": \"{{firm_id}}\",\n  \"subscription_plan\": \"{{plan_id}}\",\n  \"invoice_date\": \"2024-05-01\",\n  \"due_date\": \"2024-05-31\",\n  \"period_start\": \"2024-05-01\",\n  \"period_end\": \"2024-05-31\",\n  \"plan_amount\": \"2499.00\",\n  \"tax_percentage\": \"18.00\",\n  \"notes\": \"Monthly subscription for May 2024\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", ""]
+        },
+        "description": "Create a new platform invoice. Only Platform Owner can create.\n\nAuto-generated:\n- invoice_number (PLAT-2024-001)\n- tax_amount (calculated)\n- total_amount (calculated)\n- balance_due (calculated)"
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firm\": \"firm-uuid\",\n  \"subscription_plan\": \"plan-uuid\",\n  \"invoice_date\": \"2024-05-01\",\n  \"due_date\": \"2024-05-31\",\n  \"period_start\": \"2024-05-01\",\n  \"period_end\": \"2024-05-31\",\n  \"plan_amount\": \"2499.00\",\n  \"tax_percentage\": \"18.00\",\n  \"notes\": \"Monthly subscription for May 2024\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/platform-invoices/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "platform-invoices", ""]
+            }
+          },
+          "status": "Created",
+          "code": 201,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"id\": \"uuid\",\n  \"invoice_number\": \"PLAT-2024-001\",\n  \"firm\": \"firm-uuid\",\n  \"firm_name\": \"ABC Law Firm\",\n  \"firm_email\": \"admin@abclawfirm.com\",\n  \"subscription_plan\": \"plan-uuid\",\n  \"plan_name\": \"Professional Plan\",\n  \"plan_type\": \"professional\",\n  \"invoice_date\": \"2024-05-01\",\n  \"due_date\": \"2024-05-31\",\n  \"period_start\": \"2024-05-01\",\n  \"period_end\": \"2024-05-31\",\n  \"plan_amount\": \"2499.00\",\n  \"tax_percentage\": \"18.00\",\n  \"tax_amount\": \"449.82\",\n  \"total_amount\": \"2948.82\",\n  \"paid_amount\": \"0.00\",\n  \"balance_due\": \"2948.82\",\n  \"status\": \"draft\",\n  \"payment_date\": null,\n  \"payment_method\": \"\",\n  \"transaction_id\": \"\",\n  \"payment_notes\": \"\",\n  \"notes\": \"Monthly subscription for May 2024\",\n  \"internal_notes\": \"\",\n  \"sent_date\": null,\n  \"created_by\": \"user-uuid\",\n  \"created_by_name\": \"Platform Admin\",\n  \"created_at\": \"2024-05-01T10:00:00Z\",\n  \"updated_at\": \"2024-05-01T10:00:00Z\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "2. List All Platform Invoices",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", ""]
+        },
+        "description": "List all platform invoices.\n\nPlatform Owner: Sees all invoices\nFirm Admins: Sees only their firm's invoices"
+      }
+    },
+    {
+      "name": "3. Filter Invoices by Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/?status=sent",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", ""],
+          "query": [
+            {
+              "key": "status",
+              "value": "sent",
+              "description": "Status: draft, sent, paid, overdue, cancelled"
+            }
+          ]
+        },
+        "description": "Filter invoices by status"
+      }
+    },
+    {
+      "name": "4. Filter Invoices by Firm",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/?firm={{firm_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", ""],
+          "query": [
+            {
+              "key": "firm",
+              "value": "{{firm_id}}",
+              "description": "Platform Owner only"
+            }
+          ]
+        },
+        "description": "Filter invoices by firm (Platform Owner only)"
+      }
+    },
+    {
+      "name": "5. Search Invoices",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/?search=ABC",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", ""],
+          "query": [
+            {
+              "key": "search",
+              "value": "ABC",
+              "description": "Search by invoice number or firm name"
+            }
+          ]
+        },
+        "description": "Search invoices by invoice number or firm name"
+      }
+    },
+    {
+      "name": "6. Get Invoice Details",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{invoice_id}}/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", "{{invoice_id}}", ""]
+        },
+        "description": "Get detailed invoice information"
+      }
+    },
+    {
+      "name": "7. Update Invoice",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"due_date\": \"2024-06-15\",\n  \"notes\": \"Updated payment terms - extended due date\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{invoice_id}}/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", "{{invoice_id}}", ""]
+        },
+        "description": "Update invoice. Platform Owner only. Cannot update paid invoices."
+      }
+    },
+    {
+      "name": "8. Send Invoice to Firm",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{invoice_id}}/send/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", "{{invoice_id}}", "send", ""]
+        },
+        "description": "Send invoice to firm. Changes status to 'sent' and records sent_date."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{invoice_id}}/send/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "platform-invoices", "{{invoice_id}}", "send", ""]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"message\": \"Invoice sent successfully\",\n  \"invoice\": {\n    \"id\": \"uuid\",\n    \"invoice_number\": \"PLAT-2024-001\",\n    \"status\": \"sent\",\n    \"sent_date\": \"2024-05-01T10:30:00Z\"\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "9. Mark Invoice as Paid",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": \"2948.82\",\n  \"payment_method\": \"bank_transfer\",\n  \"transaction_id\": \"NEFT123456\",\n  \"payment_date\": \"2024-05-15\",\n  \"payment_notes\": \"Payment received via NEFT\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{invoice_id}}/mark_paid/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", "{{invoice_id}}", "mark_paid", ""]
+        },
+        "description": "Mark invoice as paid. Amount must match invoice total.\n\nPayment methods: bank_transfer, upi, card, cheque, online, other"
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"2948.82\",\n  \"payment_method\": \"bank_transfer\",\n  \"transaction_id\": \"NEFT123456\",\n  \"payment_date\": \"2024-05-15\",\n  \"payment_notes\": \"Payment received via NEFT\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{invoice_id}}/mark_paid/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "platform-invoices", "{{invoice_id}}", "mark_paid", ""]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"message\": \"Invoice marked as paid successfully\",\n  \"invoice\": {\n    \"id\": \"uuid\",\n    \"invoice_number\": \"PLAT-2024-001\",\n    \"status\": \"paid\",\n    \"paid_amount\": \"2948.82\",\n    \"balance_due\": \"0.00\",\n    \"payment_date\": \"2024-05-15\",\n    \"payment_method\": \"bank_transfer\",\n    \"transaction_id\": \"NEFT123456\"\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "10. Cancel Invoice",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reason\": \"Subscription cancelled by firm\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{invoice_id}}/cancel/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", "{{invoice_id}}", "cancel", ""]
+        },
+        "description": "Cancel invoice. Cannot cancel paid invoices."
+      }
+    },
+    {
+      "name": "11. Delete Invoice",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{invoice_id}}/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", "{{invoice_id}}", ""]
+        },
+        "description": "Delete invoice. Platform Owner only. Cannot delete paid invoices."
+      }
+    },
+    {
+      "name": "12. Get My Firm's Invoices",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/my_invoices/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", "my_invoices", ""]
+        },
+        "description": "Get invoices for current user's firm. Firm Admins can use this to see what they owe to platform."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/platform-invoices/my_invoices/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "platform-invoices", "my_invoices", ""]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "[\n  {\n    \"id\": \"uuid\",\n    \"invoice_number\": \"PLAT-2024-001\",\n    \"invoice_date\": \"2024-05-01\",\n    \"due_date\": \"2024-05-31\",\n    \"plan_name\": \"Professional Plan\",\n    \"total_amount\": \"2948.82\",\n    \"paid_amount\": \"0.00\",\n    \"balance_due\": \"2948.82\",\n    \"status\": \"sent\",\n    \"period_start\": \"2024-05-01\",\n    \"period_end\": \"2024-05-31\"\n  }\n]"
+        }
+      ]
+    },
+    {
+      "name": "13. Get My Firm's Pending Invoices",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/my_invoices/?status=sent",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", "my_invoices", ""],
+          "query": [
+            {
+              "key": "status",
+              "value": "sent",
+              "description": "Filter by status"
+            }
+          ]
+        },
+        "description": "Get pending invoices for current firm"
+      }
+    },
+    {
+      "name": "14. Get Platform Statistics",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/subscriptions/platform-invoices/stats/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscriptions", "platform-invoices", "stats", ""]
+        },
+        "description": "Get platform invoice statistics. Platform Owner only."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/platform-invoices/stats/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "platform-invoices", "stats", ""]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"total_invoiced\": \"50000.00\",\n  \"total_paid\": \"30000.00\",\n  \"total_outstanding\": \"20000.00\",\n  \"overdue_count\": 3,\n  \"total_invoices\": 20,\n  \"paid_invoices\": 12,\n  \"pending_invoices\": 5\n}"
+        }
+      ]
+    }
+  ]
+}

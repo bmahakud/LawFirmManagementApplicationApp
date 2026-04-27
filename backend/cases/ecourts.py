@@ -11,10 +11,9 @@ logger = logging.getLogger(__name__)
 class ECourtService:
     """Service class for E-Courts India API integration"""
     
-    BASE_URL = "https://apis.akshit.net/eciapi/17"
-    
     def __init__(self):
-        self.api_key = getattr(settings, 'ECOURTS_API_KEY', 'ECIAPI-ziaB8ExvjMEHTIK9twWxOCOIMnnhk7Z4')
+        self.api_key = settings.ECOURTS_API_KEY
+        self.base_url = settings.ECOURTS_BASE_URL
     
     def _make_request(self, endpoint, payload):
         """
@@ -27,7 +26,7 @@ class ECourtService:
         Returns:
             dict: API response
         """
-        url = f"{self.BASE_URL}/{endpoint}"
+        url = f"{self.base_url}/{endpoint}"
         
         headers = {
             'Authorization': self.api_key,

@@ -29,7 +29,7 @@ class TimeEntry(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     firm = models.ForeignKey('firms.Firm', on_delete=models.CASCADE, related_name='time_entries')
-    case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, related_name='time_entries')
+    case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, related_name='time_entries', null=True, blank=True)
     user = models.ForeignKey('accounts.CustomUser', on_delete=models.CASCADE, related_name='time_entries')
     
     date = models.DateField()
@@ -44,6 +44,7 @@ class TimeEntry(models.Model):
     
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     invoice = models.ForeignKey('Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='time_entries')
+    advocate_invoice = models.ForeignKey('AdvocateInvoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='time_entries')
     
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -94,7 +95,7 @@ class Expense(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     firm = models.ForeignKey('firms.Firm', on_delete=models.CASCADE, related_name='expenses')
-    case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, related_name='expenses')
+    case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, related_name='expenses', null=True, blank=True)
     submitted_by = models.ForeignKey('accounts.CustomUser', on_delete=models.CASCADE, related_name='submitted_expenses')
     
     date = models.DateField()
@@ -158,7 +159,8 @@ class Invoice(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     firm = models.ForeignKey('firms.Firm', on_delete=models.CASCADE, related_name='invoices')
-    case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, related_name='invoices')
+    branch = models.ForeignKey('firms.Branch', on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
+    case = models.ForeignKey('cases.Case', on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
     client = models.ForeignKey('clients.Client', on_delete=models.CASCADE, related_name='invoices')
     
     invoice_number = models.CharField(max_length=50, unique=True)
@@ -226,6 +228,15 @@ class Invoice(models.Model):
             self.status = 'overdue'
         
         self.save()
+    
+    def save(self, *args, **kwargs):
+        # Auto-assign branch from case if not provided
+        if not self.branch and self.case and self.case.branch:
+            self.branch = self.case.branch
+        # If still no branch and created_by has branch, use that
+        elif not self.branch and hasattr(self, '_created_by_user') and hasattr(self._created_by_user, 'branch'):
+            self.branch = self._created_by_user.branch
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"Invoice {self.invoice_number} - {self.client.get_full_name()}"
@@ -331,3 +342,130 @@ class TrustAccount(models.Model):
     
     def __str__(self):
         return f"{self.transaction_type} - {self.amount} for {self.client.get_full_name()}"
+
+
+
+class AdvocateInvoice(models.Model):
+    """
+    Invoices from Advocates to Firm for their services.
+    Advocates bill the firm for their work (time entries).
+    """
+    
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('submitted', 'Submitted'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('paid', 'Paid'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    firm = models.ForeignKey('firms.Firm', on_delete=models.CASCADE, related_name='advocate_invoices')
+    advocate = models.ForeignKey('accounts.CustomUser', on_delete=models.CASCADE, related_name='advocate_invoices')
+    
+    invoice_number = models.CharField(max_length=50, unique=True)
+    invoice_date = models.DateField(default=timezone.now)
+    
+    # Billing period
+    period_start = models.DateField(help_text="Start date of billing period")
+    period_end = models.DateField(help_text="End date of billing period")
+    
+    # Amounts
+    subtotal = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        default=0,
+        help_text="Total from time entries"
+    )
+    tax_percentage = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=0,
+        help_text="Tax percentage if applicable"
+    )
+    tax_amount = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        default=0
+    )
+    total_amount = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        help_text="Total amount to be paid"
+    )
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    
+    # Approval
+    approved_by = models.ForeignKey(
+        'accounts.CustomUser', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='approved_advocate_invoices'
+    )
+    approved_date = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True)
+    
+    # Payment
+    paid_date = models.DateTimeField(null=True, blank=True)
+    payment_method = models.CharField(max_length=50, blank=True)
+    payment_reference = models.CharField(max_length=100, blank=True)
+    
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-invoice_date', '-created_at']
+        indexes = [
+            models.Index(fields=['firm', 'advocate', 'status']),
+            models.Index(fields=['invoice_number']),
+            models.Index(fields=['invoice_date']),
+        ]
+    
+    def calculate_totals(self):
+        """Calculate invoice totals from linked time entries"""
+        # Sum time entries linked to this invoice
+        time_total = self.time_entries.filter(billable=True).aggregate(
+            total=models.Sum('amount')
+        )['total'] or Decimal('0')
+        
+        self.subtotal = time_total
+        self.tax_amount = self.subtotal * (self.tax_percentage / 100)
+        self.total_amount = self.subtotal + self.tax_amount
+        self.save()
+    
+    def save(self, *args, **kwargs):
+        # Auto-calculate amounts if not already set
+        if not self.total_amount or self.total_amount == 0:
+            if self.subtotal and self.tax_percentage is not None:
+                self.tax_amount = self.subtotal * (self.tax_percentage / 100)
+                self.total_amount = self.subtotal + self.tax_amount
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"Advocate Invoice {self.invoice_number} - {self.advocate.get_full_name()}"
+    
+    def approve(self, approved_by_user):
+        """Approve the invoice"""
+        self.status = 'approved'
+        self.approved_by = approved_by_user
+        self.approved_date = timezone.now()
+        self.save()
+    
+    def reject(self, rejected_by_user, reason):
+        """Reject the invoice"""
+        self.status = 'rejected'
+        self.approved_by = rejected_by_user
+        self.approved_date = timezone.now()
+        self.rejection_reason = reason
+        self.save()
+    
+    def mark_as_paid(self, payment_method, payment_reference=''):
+        """Mark invoice as paid"""
+        self.status = 'paid'
+        self.paid_date = timezone.now()
+        self.payment_method = payment_method
+        self.payment_reference = payment_reference
+        self.save()

@@ -49,6 +49,11 @@
       "key": "trust_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "branch_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -538,6 +543,130 @@
               "path": ["api", "billing", "invoices", "stats", ""]
             },
             "description": "Get statistics: total invoiced, paid, outstanding, overdue count"
+          }
+        },
+        {
+          "name": "Filter Invoices by Branch",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/billing/invoices/?branch={{branch_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "billing", "invoices", ""],
+              "query": [
+                {
+                  "key": "branch",
+                  "value": "{{branch_id}}",
+                  "description": "Filter invoices by branch ID"
+                }
+              ]
+            },
+            "description": "Get invoices filtered by specific branch. Branch is auto-assigned from case or user."
+          }
+        },
+        {
+          "name": "Branch-wise Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/billing/invoices/branch_stats/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "billing", "invoices", "branch_stats", ""]
+            },
+            "description": "Get branch-wise invoice statistics including revenue, invoices count, payments, and outstanding amounts per branch. Only accessible by super_admin, admin, and platform_owner."
+          },
+          "response": [
+            {
+              "name": "Branch Stats Example",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Token {{auth_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/billing/invoices/branch_stats/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "billing", "invoices", "branch_stats", ""]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"branches\": [\n    {\n      \"branch_id\": \"uuid-here\",\n      \"branch_name\": \"Mumbai Branch\",\n      \"branch_code\": \"MUM\",\n      \"city\": \"Mumbai\",\n      \"total_invoices\": 50,\n      \"total_revenue\": 500000.00,\n      \"total_paid\": 300000.00,\n      \"total_outstanding\": 200000.00,\n      \"paid_invoices\": 30,\n      \"overdue_invoices\": 5\n    },\n    {\n      \"branch_id\": \"uuid-here\",\n      \"branch_name\": \"Delhi Branch\",\n      \"branch_code\": \"DEL\",\n      \"city\": \"Delhi\",\n      \"total_invoices\": 30,\n      \"total_revenue\": 300000.00,\n      \"total_paid\": 200000.00,\n      \"total_outstanding\": 100000.00,\n      \"paid_invoices\": 20,\n      \"overdue_invoices\": 3\n    }\n  ],\n  \"total_branches\": 2\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Invoice (with Branch Auto-assign)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"case\": \"{{case_id}}\",\n  \"client\": \"{{client_id}}\",\n  \"invoice_date\": \"2024-05-20\",\n  \"due_date\": \"2024-06-20\",\n  \"tax_percentage\": 18,\n  \"discount_amount\": 0,\n  \"notes\": \"Branch will be auto-assigned from case or user\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/billing/invoices/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "billing", "invoices", ""]
+            },
+            "description": "Create invoice with automatic branch assignment. If case has branch, invoice gets that branch. Otherwise, invoice gets user's branch. No need to manually specify branch."
+          }
+        },
+        {
+          "name": "Create Invoice (Direct Client - No Case)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"case\": null,\n  \"client\": \"{{client_id}}\",\n  \"invoice_date\": \"2024-05-20\",\n  \"due_date\": \"2024-06-20\",\n  \"tax_percentage\": 18,\n  \"discount_amount\": 0,\n  \"notes\": \"Direct client billing without case. Branch auto-assigned from user.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/billing/invoices/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "billing", "invoices", ""]
+            },
+            "description": "Create invoice without case (direct client billing). Branch is auto-assigned from the user creating the invoice."
           }
         }
       ]

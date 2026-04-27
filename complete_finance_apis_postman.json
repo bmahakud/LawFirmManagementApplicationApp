@@ -1,0 +1,670 @@
+{
+  "info": {
+    "name": "Finance Section - All APIs (57 Endpoints)",
+    "description": "Complete Finance APIs: Overview Dashboard, Client Invoices, Platform Invoices, Advocate Invoices, Time Entries, Expenses, Payments, Trust Accounts",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://antlegal.anthemgt.com", "type": "string" },
+    { "key": "auth_token", "value": "", "type": "string" },
+    { "key": "firm_id", "value": "", "type": "string" },
+    { "key": "branch_id", "value": "", "type": "string" },
+    { "key": "plan_id", "value": "", "type": "string" },
+    { "key": "client_id", "value": "", "type": "string" },
+    { "key": "case_id", "value": "", "type": "string" },
+    { "key": "invoice_id", "value": "", "type": "string" },
+    { "key": "platform_invoice_id", "value": "", "type": "string" },
+    { "key": "advocate_invoice_id", "value": "", "type": "string" },
+    { "key": "time_entry_id", "value": "", "type": "string" },
+    { "key": "expense_id", "value": "", "type": "string" },
+    { "key": "payment_id", "value": "", "type": "string" },
+    { "key": "trust_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Finance Overview Dashboard",
+      "item": [
+        {
+          "name": "Get Complete Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/billing/finance-overview/dashboard/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "billing", "finance-overview", "dashboard", ""]
+            },
+            "description": "Returns: Total Revenue, Net Profit, Pending Invoices, Outstanding Payouts, Revenue & Expenses Chart (6 months), Top 5 Clients, Outstanding Invoices, Recent Invoices, Recent Payouts, Subscription Info.\n\nUser-specific:\n- Platform Owner: All firms data\n- Super Admin/Admin: Their firm only\n- Advocate: Their cases only\n- Client: Their invoices only"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Client Invoices",
+      "item": [
+        {
+          "name": "Create Invoice (with Case)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"case\": \"{{case_id}}\",\n  \"client\": \"{{client_id}}\",\n  \"invoice_date\": \"2024-05-20\",\n  \"due_date\": \"2024-06-20\",\n  \"tax_percentage\": 18,\n  \"discount_amount\": 0,\n  \"notes\": \"Invoice for legal services\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/invoices/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", ""] },
+            "description": "Branch auto-assigned from case. Invoice number auto-generated."
+          }
+        },
+        {
+          "name": "Create Invoice (Direct - No Case)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"case\": null,\n  \"client\": \"{{client_id}}\",\n  \"invoice_date\": \"2024-05-20\",\n  \"due_date\": \"2024-06-20\",\n  \"tax_percentage\": 18,\n  \"discount_amount\": 0,\n  \"notes\": \"Direct client billing - consultation fee\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/invoices/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", ""] },
+            "description": "Bill client without a case. Branch auto-assigned from user."
+          }
+        },
+        {
+          "name": "List All Invoices",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/invoices/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", ""] }
+          }
+        },
+        {
+          "name": "Filter Invoices by Branch",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/billing/invoices/?branch={{branch_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "billing", "invoices", ""],
+              "query": [{ "key": "branch", "value": "{{branch_id}}" }]
+            }
+          }
+        },
+        {
+          "name": "Get Invoice Details",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/invoices/{{invoice_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", "{{invoice_id}}", ""] }
+          }
+        },
+        {
+          "name": "Update Invoice",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"discount_amount\": 1000,\n  \"notes\": \"Updated notes\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/invoices/{{invoice_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", "{{invoice_id}}", ""] }
+          }
+        },
+        {
+          "name": "Delete Invoice",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/invoices/{{invoice_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", "{{invoice_id}}", ""] }
+          }
+        },
+        {
+          "name": "Calculate Invoice Totals",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/invoices/{{invoice_id}}/calculate/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", "{{invoice_id}}", "calculate", ""] },
+            "description": "Recalculate totals from linked time entries and expenses"
+          }
+        },
+        {
+          "name": "Send Invoice to Client",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/invoices/{{invoice_id}}/send/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", "{{invoice_id}}", "send", ""] }
+          }
+        },
+        {
+          "name": "Mark Invoice as Viewed",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/invoices/{{invoice_id}}/mark_viewed/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", "{{invoice_id}}", "mark_viewed", ""] }
+          }
+        },
+        {
+          "name": "Get Overdue Invoices",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/invoices/overdue/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", "overdue", ""] }
+          }
+        },
+        {
+          "name": "Get Unpaid Invoices",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/invoices/unpaid/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", "unpaid", ""] }
+          }
+        },
+        {
+          "name": "Invoice Statistics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/invoices/stats/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", "stats", ""] },
+            "description": "Returns: total_invoiced, total_paid, total_outstanding, overdue_count, total_invoices, paid_invoices"
+          }
+        },
+        {
+          "name": "Branch-wise Statistics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/invoices/branch_stats/", "host": ["{{base_url}}"], "path": ["api", "billing", "invoices", "branch_stats", ""] },
+            "description": "Returns revenue, invoices count, paid, outstanding per branch. Super Admin/Admin/Platform Owner only."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Platform Subscription Invoices",
+      "item": [
+        {
+          "name": "Create Platform Invoice",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"firm\": \"{{firm_id}}\",\n  \"subscription_plan\": \"{{plan_id}}\",\n  \"invoice_date\": \"2024-05-01\",\n  \"due_date\": \"2024-05-31\",\n  \"period_start\": \"2024-05-01\",\n  \"period_end\": \"2024-05-31\",\n  \"plan_amount\": \"2499.00\",\n  \"tax_percentage\": \"18.00\",\n  \"notes\": \"Monthly subscription for May 2024\"\n}" },
+            "url": { "raw": "{{base_url}}/api/subscriptions/platform-invoices/", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "platform-invoices", ""] },
+            "description": "Platform Owner only. Auto-generates: invoice_number (PLAT-2024-001), tax_amount, total_amount, balance_due"
+          }
+        },
+        {
+          "name": "List All Platform Invoices",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/subscriptions/platform-invoices/", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "platform-invoices", ""] },
+            "description": "Platform Owner: all invoices. Firm Admins: only their firm's invoices."
+          }
+        },
+        {
+          "name": "Filter by Status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/platform-invoices/?status=sent",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "platform-invoices", ""],
+              "query": [{ "key": "status", "value": "sent", "description": "draft | sent | paid | overdue | cancelled" }]
+            }
+          }
+        },
+        {
+          "name": "Filter by Firm",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/platform-invoices/?firm={{firm_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "platform-invoices", ""],
+              "query": [{ "key": "firm", "value": "{{firm_id}}" }]
+            }
+          }
+        },
+        {
+          "name": "Search Platform Invoices",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/platform-invoices/?search=ABC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "platform-invoices", ""],
+              "query": [{ "key": "search", "value": "ABC" }]
+            }
+          }
+        },
+        {
+          "name": "Get Platform Invoice Details",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{platform_invoice_id}}/", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "platform-invoices", "{{platform_invoice_id}}", ""] }
+          }
+        },
+        {
+          "name": "Update Platform Invoice",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"due_date\": \"2024-06-15\",\n  \"notes\": \"Extended due date\"\n}" },
+            "url": { "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{platform_invoice_id}}/", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "platform-invoices", "{{platform_invoice_id}}", ""] },
+            "description": "Cannot update paid invoices."
+          }
+        },
+        {
+          "name": "Delete Platform Invoice",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{platform_invoice_id}}/", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "platform-invoices", "{{platform_invoice_id}}", ""] },
+            "description": "Cannot delete paid invoices."
+          }
+        },
+        {
+          "name": "Send Invoice to Firm",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{platform_invoice_id}}/send/", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "platform-invoices", "{{platform_invoice_id}}", "send", ""] }
+          }
+        },
+        {
+          "name": "Mark Platform Invoice as Paid",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": \"2948.82\",\n  \"payment_method\": \"bank_transfer\",\n  \"transaction_id\": \"NEFT123456\",\n  \"payment_date\": \"2024-05-15\",\n  \"payment_notes\": \"Payment received via NEFT\"\n}" },
+            "url": { "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{platform_invoice_id}}/mark_paid/", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "platform-invoices", "{{platform_invoice_id}}", "mark_paid", ""] },
+            "description": "Amount must match invoice total. Payment methods: bank_transfer, upi, card, cheque, online, other"
+          }
+        },
+        {
+          "name": "Cancel Platform Invoice",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Subscription cancelled by firm\"\n}" },
+            "url": { "raw": "{{base_url}}/api/subscriptions/platform-invoices/{{platform_invoice_id}}/cancel/", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "platform-invoices", "{{platform_invoice_id}}", "cancel", ""] }
+          }
+        },
+        {
+          "name": "Get My Firm's Platform Invoices",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/subscriptions/platform-invoices/my_invoices/", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "platform-invoices", "my_invoices", ""] },
+            "description": "Firm Admins use this to see what they owe to platform owner."
+          }
+        },
+        {
+          "name": "Get My Firm's Pending Platform Invoices",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/subscriptions/platform-invoices/my_invoices/?status=sent",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscriptions", "platform-invoices", "my_invoices", ""],
+              "query": [{ "key": "status", "value": "sent" }]
+            }
+          }
+        },
+        {
+          "name": "Platform Invoice Statistics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/subscriptions/platform-invoices/stats/", "host": ["{{base_url}}"], "path": ["api", "subscriptions", "platform-invoices", "stats", ""] },
+            "description": "Platform Owner only. Returns: total_invoiced, total_paid, total_outstanding, overdue_count, total_invoices, paid_invoices, pending_invoices"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Advocate Invoices",
+      "item": [
+        {
+          "name": "Create Advocate Invoice",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"invoice_date\": \"2024-05-01\",\n  \"period_start\": \"2024-05-01\",\n  \"period_end\": \"2024-05-31\",\n  \"tax_percentage\": 0,\n  \"notes\": \"May 2024 billing\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", ""] },
+            "description": "Advocate only. Auto-generates invoice number (ADV-FIRM001-00001). Link time entries after creation."
+          }
+        },
+        {
+          "name": "List Advocate Invoices",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", ""] },
+            "description": "Platform Owner: all. Super Admin/Admin: firm's invoices. Advocate: own invoices only."
+          }
+        },
+        {
+          "name": "Filter by Status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/billing/advocate-invoices/?status=submitted",
+              "host": ["{{base_url}}"],
+              "path": ["api", "billing", "advocate-invoices", ""],
+              "query": [{ "key": "status", "value": "submitted", "description": "draft | submitted | approved | rejected | paid" }]
+            }
+          }
+        },
+        {
+          "name": "Get Advocate Invoice Details",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/{{advocate_invoice_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", "{{advocate_invoice_id}}", ""] }
+          }
+        },
+        {
+          "name": "Update Advocate Invoice",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"notes\": \"Updated notes\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/{{advocate_invoice_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", "{{advocate_invoice_id}}", ""] },
+            "description": "Advocate can only update own draft invoices."
+          }
+        },
+        {
+          "name": "Delete Advocate Invoice",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/{{advocate_invoice_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", "{{advocate_invoice_id}}", ""] },
+            "description": "Advocate can only delete own draft invoices."
+          }
+        },
+        {
+          "name": "Submit Invoice for Approval",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/{{advocate_invoice_id}}/submit/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", "{{advocate_invoice_id}}", "submit", ""] },
+            "description": "Advocate submits invoice. Must have at least one time entry. Auto-calculates totals."
+          }
+        },
+        {
+          "name": "Approve Invoice",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"approve\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/{{advocate_invoice_id}}/review/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", "{{advocate_invoice_id}}", "review", ""] },
+            "description": "Super Admin/Admin only. Can only review submitted invoices."
+          }
+        },
+        {
+          "name": "Reject Invoice",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"reject\",\n  \"reason\": \"Time entries not properly documented\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/{{advocate_invoice_id}}/review/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", "{{advocate_invoice_id}}", "review", ""] },
+            "description": "Super Admin/Admin only. Reason is required when rejecting."
+          }
+        },
+        {
+          "name": "Pay Advocate Invoice",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"payment_method\": \"bank_transfer\",\n  \"payment_reference\": \"NEFT123456\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/{{advocate_invoice_id}}/pay/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", "{{advocate_invoice_id}}", "pay", ""] },
+            "description": "Super Admin/Admin only. Can only pay approved invoices."
+          }
+        },
+        {
+          "name": "Get My Advocate Invoices",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/my_invoices/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", "my_invoices", ""] },
+            "description": "Advocate only. View own invoices and track payment status."
+          }
+        },
+        {
+          "name": "Get Pending Approvals",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/pending_approval/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", "pending_approval", ""] },
+            "description": "Super Admin/Admin only. Get all submitted invoices waiting for approval."
+          }
+        },
+        {
+          "name": "Advocate Invoice Statistics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/advocate-invoices/stats/", "host": ["{{base_url}}"], "path": ["api", "billing", "advocate-invoices", "stats", ""] },
+            "description": "Returns: total_invoiced, total_paid, draft/submitted/approved/rejected/paid counts."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Time Entries",
+      "item": [
+        {
+          "name": "Create Time Entry",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"case\": \"{{case_id}}\",\n  \"date\": \"2024-05-15\",\n  \"activity_type\": \"court_appearance\",\n  \"description\": \"Attended hearing at District Court\",\n  \"hours\": 3.5,\n  \"hourly_rate\": 2000,\n  \"billable\": true,\n  \"status\": \"draft\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/time-entries/", "host": ["{{base_url}}"], "path": ["api", "billing", "time-entries", ""] },
+            "description": "Activity types: consultation, research, drafting, court_appearance, meeting, phone_call, email, review, travel, other"
+          }
+        },
+        {
+          "name": "List Time Entries",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/time-entries/", "host": ["{{base_url}}"], "path": ["api", "billing", "time-entries", ""] }
+          }
+        },
+        {
+          "name": "Get Time Entry",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/time-entries/{{time_entry_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "time-entries", "{{time_entry_id}}", ""] }
+          }
+        },
+        {
+          "name": "Update Time Entry",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"hours\": 4.0,\n  \"description\": \"Updated description\",\n  \"status\": \"submitted\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/time-entries/{{time_entry_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "time-entries", "{{time_entry_id}}", ""] }
+          }
+        },
+        {
+          "name": "Delete Time Entry",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/time-entries/{{time_entry_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "time-entries", "{{time_entry_id}}", ""] }
+          }
+        },
+        {
+          "name": "My Time Entries",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/billing/time-entries/my_entries/?start_date=2024-05-01&end_date=2024-05-31",
+              "host": ["{{base_url}}"],
+              "path": ["api", "billing", "time-entries", "my_entries", ""],
+              "query": [{ "key": "start_date", "value": "2024-05-01" }, { "key": "end_date", "value": "2024-05-31" }]
+            }
+          }
+        },
+        {
+          "name": "Unbilled Time Entries",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/time-entries/unbilled/", "host": ["{{base_url}}"], "path": ["api", "billing", "time-entries", "unbilled", ""] },
+            "description": "Get time entries not yet linked to any invoice"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Expenses",
+      "item": [
+        {
+          "name": "Create Expense",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"case\": \"{{case_id}}\",\n  \"date\": \"2024-05-15\",\n  \"expense_type\": \"court_fee\",\n  \"description\": \"Court filing fee\",\n  \"amount\": 2000,\n  \"markup_percentage\": 0,\n  \"billable\": true,\n  \"status\": \"draft\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/expenses/", "host": ["{{base_url}}"], "path": ["api", "billing", "expenses", ""] },
+            "description": "Types: court_fee, filing_fee, travel, accommodation, photocopying, courier, expert_witness, investigation, translation, notary, other"
+          }
+        },
+        {
+          "name": "List Expenses",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/expenses/", "host": ["{{base_url}}"], "path": ["api", "billing", "expenses", ""] }
+          }
+        },
+        {
+          "name": "Get Expense",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/expenses/{{expense_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "expenses", "{{expense_id}}", ""] }
+          }
+        },
+        {
+          "name": "Update Expense",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 2500,\n  \"status\": \"submitted\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/expenses/{{expense_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "expenses", "{{expense_id}}", ""] }
+          }
+        },
+        {
+          "name": "Delete Expense",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/expenses/{{expense_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "expenses", "{{expense_id}}", ""] }
+          }
+        },
+        {
+          "name": "Unbilled Expenses",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/expenses/unbilled/", "host": ["{{base_url}}"], "path": ["api", "billing", "expenses", "unbilled", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Payments",
+      "item": [
+        {
+          "name": "Record Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"invoice\": \"{{invoice_id}}\",\n  \"client\": \"{{client_id}}\",\n  \"payment_date\": \"2024-05-25\",\n  \"amount\": 50000,\n  \"payment_method\": \"bank_transfer\",\n  \"transaction_id\": \"TXN123456\",\n  \"status\": \"completed\",\n  \"notes\": \"Payment received via NEFT\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/payments/", "host": ["{{base_url}}"], "path": ["api", "billing", "payments", ""] },
+            "description": "Methods: cash, cheque, bank_transfer, upi, card, online, other. Auto-updates invoice paid_amount and status."
+          }
+        },
+        {
+          "name": "List Payments",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/payments/", "host": ["{{base_url}}"], "path": ["api", "billing", "payments", ""] }
+          }
+        },
+        {
+          "name": "Get Payment",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/payments/{{payment_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "payments", "{{payment_id}}", ""] }
+          }
+        },
+        {
+          "name": "Update Payment",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"notes\": \"Updated payment notes\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/payments/{{payment_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "payments", "{{payment_id}}", ""] }
+          }
+        },
+        {
+          "name": "Delete Payment",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/payments/{{payment_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "payments", "{{payment_id}}", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Trust Accounts",
+      "item": [
+        {
+          "name": "Create Trust Transaction",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"client\": \"{{client_id}}\",\n  \"case\": \"{{case_id}}\",\n  \"transaction_date\": \"2024-05-01\",\n  \"transaction_type\": \"deposit\",\n  \"amount\": 100000,\n  \"description\": \"Initial retainer deposit\"\n}" },
+            "url": { "raw": "{{base_url}}/api/billing/trust-accounts/", "host": ["{{base_url}}"], "path": ["api", "billing", "trust-accounts", ""] },
+            "description": "Transaction types: deposit, withdrawal, refund, adjustment. Balance auto-calculated."
+          }
+        },
+        {
+          "name": "List Trust Transactions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/trust-accounts/", "host": ["{{base_url}}"], "path": ["api", "billing", "trust-accounts", ""] }
+          }
+        },
+        {
+          "name": "Get Trust Transaction",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/billing/trust-accounts/{{trust_id}}/", "host": ["{{base_url}}"], "path": ["api", "billing", "trust-accounts", "{{trust_id}}", ""] }
+          }
+        },
+        {
+          "name": "Get Client Trust Balance",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/billing/trust-accounts/client_balance/?client_id={{client_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "billing", "trust-accounts", "client_balance", ""],
+              "query": [{ "key": "client_id", "value": "{{client_id}}" }]
+            },
+            "description": "Get current retainer balance for a specific client"
+          }
+        }
+      ]
+    }
+  ]
+}
