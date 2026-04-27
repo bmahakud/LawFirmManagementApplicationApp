@@ -33,18 +33,23 @@ class FirmSerializer(serializers.ModelSerializer):
     current_branch_count = serializers.SerializerMethodField()
     remaining_branches = serializers.SerializerMethodField()
     can_create_branch = serializers.SerializerMethodField()
+    is_suspended = serializers.SerializerMethodField()
+    subscription_status = serializers.SerializerMethodField()
+    days_until_expiry = serializers.SerializerMethodField()
     
     class Meta:
         model = Firm
         fields = [
             'id', 'firm_name', 'firm_code', 'city', 'state', 'country',
             'address', 'postal_code', 'registration_number', 'logo', 'practice_areas',
-            'phone_number', 'email', 'website', 'subscription_type', 'is_active',
+            'phone_number', 'email', 'website', 'subscription_type', 'subscription_end_date',
+            'trial_end_date', 'is_active', 'is_suspended', 'subscription_status', 'days_until_expiry',
             'branches', 'super_admin_details', 'branch_limit', 'current_branch_count',
             'remaining_branches', 'can_create_branch', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'branch_limit', 
-                           'current_branch_count', 'remaining_branches', 'can_create_branch']
+                           'current_branch_count', 'remaining_branches', 'can_create_branch',
+                           'is_suspended', 'subscription_status', 'days_until_expiry']
 
     def get_super_admin_details(self, obj):
         from accounts.models import CustomUser
@@ -54,6 +59,38 @@ class FirmSerializer(serializers.ModelSerializer):
         ).first()
         if super_admin:
             return UserBriefSerializer(super_admin).data
+        return None
+    
+    def get_is_suspended(self, obj):
+        """Check if firm is suspended (expired or manually deactivated)"""
+        return obj.is_suspended
+    
+    def get_subscription_status(self, obj):
+        """Get human-readable subscription status"""
+        from django.utils import timezone
+        
+        if not obj.is_active:
+            return 'suspended'
+        
+        if obj.subscription_end_date:
+            if obj.subscription_end_date < timezone.now():
+                return 'expired'
+            else:
+                days_left = (obj.subscription_end_date - timezone.now()).days
+                if days_left <= 7:
+                    return 'expiring_soon'
+                return 'active'
+        
+        return 'active'
+    
+    def get_days_until_expiry(self, obj):
+        """Get days until subscription expires (negative if expired)"""
+        from django.utils import timezone
+        
+        if obj.subscription_end_date:
+            days = (obj.subscription_end_date - timezone.now()).days
+            return days
+        
         return None
     
     def get_branch_limit(self, obj):

@@ -254,3 +254,7 @@ MSG91_TEMPLATE_ID = os.getenv("MSG91_TEMPLATE_ID")
 OTP_TEST_MODE = os.getenv("OTP_TEST_MODE", "False") == "True"
 OTP_TEST_CODE = os.getenv("OTP_TEST_CODE", "999999")
 
+
+# E-Courts API Configuration
+ECOURTS_API_KEY = os.getenv("ECOURTS_API_KEY", "")
+ECOURTS_BASE_URL = os.getenv("ECOURTS_BASE_URL", "https://apis.akshit.net/eciapi/17")

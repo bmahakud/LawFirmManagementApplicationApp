@@ -797,6 +797,213 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         result_page = paginator.paginate_queryset(advocates, request)
         serializer = CustomUserSerializer(result_page, many=True, context={'request': request})
         return paginator.get_paginated_response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def suspend_user(self, request, pk=None):
+        """
+        Suspend a user from a specific firm
+        
+        POST /api/accounts/users/{user_id}/suspend_user/
+        Body: {
+            "firm_id": "firm-uuid",  // Optional, defaults to current user's firm
+            "reason": "Reason for suspension"
+        }
+        
+        Permissions:
+        - Platform Owner: Can suspend Partner Manager, Super Admin
+        - Super Admin: Can suspend Admin, Advocate, Paralegal, Client (in their firm only)
+        """
+        current_user = request.user
+        target_user = self.get_object()
+        
+        # Get firm_id from request or use current user's firm
+        firm_id = request.data.get('firm_id')
+        if firm_id:
+            try:
+                firm = Firm.objects.get(id=firm_id)
+            except Firm.DoesNotExist:
+                return Response({'error': 'Firm not found'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            firm = current_user.firm
+            if not firm:
+                return Response({
+                    'error': 'You must specify a firm_id or be associated with a firm'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        reason = request.data.get('reason', 'No reason provided')
+        
+        # Permission checks
+        if current_user.user_type == 'platform_owner':
+            # Platform Owner can suspend Partner Manager and Super Admin
+            if target_user.user_type not in ['partner_manager', 'super_admin']:
+                return Response({
+                    'error': 'Platform Owner can only suspend Partner Manager or Super Admin'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        elif current_user.user_type == 'super_admin':
+            # Super Admin can suspend Admin, Advocate, Paralegal, Client in their firm only
+            if target_user.user_type not in ['admin', 'advocate', 'paralegal', 'client']:
+                return Response({
+                    'error': 'Super Admin can only suspend Admin, Advocate, Paralegal, or Client'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Must be in the same firm
+            if firm != current_user.firm:
+                return Response({
+                    'error': 'You can only suspend users in your own firm'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        else:
+            return Response({
+                'error': 'You do not have permission to suspend users'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check if target user is in the specified firm
+        try:
+            user_firm_role = UserFirmRole.objects.get(user=target_user, firm=firm)
+        except UserFirmRole.DoesNotExist:
+            return Response({
+                'error': f'{target_user.get_full_name()} is not a member of {firm.firm_name}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Suspend the user in this specific firm
+        user_firm_role.is_active = False
+        user_firm_role.save()
+        
+        # Log the suspension
+        AuditLog.objects.create(
+            user=current_user,
+            firm=firm,
+            action='user_suspended',
+            resource_type='user',
+            resource_id=str(target_user.id),
+            details={
+                'suspended_user': target_user.email,
+                'suspended_by': current_user.email,
+                'firm': firm.firm_name,
+                'reason': reason,
+                'user_type': target_user.user_type
+            }
+        )
+        
+        # Check if user has other active firms
+        other_active_firms = UserFirmRole.objects.filter(
+            user=target_user,
+            is_active=True
+        ).exclude(firm=firm).count()
+        
+        return Response({
+            'message': f'{target_user.get_full_name()} suspended from {firm.firm_name}',
+            'user': {
+                'id': str(target_user.id),
+                'name': target_user.get_full_name(),
+                'email': target_user.email,
+                'user_type': target_user.user_type
+            },
+            'firm': {
+                'id': str(firm.id),
+                'name': firm.firm_name
+            },
+            'suspended_in_firm': True,
+            'has_other_active_firms': other_active_firms > 0,
+            'other_active_firms_count': other_active_firms
+        })
+    
+    @action(detail=True, methods=['post'])
+    def activate_user(self, request, pk=None):
+        """
+        Activate a suspended user in a specific firm
+        
+        POST /api/accounts/users/{user_id}/activate_user/
+        Body: {
+            "firm_id": "firm-uuid"  // Optional, defaults to current user's firm
+        }
+        
+        Permissions:
+        - Platform Owner: Can activate Partner Manager, Super Admin
+        - Super Admin: Can activate Admin, Advocate, Paralegal, Client (in their firm only)
+        """
+        current_user = request.user
+        target_user = self.get_object()
+        
+        # Get firm_id from request or use current user's firm
+        firm_id = request.data.get('firm_id')
+        if firm_id:
+            try:
+                firm = Firm.objects.get(id=firm_id)
+            except Firm.DoesNotExist:
+                return Response({'error': 'Firm not found'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            firm = current_user.firm
+            if not firm:
+                return Response({
+                    'error': 'You must specify a firm_id or be associated with a firm'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Permission checks (same as suspend)
+        if current_user.user_type == 'platform_owner':
+            if target_user.user_type not in ['partner_manager', 'super_admin']:
+                return Response({
+                    'error': 'Platform Owner can only activate Partner Manager or Super Admin'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        elif current_user.user_type == 'super_admin':
+            if target_user.user_type not in ['admin', 'advocate', 'paralegal', 'client']:
+                return Response({
+                    'error': 'Super Admin can only activate Admin, Advocate, Paralegal, or Client'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            if firm != current_user.firm:
+                return Response({
+                    'error': 'You can only activate users in your own firm'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        else:
+            return Response({
+                'error': 'You do not have permission to activate users'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check if target user is in the specified firm
+        try:
+            user_firm_role = UserFirmRole.objects.get(user=target_user, firm=firm)
+        except UserFirmRole.DoesNotExist:
+            return Response({
+                'error': f'{target_user.get_full_name()} is not a member of {firm.firm_name}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Activate the user in this specific firm
+        user_firm_role.is_active = True
+        user_firm_role.save()
+        
+        # Log the activation
+        AuditLog.objects.create(
+            user=current_user,
+            firm=firm,
+            action='user_activated',
+            resource_type='user',
+            resource_id=str(target_user.id),
+            details={
+                'activated_user': target_user.email,
+                'activated_by': current_user.email,
+                'firm': firm.firm_name,
+                'user_type': target_user.user_type
+            }
+        )
+        
+        return Response({
+            'message': f'{target_user.get_full_name()} activated in {firm.firm_name}',
+            'user': {
+                'id': str(target_user.id),
+                'name': target_user.get_full_name(),
+                'email': target_user.email,
+                'user_type': target_user.user_type
+            },
+            'firm': {
+                'id': str(firm.id),
+                'name': firm.firm_name
+            },
+            'active_in_firm': True
+        })
 
 
 class AuthenticationViewSet(viewsets.ViewSet):

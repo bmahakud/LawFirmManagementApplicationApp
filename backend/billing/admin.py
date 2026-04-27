@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import TimeEntry, Expense, Invoice, Payment, TrustAccount
+from .models import TimeEntry, Expense, Invoice, Payment, TrustAccount, AdvocateInvoice
 
 
 @admin.register(TimeEntry)
@@ -45,3 +45,13 @@ class TrustAccountAdmin(admin.ModelAdmin):
     search_fields = ['client__first_name', 'client__last_name', 'description']
     readonly_fields = ['created_at']
     date_hierarchy = 'transaction_date'
+
+
+
+@admin.register(AdvocateInvoice)
+class AdvocateInvoiceAdmin(admin.ModelAdmin):
+    list_display = ['invoice_number', 'advocate', 'firm', 'invoice_date', 'total_amount', 'status']
+    list_filter = ['status', 'invoice_date']
+    search_fields = ['invoice_number', 'advocate__email', 'advocate__first_name', 'advocate__last_name']
+    readonly_fields = ['subtotal', 'tax_amount', 'total_amount', 'created_at', 'updated_at']
+    date_hierarchy = 'invoice_date'

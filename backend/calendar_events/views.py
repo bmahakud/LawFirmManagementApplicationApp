@@ -33,64 +33,57 @@ class CalendarEventViewSet(viewsets.ModelViewSet):
         if user.user_type == 'platform_owner':
             return CalendarEvent.objects.all()
         
-        # Super Admin sees all events in their firm
+        # Super Admin sees only events they created or are assigned to
         elif user.user_type == 'super_admin':
             if user.firm:
-                return CalendarEvent.objects.filter(firm=user.firm)
+                return CalendarEvent.objects.filter(
+                    Q(firm=user.firm) & (
+                        Q(created_by=user) |
+                        Q(assigned_to=user)
+                    )
+                ).distinct()
             return CalendarEvent.objects.none()
         
-        # Admin sees events in their firm (or branch if assigned)
+        # Admin sees only events they created or are assigned to
         elif user.user_type == 'admin':
             if user.firm:
-                queryset = CalendarEvent.objects.filter(firm=user.firm)
-                
-                # Filter by branch if admin is assigned to specific branch
-                from accounts.models import UserFirmRole
-                admin_role = UserFirmRole.objects.filter(
-                    user=user, 
-                    firm=user.firm,
-                    is_active=True
-                ).first()
-                
-                if admin_role and admin_role.branch:
-                    # Admin is assigned to specific branch - show only that branch's events
-                    queryset = queryset.filter(
-                        Q(case__branch=admin_role.branch) | Q(case__branch__isnull=True)
+                return CalendarEvent.objects.filter(
+                    Q(firm=user.firm) & (
+                        Q(created_by=user) |
+                        Q(assigned_to=user)
                     )
-                
-                return queryset
+                ).distinct()
             return CalendarEvent.objects.none()
         
-        # Advocate sees events they created or are assigned to
+        # Advocate sees only events they created or are assigned to
         elif user.user_type == 'advocate':
             if user.firm:
                 return CalendarEvent.objects.filter(
                     Q(firm=user.firm) & (
                         Q(created_by=user) |
-                        Q(assigned_to=user) |
-                        Q(case__assigned_advocate=user)
+                        Q(assigned_to=user)
                     )
                 ).distinct()
             return CalendarEvent.objects.none()
         
-        # Paralegal sees events they are assigned to
+        # Paralegal sees only events they are assigned to
         elif user.user_type == 'paralegal':
             if user.firm:
                 return CalendarEvent.objects.filter(
                     Q(firm=user.firm) & (
-                        Q(assigned_to=user) |
-                        Q(case__assigned_paralegal=user)
+                        Q(created_by=user) |
+                        Q(assigned_to=user)
                     )
                 ).distinct()
             return CalendarEvent.objects.none()
         
-        # Client sees events related to their cases
+        # Client sees only events they are assigned to
         elif user.user_type == 'client':
             client_profile = getattr(user, 'client_profile', None)
             if client_profile:
                 return CalendarEvent.objects.filter(
-                    Q(client=client_profile) |
-                    Q(case__client=client_profile)
+                    Q(assigned_to=user) |
+                    Q(client=client_profile)
                 ).distinct()
             return CalendarEvent.objects.none()
         
