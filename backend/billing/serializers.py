@@ -82,9 +82,33 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'firm', 'branch', 'subtotal', 'tax_amount',
+            'id', 'firm', 'branch', 'tax_amount', 'total_amount', 'balance_due',
             'created_at', 'updated_at'
         ]
+
+    def _calculate_amounts(self, validated_data):
+        from decimal import Decimal
+        subtotal = validated_data.get('subtotal', Decimal('0'))
+        tax_percentage = validated_data.get('tax_percentage', Decimal('0'))
+        discount_amount = validated_data.get('discount_amount', Decimal('0'))
+        paid_amount = validated_data.get('paid_amount', Decimal('0'))
+
+        tax_amount = subtotal * (tax_percentage / 100)
+        total_amount = subtotal + tax_amount - discount_amount
+        balance_due = total_amount - paid_amount
+
+        validated_data['tax_amount'] = tax_amount
+        validated_data['total_amount'] = total_amount
+        validated_data['balance_due'] = balance_due
+        return validated_data
+
+    def create(self, validated_data):
+        validated_data = self._calculate_amounts(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data = self._calculate_amounts(validated_data)
+        return super().update(instance, validated_data)
 
 
 class PaymentSerializer(serializers.ModelSerializer):
