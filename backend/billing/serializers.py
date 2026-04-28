@@ -78,8 +78,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'firm', 'branch', 'subtotal', 'tax_amount', 'total_amount',
-            'balance_due', 'created_at', 'updated_at'
+            'id', 'firm', 'branch', 'subtotal', 'tax_amount',
+            'created_at', 'updated_at'
         ]
 
 

@@ -172,9 +172,9 @@ class Invoice(models.Model):
     tax_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    balance_due = models.DecimalField(max_digits=12, decimal_places=2)
+    balance_due = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     
