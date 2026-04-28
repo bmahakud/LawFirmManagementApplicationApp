@@ -43,14 +43,16 @@ class ExpenseSerializer(serializers.ModelSerializer):
 class InvoiceListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for invoice list"""
     client_name = serializers.CharField(source='client.get_full_name', read_only=True)
+    client_user_account_id = serializers.UUIDField(source='client.user_account.id', read_only=True, default=None)
     case_title = serializers.CharField(source='case.case_title', read_only=True)
     branch_name = serializers.CharField(source='branch.branch_name', read_only=True)
-    
+
     class Meta:
         model = Invoice
         fields = [
             'id', 'invoice_number', 'invoice_date', 'due_date',
-            'client', 'client_name', 'case', 'case_title',
+            'client', 'client_name', 'client_user_account_id',
+            'case', 'case_title',
             'branch', 'branch_name',
             'total_amount', 'paid_amount', 'balance_due', 'status'
         ]
@@ -58,16 +60,18 @@ class InvoiceListSerializer(serializers.ModelSerializer):
 
 class InvoiceSerializer(serializers.ModelSerializer):
     client_name = serializers.CharField(source='client.get_full_name', read_only=True)
+    client_user_account_id = serializers.UUIDField(source='client.user_account.id', read_only=True, default=None)
     case_title = serializers.CharField(source='case.case_title', read_only=True)
     branch_name = serializers.CharField(source='branch.branch_name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     time_entries_detail = TimeEntrySerializer(source='time_entries', many=True, read_only=True)
     expenses_detail = ExpenseSerializer(source='expenses', many=True, read_only=True)
-    
+
     class Meta:
         model = Invoice
         fields = [
-            'id', 'firm', 'branch', 'branch_name', 'case', 'case_title', 'client', 'client_name',
+            'id', 'firm', 'branch', 'branch_name', 'case', 'case_title',
+            'client', 'client_name', 'client_user_account_id',
             'invoice_number', 'invoice_date', 'due_date',
             'subtotal', 'tax_percentage', 'tax_amount', 'discount_amount',
             'total_amount', 'paid_amount', 'balance_due', 'status',

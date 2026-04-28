@@ -170,6 +170,34 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         
         return queryset
     
+    def create(self, request, *args, **kwargs):
+        # Allow passing user account ID instead of client profile ID
+        # Resolve it to the correct client profile ID before validation
+        data = request.data.copy()
+        client_id = data.get('client')
+        if client_id:
+            from clients.models import Client
+            from accounts.models import CustomUser
+            if not Client.objects.filter(id=client_id).exists():
+                # Maybe it's a user account ID — try to find the linked client profile
+                try:
+                    user = CustomUser.objects.get(id=client_id)
+                    client_profile = getattr(user, 'client_profile', None)
+                    if client_profile:
+                        data['client'] = str(client_profile.id)
+                    else:
+                        return Response(
+                            {'client': [f'No client profile found for user {client_id}. Ask admin to create a client profile first.']},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                except CustomUser.DoesNotExist:
+                    pass  # Let serializer handle the invalid ID error
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         # Generate invoice number
         firm = self.request.user.firm
