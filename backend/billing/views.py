@@ -199,6 +199,10 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         elif hasattr(self.request.user, 'branch') and self.request.user.branch:
             invoice_data['branch'] = self.request.user.branch
         
+        # New invoices start with zero totals; time entries/expenses are added after
+        invoice_data.setdefault('total_amount', Decimal('0'))
+        invoice_data.setdefault('balance_due', Decimal('0'))
+
         serializer.save(**invoice_data)
     
     @action(detail=True, methods=['post'])
