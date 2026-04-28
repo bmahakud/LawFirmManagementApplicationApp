@@ -1,6 +1,7 @@
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 from django.db.models import Q, Sum
 from django.utils import timezone
 from datetime import timedelta
@@ -520,7 +521,7 @@ class AdvocateInvoiceViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Only advocates can create their own invoices
         if self.request.user.user_type != 'advocate':
-            raise permissions.PermissionDenied('Only advocates can create advocate invoices')
+            raise PermissionDenied('Only advocates can create advocate invoices')
         
         # Generate invoice number
         firm = self.request.user.firm
@@ -547,26 +548,26 @@ class AdvocateInvoiceViewSet(viewsets.ModelViewSet):
         # Advocates can only update their own draft invoices
         if self.request.user.user_type == 'advocate':
             if instance.advocate != self.request.user:
-                raise permissions.PermissionDenied('You can only update your own invoices')
+                raise PermissionDenied('You can only update your own invoices')
             if instance.status != 'draft':
-                raise permissions.PermissionDenied('Can only update draft invoices')
+                raise PermissionDenied('Can only update draft invoices')
         
         # Admins cannot update advocate invoices
         elif self.request.user.user_type in ['super_admin', 'admin']:
-            raise permissions.PermissionDenied('Admins cannot update advocate invoices. Use approve/reject/pay actions.')
+            raise PermissionDenied('Admins cannot update advocate invoices. Use approve/reject/pay actions.')
         
         serializer.save()
     
     def perform_destroy(self, instance):
         # Only advocates can delete their own draft invoices
         if self.request.user.user_type != 'advocate':
-            raise permissions.PermissionDenied('Only advocates can delete their invoices')
+            raise PermissionDenied('Only advocates can delete their invoices')
         
         if instance.advocate != self.request.user:
-            raise permissions.PermissionDenied('You can only delete your own invoices')
+            raise PermissionDenied('You can only delete your own invoices')
         
         if instance.status != 'draft':
-            raise permissions.PermissionDenied('Can only delete draft invoices')
+            raise PermissionDenied('Can only delete draft invoices')
         
         instance.delete()
     
