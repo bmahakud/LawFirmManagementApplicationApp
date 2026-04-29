@@ -1,9 +1,10 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import (
-    CustomUser, Firm, LoginCredential, OTPVerification, 
-    Partner, UserDocument, UserInvitation, AuditLog
-)
+from accounts.models import CustomUser, LoginCredential, OTPVerification, UserInvitation
+from firms.models import Firm
+from partners.models import Partner
+from documents.models import UserDocument
+from audit.models import AuditLog
 
 
 class FirmSerializer(serializers.ModelSerializer):
