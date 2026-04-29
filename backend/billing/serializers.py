@@ -146,11 +146,11 @@ class InvoiceSerializer(serializers.ModelSerializer):
             time_total = sum(
                 (item['hours'] * item['hourly_rate'])
                 for item in time_entries_data if item.get('billable', True)
-            )
+            ) or Decimal('0')
             expense_total = sum(
-                (item['amount'] * (1 + item.get('markup_percentage', 0) / 100))
+                (item['amount'] * (Decimal('1') + Decimal(str(item.get('markup_percentage', 0))) / Decimal('100')))
                 for item in expenses_data if item.get('billable', True)
-            )
+            ) or Decimal('0')
             validated_data['subtotal'] = time_total + expense_total
 
         validated_data = self._calculate_amounts(validated_data)
@@ -183,8 +183,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
         # Create linked expenses
         for exp in expenses_data:
             amount = exp['amount']
-            markup = exp.get('markup_percentage', Decimal('0'))
-            billable_amount = amount * (1 + markup / 100)
+            markup = Decimal(str(exp.get('markup_percentage', 0)))
+            billable_amount = amount * (Decimal('1') + markup / Decimal('100'))
             Expense.objects.create(
                 invoice=invoice,
                 firm=firm,
