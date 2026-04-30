@@ -42,7 +42,7 @@ export const API = {
     BY_CASE: "/api/documents/by_case/"
   },
   CLIENTS: {
-    LIST: "/api/clients/",
+    LIST: "/api/users/?user_type=client",
     DETAIL: (uuid: string) => `/api/clients/${uuid}/`,
     MY_CLIENTS: "/api/clients/my-clients/",
     CLIENT_DOCUMENTS: (uuid: string) => `/api/clients/${uuid}/documents/`
@@ -86,12 +86,40 @@ export const API = {
     CANCEL: (id: string) => `/api/calendar/events/${id}/cancel/`
   },
   BILLING: {
+    FINANCE_OVERVIEW: {
+      DASHBOARD: "/api/billing/finance-overview/dashboard/",
+    },
+    INVOICES: {
+      LIST: "/api/billing/invoices/",
+      CREATE: "/api/billing/invoices/",
+      DETAIL: (id: string) => `/api/billing/invoices/${id}/`,
+      STATS: "/api/billing/invoices/stats/",
+      OVERDUE: "/api/billing/invoices/overdue/",
+      UNPAID: "/api/billing/invoices/unpaid/",
+    },
+    ADVOCATE_INVOICES: {
+      LIST: "/api/billing/advocate-invoices/",
+      CREATE: "/api/billing/advocate-invoices/",
+      DETAIL: (id: string) => `/api/billing/advocate-invoices/${id}/`,
+      SUBMIT: (id: string) => `/api/billing/advocate-invoices/${id}/submit/`,
+      REVIEW: (id: string) => `/api/billing/advocate-invoices/${id}/review/`,
+      PAY: (id: string) => `/api/billing/advocate-invoices/${id}/pay/`,
+      MY_INVOICES: "/api/billing/advocate-invoices/my_invoices/",
+      PENDING_APPROVAL: "/api/billing/advocate-invoices/pending_approval/",
+      STATS: "/api/billing/advocate-invoices/stats/",
+    },
     TIME_ENTRIES: {
       LIST: "/api/billing/time-entries/",
       CREATE: "/api/billing/time-entries/",
       DETAIL: (id: string) => `/api/billing/time-entries/${id}/`,
       MY_ENTRIES: (startDate: string, endDate: string) => `/api/billing/time-entries/my_entries/?start_date=${startDate}&end_date=${endDate}`,
       UNBILLED: "/api/billing/time-entries/unbilled/",
+    },
+    EXPENSES: {
+      LIST: "/api/billing/expenses/",
+      CREATE: "/api/billing/expenses/",
+      DETAIL: (id: string) => `/api/billing/expenses/${id}/`,
+      UNBILLED: "/api/billing/expenses/unbilled/",
     }
   }
 };
