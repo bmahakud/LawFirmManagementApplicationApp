@@ -222,179 +222,215 @@ class FirmSubscriptionViewSet(viewsets.ModelViewSet):
             'new_end_date': new_end_date,
         }, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['post'])
-    def renew(self, request, pk=None):
+    @action(detail=False, methods=['post'])
+    def renew(self, request):
         """
-        Renew a subscription
-        
-        POST /api/subscriptions/subscriptions/{id}/renew/
-        Body: {
-            "duration_months": 1,  // or 12 for yearly
-            "payment_method": "card",
+        Renew a firm's subscription by firm_id (platform_owner) or own firm (super_admin).
+
+        POST /api/subscriptions/firm-subscriptions/renew/
+        {
+            "firm_id": "<uuid>",        // required for platform_owner
+            "duration_months": 1,       // 1, 3, 6, or 12
+            "payment_method": "bank_transfer",
             "payment_reference": "TXN123456"
         }
         """
-        subscription = self.get_object()
-        
-        # Only platform owner or super admin can renew
-        if request.user.user_type not in ['platform_owner', 'super_admin']:
-            return Response({
-                'error': 'Only platform owner or super admin can renew subscriptions'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
+        user = request.user
+
+        if user.user_type not in ['platform_owner', 'super_admin']:
+            return Response({'error': 'Only platform owner or super admin can renew subscriptions'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        firm = self._resolve_firm(request)
+        if isinstance(firm, Response):
+            return firm
+
         duration_months = request.data.get('duration_months', 1)
         payment_method = request.data.get('payment_method', 'manual')
         payment_reference = request.data.get('payment_reference', '')
-        
+
         try:
             duration_months = int(duration_months)
             if duration_months not in [1, 3, 6, 12]:
-                return Response({
-                    'error': 'Duration must be 1, 3, 6, or 12 months'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': 'duration_months must be 1, 3, 6, or 12'}, status=status.HTTP_400_BAD_REQUEST)
         except ValueError:
-            return Response({
-                'error': 'Invalid duration_months value'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Calculate new end date
+            return Response({'error': 'Invalid duration_months'}, status=status.HTTP_400_BAD_REQUEST)
+
+        subscription = FirmSubscription.objects.filter(firm=firm).first()
+        if not subscription:
+            return Response({'error': 'No subscription found for this firm. Use /upgrade/ to create one.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
         from datetime import timedelta
         now = timezone.now()
-        
-        # If subscription is still active, extend from current end date
-        # Otherwise, start from now
-        if subscription.end_date > now:
-            new_end_date = subscription.end_date + timedelta(days=duration_months * 30)
-        else:
-            new_end_date = now + timedelta(days=duration_months * 30)
-        
-        # Update subscription
+        new_end_date = (subscription.end_date + timedelta(days=duration_months * 30)
+                        if subscription.end_date > now
+                        else now + timedelta(days=duration_months * 30))
+
         subscription.end_date = new_end_date
         subscription.status = 'active'
         subscription.is_trial = False
         subscription.save()
-        
-        # Update firm
-        firm = subscription.firm
+
         firm.subscription_end_date = new_end_date
         firm.is_active = True
         firm.save()
-        
-        # Log the renewal
+
         from audit.models import AuditLog
         AuditLog.objects.create(
-            user=request.user,
-            firm=firm,
+            user=user, firm=firm,
             action='subscription_renewed',
             resource_type='subscription',
             resource_id=str(subscription.id),
-            details={
-                'duration_months': duration_months,
-                'new_end_date': new_end_date.isoformat(),
-                'payment_method': payment_method,
-                'payment_reference': payment_reference
-            }
+            details={'duration_months': duration_months, 'new_end_date': new_end_date.isoformat(),
+                     'payment_method': payment_method, 'payment_reference': payment_reference}
         )
-        
+
         serializer = self.get_serializer(subscription)
         return Response({
-            'message': f'Subscription renewed successfully for {duration_months} months',
+            'message': f'Subscription renewed for {duration_months} month(s)',
             'subscription': serializer.data,
-            'new_end_date': new_end_date
+            'new_end_date': new_end_date,
         })
-    
-    @action(detail=True, methods=['post'])
-    def activate(self, request, pk=None):
+
+    @action(detail=False, methods=['post'])
+    def activate(self, request):
         """
-        Activate a suspended/expired subscription
-        
-        POST /api/subscriptions/subscriptions/{id}/activate/
+        Activate a firm's subscription with a selected plan.
+
+        POST /api/subscriptions/firm-subscriptions/activate/
+        {
+            "firm_id": "<uuid>",        // required
+            "plan_id": "<uuid>",        // required - which plan to activate
+            "duration_months": 1        // 1, 3, 6, or 12
+        }
         """
-        subscription = self.get_object()
-        
-        # Only platform owner can activate
         if request.user.user_type != 'platform_owner':
-            return Response({
-                'error': 'Only platform owner can activate subscriptions'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        # Activate subscription
-        subscription.status = 'active'
-        subscription.save()
-        
-        # Activate firm
-        firm = subscription.firm
+            return Response({'error': 'Only platform owner can activate subscriptions'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        firm = self._resolve_firm(request, require_firm_id=True)
+        if isinstance(firm, Response):
+            return firm
+
+        plan_id = request.data.get('plan_id')
+        if not plan_id:
+            return Response({'error': 'plan_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
+        except SubscriptionPlan.DoesNotExist:
+            return Response({'error': 'Plan not found or inactive'}, status=status.HTTP_404_NOT_FOUND)
+
+        duration_months = request.data.get('duration_months', 1)
+        try:
+            duration_months = int(duration_months)
+            if duration_months not in [1, 3, 6, 12]:
+                return Response({'error': 'duration_months must be 1, 3, 6, or 12'}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError:
+            return Response({'error': 'Invalid duration_months'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from datetime import timedelta
+        new_end_date = timezone.now() + timedelta(days=duration_months * 30)
+
+        subscription = FirmSubscription.objects.filter(firm=firm).first()
+        if subscription:
+            subscription.plan = plan
+            subscription.status = 'active'
+            subscription.end_date = new_end_date
+            subscription.is_trial = False
+            subscription.save()
+        else:
+            subscription = FirmSubscription.objects.create(
+                firm=firm, plan=plan, status='active',
+                end_date=new_end_date, is_trial=False
+            )
+
+        firm.subscription_type = plan.plan_type
+        firm.subscription_end_date = new_end_date
         firm.is_active = True
         firm.save()
-        
-        # Log the activation
+
         from audit.models import AuditLog
         AuditLog.objects.create(
-            user=request.user,
-            firm=firm,
+            user=request.user, firm=firm,
             action='subscription_activated',
             resource_type='subscription',
             resource_id=str(subscription.id),
             details={
-                'activated_by': request.user.email
+                'activated_by': request.user.email,
+                'plan': plan.name,
+                'duration_months': duration_months,
+                'new_end_date': new_end_date.isoformat(),
             }
         )
-        
+
         serializer = self.get_serializer(subscription)
         return Response({
-            'message': 'Subscription activated successfully',
-            'subscription': serializer.data
+            'message': f'Subscription activated with "{plan.name}" plan for {duration_months} month(s)',
+            'subscription': serializer.data,
+            'new_end_date': new_end_date,
         })
-    
-    @action(detail=True, methods=['post'])
-    def suspend(self, request, pk=None):
+
+    @action(detail=False, methods=['post'])
+    def suspend(self, request):
         """
-        Suspend a subscription
-        
-        POST /api/subscriptions/subscriptions/{id}/suspend/
-        Body: {
+        Suspend a firm's subscription.
+
+        POST /api/subscriptions/firm-subscriptions/suspend/
+        {
+            "firm_id": "<uuid>",
             "reason": "Payment failed"
         }
         """
-        subscription = self.get_object()
-        
-        # Only platform owner can suspend
         if request.user.user_type != 'platform_owner':
-            return Response({
-                'error': 'Only platform owner can suspend subscriptions'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
+            return Response({'error': 'Only platform owner can suspend subscriptions'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        firm = self._resolve_firm(request, require_firm_id=True)
+        if isinstance(firm, Response):
+            return firm
+
+        subscription = FirmSubscription.objects.filter(firm=firm).first()
+        if not subscription:
+            return Response({'error': 'No subscription found for this firm'},
+                            status=status.HTTP_404_NOT_FOUND)
+
         reason = request.data.get('reason', 'No reason provided')
-        
-        # Suspend subscription
+
         subscription.status = 'canceled'
         subscription.save()
-        
-        # Suspend firm
-        firm = subscription.firm
+
         firm.is_active = False
         firm.save()
-        
-        # Log the suspension
+
         from audit.models import AuditLog
         AuditLog.objects.create(
-            user=request.user,
-            firm=firm,
+            user=request.user, firm=firm,
             action='subscription_suspended',
             resource_type='subscription',
             resource_id=str(subscription.id),
-            details={
-                'suspended_by': request.user.email,
-                'reason': reason
-            }
+            details={'suspended_by': request.user.email, 'reason': reason}
         )
-        
-        serializer = self.get_serializer(subscription)
-        return Response({
-            'message': 'Subscription suspended successfully',
-            'subscription': serializer.data
-        })
 
+        serializer = self.get_serializer(subscription)
+        return Response({'message': 'Subscription suspended successfully', 'subscription': serializer.data})
+
+    def _resolve_firm(self, request, require_firm_id=False):
+        """Helper: resolve firm from request. Platform owner must pass firm_id."""
+        user = request.user
+        if user.user_type == 'platform_owner' or require_firm_id:
+            firm_id = request.data.get('firm_id')
+            if not firm_id:
+                return Response({'error': 'firm_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+            from firms.models import Firm
+            try:
+                return Firm.objects.get(id=firm_id)
+            except Firm.DoesNotExist:
+                return Response({'error': 'Firm not found'}, status=status.HTTP_404_NOT_FOUND)
+        if not user.firm:
+            return Response({'error': 'You are not associated with a firm'}, status=status.HTTP_400_BAD_REQUEST)
+        return user.firm
 
 
 class PlatformInvoiceViewSet(viewsets.ModelViewSet):
