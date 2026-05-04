@@ -3,7 +3,7 @@ import uuid
 
 class Client(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    firm = models.ForeignKey('firms.Firm', on_delete=models.CASCADE, related_name='clients')
+    firm = models.ForeignKey('firms.Firm', on_delete=models.CASCADE, related_name='clients', null=True, blank=True)
     
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
