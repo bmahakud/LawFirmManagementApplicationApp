@@ -127,16 +127,25 @@ export const API = {
     UPGRADE: "/api/subscriptions/firm-subscriptions/upgrade/",
     STATUS: "/api/subscriptions/firm-subscriptions/status/",
     PLANS: {
+      LIST: "/api/subscriptions/plans/",
       DETAIL: (id: string) => `/api/subscriptions/plans/${id}/`,
+    },
+    PLATFORM_INVOICES: {
+      LIST: "/api/subscriptions/platform-invoices/",
+      CREATE: "/api/subscriptions/platform-invoices/",
+      DETAIL: (id: string) => `/api/subscriptions/platform-invoices/${id}/`,
+      SEND: (id: string) => `/api/subscriptions/platform-invoices/${id}/send/`,
+      MARK_PAID: (id: string) => `/api/subscriptions/platform-invoices/${id}/mark_paid/`,
+      CANCEL: (id: string) => `/api/subscriptions/platform-invoices/${id}/cancel/`,
     }
   }
 };
 
 export const SUBSCRIPTION_PLANS = [
-  { id: 'da973639-6c65-48ec-b23f-09568671748f', name: 'Trial',      price: '₹0',     period: '14 days' },
-  { id: 'd6b8bcb2-37d5-49fe-b6b5-76081ac38a1d', name: 'Basic',      price: '₹999',   period: 'month'   },
-  { id: '81d8de45-4415-42f8-8864-8e2b7d9d7812', name: 'Business',   price: '₹2,499', period: 'month'   },
-  { id: '4f468d40-a761-4e26-a7f5-a4f8e45c7534', name: 'Enterprise', price: 'Custom', period: ''        },
+  { id: 'da973639-6c65-48ec-b23f-09568671748f', name: 'Trial', price: '₹0', period: '14 days' },
+  { id: 'd6b8bcb2-37d5-49fe-b6b5-76081ac38a1d', name: 'Basic', price: '₹999', period: 'month' },
+  { id: '81d8de45-4415-42f8-8864-8e2b7d9d7812', name: 'Business', price: '₹2,499', period: 'month' },
+  { id: '4f468d40-a761-4e26-a7f5-a4f8e45c7534', name: 'Enterprise', price: 'Custom', period: '' },
 ] as const;
 
 
