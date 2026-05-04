@@ -154,10 +154,18 @@ class UsernamePasswordLoginSerializer(serializers.Serializer):
         username = data.get('username')
         password = data.get('password')
         
+        # Try to find user by username, email, or phone number
+        user = None
         try:
             user = CustomUser.objects.get(username=username)
         except CustomUser.DoesNotExist:
-            raise serializers.ValidationError('Invalid username or password')
+            try:
+                user = CustomUser.objects.get(email=username)
+            except CustomUser.DoesNotExist:
+                try:
+                    user = CustomUser.objects.get(phone_number=username)
+                except CustomUser.DoesNotExist:
+                    raise serializers.ValidationError('Invalid username or password')
         
         if not user.check_password(password):
             raise serializers.ValidationError('Invalid username or password')
