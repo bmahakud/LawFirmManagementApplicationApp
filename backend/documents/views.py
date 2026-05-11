@@ -38,7 +38,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         user = self.request.user
         show_deleted = self.request.query_params.get('show_deleted', 'false').lower() == 'true'
         
-        # Base queryset - only show user's own documents
+        # Base queryset - show user's own documents
+        # For solo advocates and their clients, firm can be None
         queryset = UserDocument.objects.filter(uploaded_by=user)
         
         # Filter by deletion status
@@ -66,23 +67,19 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         """Create document with proper firm assignment"""
         user = self.request.user
         
-        # Determine firm
+        # Determine firm (can be None for solo advocates and their clients)
         firm = None
         if user.user_type in ['super_admin', 'admin', 'advocate', 'paralegal']:
-            firm = user.firm
+            firm = user.firm  # Can be None for solo advocates
         elif user.user_type == 'client':
             # Try to get firm from client profile
             if hasattr(user, 'client_profile') and user.client_profile:
-                firm = user.client_profile.firm
+                firm = user.client_profile.firm  # Can be None if client's advocate is solo
             # Fallback: try to get from user's firm field
             elif user.firm:
                 firm = user.firm
         
-        if not firm:
-            raise PermissionDenied(
-                f"Unable to determine firm for document upload. User type: {user.user_type}, "
-                f"Has client_profile: {hasattr(user, 'client_profile')}"
-            )
+        # Note: firm can be None for solo advocates and their clients - this is valid
         
         # Auto-assign client if user is a client
         client = None
@@ -92,7 +89,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         
         serializer.save(
             uploaded_by=user,
-            firm=firm,
+            firm=firm,  # Can be None for solo advocates
             client=client or serializer.validated_data.get('client')
         )
     
@@ -272,7 +269,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         
         elif user.user_type in ['super_admin', 'admin']:
             # Firm admin can see documents of users in their firm
-            if target_user.firm != user.firm:
+            # Skip check if either user has no firm (solo advocate case)
+            if user.firm and target_user.firm and target_user.firm != user.firm:
                 raise PermissionDenied("You can only view documents of users in your firm.")
             
             # Can see documents of advocates, paralegals, and clients
@@ -285,14 +283,17 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 # Check if this client is assigned to the advocate
                 if hasattr(target_user, 'client_profile'):
                     client = target_user.client_profile
-                    # Check if advocate has any cases with this client
+                    # Check if advocate has any cases with this client OR client is directly assigned
                     from cases.models import Case
                     has_case = Case.objects.filter(
                         client=client,
                         assigned_advocate=user
                     ).exists()
                     
-                    if not has_case:
+                    # Also check if client is directly assigned to this advocate
+                    is_assigned = client.assigned_advocate == user
+                    
+                    if not (has_case or is_assigned):
                         raise PermissionDenied("You can only view documents of clients assigned to you.")
                 else:
                     raise PermissionDenied("Client profile not found.")
