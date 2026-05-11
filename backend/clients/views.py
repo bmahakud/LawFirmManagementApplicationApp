@@ -232,3 +232,89 @@ class ClientViewSet(viewsets.ModelViewSet):
             'documents': serializer.data,
             'total_documents': documents.count()
         })
+
+    @action(detail=True, methods=['get'], url_path='cases', url_name='client-cases')
+    def client_cases(self, request, pk=None):
+        """
+        Get all cases for a specific client.
+        
+        - Clients can only see their own cases
+        - Advocates can see cases for clients assigned to them
+        - Admins/Super Admins can see cases for any client in their firm
+        - Platform owners can see all cases
+        
+        GET /api/clients/{client_id}/cases/
+        Optional filters: ?status=, ?category=, ?search=
+        """
+        from cases.models import Case
+        from cases.serializers import CaseSerializer
+        
+        user = request.user
+        
+        # Get the client
+        try:
+            client = Client.objects.get(id=pk)
+        except Client.DoesNotExist:
+            return Response(
+                {'error': 'Client not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Permission checks
+        if user.user_type == 'client':
+            # Clients can only see their own cases
+            if not hasattr(user, 'client_profile') or user.client_profile != client:
+                return Response(
+                    {'error': 'You can only view your own cases.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif user.user_type == 'advocate':
+            # Advocates can see cases for clients assigned to them
+            if client.assigned_advocate != user:
+                return Response(
+                    {'error': 'This client is not assigned to you.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif user.user_type in ['admin', 'super_admin']:
+            # Admins can see cases for clients in their firm
+            if client.firm != user.firm:
+                return Response(
+                    {'error': 'This client does not belong to your firm.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif user.user_type != 'platform_owner':
+            return Response(
+                {'error': 'You do not have permission to view this client\'s cases.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get all cases for this client
+        cases = Case.objects.filter(client=client)
+        
+        # Apply filters
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            cases = cases.filter(status=status_filter)
+        
+        category_filter = request.query_params.get('category')
+        if category_filter:
+            cases = cases.filter(category=category_filter)
+        
+        search = request.query_params.get('search', '').strip()
+        if search:
+            cases = cases.filter(
+                Q(case_title__icontains=search) |
+                Q(case_number__icontains=search) |
+                Q(cnr_number__icontains=search) |
+                Q(court_name__icontains=search)
+            )
+        
+        cases = cases.order_by('-created_at')
+        
+        serializer = CaseSerializer(cases, many=True)
+        
+        return Response({
+            'client': ClientSerializer(client).data,
+            'cases': serializer.data,
+            'total_cases': cases.count()
+        })
