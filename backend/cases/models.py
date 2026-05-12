@@ -403,3 +403,7 @@ class CaseDraft(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+# Import the document request model
+from .models_document_requests import CaseDocumentRequest
