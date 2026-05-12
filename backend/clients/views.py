@@ -233,6 +233,52 @@ class ClientViewSet(viewsets.ModelViewSet):
             'total_documents': documents.count()
         })
 
+    @action(detail=False, methods=['get'], url_path='by-user/(?P<user_id>[^/.]+)', url_name='client-by-user')
+    def client_by_user(self, request, user_id=None):
+        """
+        Get client profile by user account ID.
+        Useful when you have the user ID but need the client profile ID.
+        
+        GET /api/clients/by-user/{user_id}/
+        """
+        user = request.user
+        
+        try:
+            client = Client.objects.get(user_account_id=user_id)
+        except Client.DoesNotExist:
+            return Response(
+                {'error': 'Client profile not found for this user.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Permission checks
+        if user.user_type == 'client':
+            if client.user_account != user:
+                return Response(
+                    {'error': 'You can only view your own profile.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif user.user_type == 'advocate':
+            if client.assigned_advocate != user and client.firm != user.firm:
+                return Response(
+                    {'error': 'You do not have permission to view this client.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif user.user_type in ['admin', 'super_admin']:
+            if client.firm != user.firm:
+                return Response(
+                    {'error': 'This client does not belong to your firm.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif user.user_type != 'platform_owner':
+            return Response(
+                {'error': 'You do not have permission to view this client.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = ClientSerializer(client)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['get'], url_path='cases', url_name='client-cases')
     def client_cases(self, request, pk=None):
         """
@@ -256,7 +302,10 @@ class ClientViewSet(viewsets.ModelViewSet):
             client = Client.objects.get(id=pk)
         except Client.DoesNotExist:
             return Response(
-                {'error': 'Client not found.'},
+                {
+                    'error': 'Client profile not found.',
+                    'hint': 'If you have a user ID, use /api/clients/by-user/{user_id}/ to get the client profile ID first.'
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
         
@@ -270,9 +319,9 @@ class ClientViewSet(viewsets.ModelViewSet):
                 )
         elif user.user_type == 'advocate':
             # Advocates can see cases for clients assigned to them
-            if client.assigned_advocate != user:
+            if client.assigned_advocate != user and client.firm != user.firm:
                 return Response(
-                    {'error': 'This client is not assigned to you.'},
+                    {'error': 'This client is not assigned to you or in your firm.'},
                     status=status.HTTP_403_FORBIDDEN
                 )
         elif user.user_type in ['admin', 'super_admin']:
