@@ -27,6 +27,13 @@ class ClientViewSet(viewsets.ModelViewSet):
         if user.user_type == 'client':
             return Client.objects.filter(user_account=user)
         
+        # For advocates: show clients in their firm OR assigned to them
+        if user.user_type == 'advocate':
+            return Client.objects.filter(
+                Q(firm=user.firm) | Q(assigned_advocate=user)
+            ).distinct()
+        
+        # For admin/super_admin: show clients in their firm
         return Client.objects.filter(firm=user.firm)
 
     def perform_create(self, serializer):
@@ -100,20 +107,20 @@ class ClientViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='advocates', url_name='advocate-list')
     def list_advocates(self, request):
         """
-        List all advocates in the user's firm.
+        List all advocates in the user's firm (or all advocates if no firm).
         - Used by Admins when registering a client (dropdown).
         - Used by self-registered Clients to browse and choose an advocate.
         """
         user = request.user
         firm = user.firm
         
-        if not firm:
-            return Response(
-                {'error': 'You are not associated with any firm.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if firm:
+            # User has a firm, show advocates in that firm
+            advocates = CustomUser.objects.filter(firm=firm, user_type='advocate', is_active=True)
+        else:
+            # User has no firm, show all advocates without a firm
+            advocates = CustomUser.objects.filter(firm=None, user_type='advocate', is_active=True)
         
-        advocates = CustomUser.objects.filter(firm=firm, user_type='advocate', is_active=True)
         serializer = AdvocateListSerializer(advocates, many=True)
         return Response(serializer.data)
 
@@ -138,12 +145,17 @@ class ClientViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Validate advocate
+        # Validate advocate - must be same firm OR both have no firm
         try:
-            advocate = CustomUser.objects.get(id=advocate_id, user_type='advocate', firm=user.firm)
+            if user.firm is not None:
+                # Client has a firm, advocate must be in same firm
+                advocate = CustomUser.objects.get(id=advocate_id, user_type='advocate', firm=user.firm)
+            else:
+                # Client has no firm, just validate advocate exists
+                advocate = CustomUser.objects.get(id=advocate_id, user_type='advocate')
         except CustomUser.DoesNotExist:
             return Response(
-                {'error': 'Invalid advocate. The advocate must belong to your firm.'},
+                {'error': 'Invalid advocate ID.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -196,6 +208,8 @@ class ClientViewSet(viewsets.ModelViewSet):
         """
         For advocates: Get all documents for a specific client assigned to them.
         Only shows documents for clients assigned to the requesting advocate.
+        
+        Note: pk can be either a Client profile ID or a User account ID.
         """
         user = request.user
         
@@ -205,18 +219,45 @@ class ClientViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # Get the client and verify they're assigned to this advocate
+        # Try to get the client by ID
+        client = None
         try:
-            client = Client.objects.get(
-                id=pk,
-                assigned_advocate=user,
-                firm=user.firm
-            )
+            # Get client assigned to this advocate OR in same firm
+            client = Client.objects.filter(
+                Q(id=pk, assigned_advocate=user) | Q(id=pk, firm=user.firm)
+            ).first()
+            
+            if not client:
+                raise Client.DoesNotExist
         except Client.DoesNotExist:
-            return Response(
-                {'error': 'Client not found or not assigned to you.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            # Maybe pk is a user_account ID instead
+            try:
+                user_account = CustomUser.objects.get(id=pk, user_type='client')
+                # Auto-create client profile if it doesn't exist
+                client, created = Client.objects.get_or_create(
+                    user_account=user_account,
+                    defaults={
+                        'firm': user_account.firm,
+                        'first_name': user_account.first_name or '',
+                        'last_name': user_account.last_name or '',
+                        'email': user_account.email or '',
+                        'phone_number': user_account.phone_number or '',
+                    }
+                )
+                # Verify they're assigned to this advocate OR in same firm
+                is_assigned = client.assigned_advocate == user
+                same_firm = client.firm == user.firm and client.firm is not None
+                
+                if not is_assigned and not same_firm:
+                    return Response(
+                        {'error': 'Client not found or not assigned to you.'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            except CustomUser.DoesNotExist:
+                return Response(
+                    {'error': 'Client not found or not assigned to you.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
         
         # Get all documents for this client (non-deleted by default)
         show_deleted = request.query_params.get('show_deleted', 'false').lower() == 'true'
@@ -259,7 +300,11 @@ class ClientViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN
                 )
         elif user.user_type == 'advocate':
-            if client.assigned_advocate != user and client.firm != user.firm:
+            # Advocates can see clients assigned to them OR in their firm
+            is_assigned = client.assigned_advocate == user
+            same_firm = client.firm == user.firm and client.firm is not None
+            
+            if not is_assigned and not same_firm:
                 return Response(
                     {'error': 'You do not have permission to view this client.'},
                     status=status.HTTP_403_FORBIDDEN
@@ -291,23 +336,42 @@ class ClientViewSet(viewsets.ModelViewSet):
         
         GET /api/clients/{client_id}/cases/
         Optional filters: ?status=, ?category=, ?search=
+        
+        Note: pk can be either a Client profile ID or a User account ID.
+        If it's a User ID without a Client profile, one will be auto-created.
         """
         from cases.models import Case
         from cases.serializers import CaseSerializer
         
         user = request.user
         
-        # Get the client
+        # Try to get the client by ID
+        client = None
         try:
             client = Client.objects.get(id=pk)
         except Client.DoesNotExist:
-            return Response(
-                {
-                    'error': 'Client profile not found.',
-                    'hint': 'If you have a user ID, use /api/clients/by-user/{user_id}/ to get the client profile ID first.'
-                },
-                status=status.HTTP_404_NOT_FOUND
-            )
+            # Maybe pk is a user_account ID instead
+            try:
+                user_account = CustomUser.objects.get(id=pk, user_type='client')
+                # Auto-create client profile if it doesn't exist
+                client, created = Client.objects.get_or_create(
+                    user_account=user_account,
+                    defaults={
+                        'firm': user_account.firm,
+                        'first_name': user_account.first_name or '',
+                        'last_name': user_account.last_name or '',
+                        'email': user_account.email or '',
+                        'phone_number': user_account.phone_number or '',
+                    }
+                )
+            except CustomUser.DoesNotExist:
+                return Response(
+                    {
+                        'error': 'Client not found.',
+                        'hint': 'The provided ID does not match any client profile or user account.'
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
         
         # Permission checks
         if user.user_type == 'client':
@@ -318,8 +382,12 @@ class ClientViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN
                 )
         elif user.user_type == 'advocate':
-            # Advocates can see cases for clients assigned to them
-            if client.assigned_advocate != user and client.firm != user.firm:
+            # Advocates can see cases for clients assigned to them OR in their firm
+            # Allow access if: assigned to advocate OR (same firm and firm is not null)
+            is_assigned = client.assigned_advocate == user
+            same_firm = client.firm == user.firm and client.firm is not None
+            
+            if not is_assigned and not same_firm:
                 return Response(
                     {'error': 'This client is not assigned to you or in your firm.'},
                     status=status.HTTP_403_FORBIDDEN
