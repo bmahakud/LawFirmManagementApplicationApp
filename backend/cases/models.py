@@ -405,5 +405,8 @@ class CaseDraft(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
-# Import the document request model
+# Document request model is in models_document_requests.py
+# Import it here to make it available from cases.models
 from .models_document_requests import CaseDocumentRequest
+
+__all__ = ['Case', 'CaseActivity', 'Hearing', 'CaseDraft', 'CaseDocumentRequest']
