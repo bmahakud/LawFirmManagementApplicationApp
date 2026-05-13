@@ -4,9 +4,10 @@ from .views import UserDocumentViewSet
 from .views_templates import DocumentTemplateViewSet, FilledTemplateViewSet
 
 router = DefaultRouter()
-router.register(r'', UserDocumentViewSet, basename='document')
+# Register specific routes BEFORE generic routes to avoid conflicts
 router.register(r'templates', DocumentTemplateViewSet, basename='template')
 router.register(r'filled-templates', FilledTemplateViewSet, basename='filled-template')
+router.register(r'', UserDocumentViewSet, basename='document')
 
 urlpatterns = [
     path('', include(router.urls)),
