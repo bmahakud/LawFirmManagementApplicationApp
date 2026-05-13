@@ -409,4 +409,20 @@ class CaseDraft(models.Model):
 # Import it here to make it available from cases.models
 from .models_document_requests import CaseDocumentRequest
 
-__all__ = ['Case', 'CaseActivity', 'Hearing', 'CaseDraft', 'CaseDocumentRequest']
+# Service tracking model
+from .models_service import ServiceAttempt
+
+# Pre-litigation models
+from .models_prelitigation import (
+    DocumentChecklist,
+    CaseDocumentChecklistItem,
+    CaseResearch,
+    LegalNotice
+)
+
+__all__ = [
+    'Case', 'CaseActivity', 'Hearing', 'CaseDraft', 
+    'CaseDocumentRequest', 'ServiceAttempt',
+    'DocumentChecklist', 'CaseDocumentChecklistItem',
+    'CaseResearch', 'LegalNotice'
+]

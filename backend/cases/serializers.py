@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Case, CaseActivity, Hearing, CaseDraft
 from documents.models import UserDocument
 from core.serializers import ClientField
+from .serializers_service import ServiceAttemptListSerializer
 
 class CaseActivitySerializer(serializers.ModelSerializer):
     performed_by_name = serializers.CharField(source='performed_by.get_full_name', read_only=True)
@@ -34,6 +35,7 @@ class CaseSerializer(serializers.ModelSerializer):
     activities = CaseActivitySerializer(many=True, read_only=True)
     hearings = HearingSerializer(many=True, read_only=True)
     drafts = CaseDraftSerializer(many=True, read_only=True)
+    service_attempts = ServiceAttemptListSerializer(many=True, read_only=True)
     
     class Meta:
         model = Case
@@ -47,6 +49,6 @@ class CaseSerializer(serializers.ModelSerializer):
             'petitioner_name', 'respondent_name', 'opposing_counsel', 'court_name', 'court_no',
             'judge_name', 'district', 'state', 'representing', 'cnr_number',
             'filing_date', 'next_hearing_date', 'created_at', 'updated_at',
-            'activities', 'hearings', 'drafts'
+            'activities', 'hearings', 'drafts', 'service_attempts'
         ]
         read_only_fields = ['id', 'firm', 'solo_advocate', 'created_at', 'updated_at']

@@ -1,0 +1,832 @@
+{
+	"info": {
+		"_postman_id": "doc-template-api-collection",
+		"name": "Documents & Templates API",
+		"description": "Complete API collection for Document Management and Template System",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{auth_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "document_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "template_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "filled_template_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "case_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "client_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "user_id",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "User Documents",
+			"item": [
+				{
+					"name": "List All Documents",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/?show_deleted=false",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", ""],
+							"query": [
+								{
+									"key": "show_deleted",
+									"value": "false",
+									"description": "Show deleted documents (true/false)"
+								}
+							]
+						},
+						"description": "Get all documents for the current user"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Document Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/{{document_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "{{document_id}}", ""]
+						},
+						"description": "Get details of a specific document"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Document",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "document_file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "document_type",
+									"value": "petition",
+									"type": "text",
+									"description": "aadhar, pan, passport, driving_license, bar_certificate, degree, fir, petition, evidence, order, agreement, affidavit, notice, contract, invoice, receipt, correspondence, medical_report, police_report, witness_statement, power_of_attorney, vakalatnama, other"
+								},
+								{
+									"key": "document_title",
+									"value": "Sample Petition",
+									"type": "text"
+								},
+								{
+									"key": "document_number",
+									"value": "PET-2026-001",
+									"type": "text"
+								},
+								{
+									"key": "document_category",
+									"value": "legal",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "Description of the document",
+									"type": "text"
+								},
+								{
+									"key": "client",
+									"value": "{{client_id}}",
+									"type": "text",
+									"description": "Client UUID (optional)"
+								},
+								{
+									"key": "case",
+									"value": "{{case_id}}",
+									"type": "text",
+									"description": "Case UUID (optional)"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/documents/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", ""]
+						},
+						"description": "Upload a new document"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Document",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"document_title\": \"Updated Title\",\n    \"description\": \"Updated description\",\n    \"document_category\": \"updated_category\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/documents/{{document_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "{{document_id}}", ""]
+						},
+						"description": "Update document details"
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Document (Admin)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"verification_status\": \"verified\",\n    \"verification_notes\": \"Document verified successfully\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/documents/{{document_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "{{document_id}}", ""]
+						},
+						"description": "Verify or reject a document (Admin only)"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Document (Soft Delete)",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/{{document_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "{{document_id}}", ""]
+						},
+						"description": "Soft delete a document (Admin only)"
+					},
+					"response": []
+				},
+				{
+					"name": "Restore Document",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/{{document_id}}/restore/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "{{document_id}}", "restore", ""]
+						},
+						"description": "Restore a soft-deleted document (Admin only)"
+					},
+					"response": []
+				},
+				{
+					"name": "My Documents",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/my_documents/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "my_documents", ""]
+						},
+						"description": "Get documents uploaded by current user"
+					},
+					"response": []
+				},
+				{
+					"name": "Documents by Client",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/by_client/?client_id={{client_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "by_client", ""],
+							"query": [
+								{
+									"key": "client_id",
+									"value": "{{client_id}}"
+								}
+							]
+						},
+						"description": "Get all documents for a specific client"
+					},
+					"response": []
+				},
+				{
+					"name": "Documents by Case",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/by_case/?case_id={{case_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "by_case", ""],
+							"query": [
+								{
+									"key": "case_id",
+									"value": "{{case_id}}"
+								}
+							]
+						},
+						"description": "Get all documents for a specific case"
+					},
+					"response": []
+				},
+				{
+					"name": "Documents by Type",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/by_type/?type=petition",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "by_type", ""],
+							"query": [
+								{
+									"key": "type",
+									"value": "petition",
+									"description": "Document type: aadhar, pan, passport, petition, evidence, etc."
+								}
+							]
+						},
+						"description": "Get documents filtered by document type"
+					},
+					"response": []
+				},
+				{
+					"name": "Deleted Documents",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/deleted/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "deleted", ""]
+						},
+						"description": "Get all soft-deleted documents (Admin only)"
+					},
+					"response": []
+				},
+				{
+					"name": "User Documents (Profile)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/user_documents/?user_id={{user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "user_documents", ""],
+							"query": [
+								{
+									"key": "user_id",
+									"value": "{{user_id}}"
+								}
+							]
+						},
+						"description": "Get documents for a specific user (for profile pages)"
+					},
+					"response": []
+				}
+			],
+			"description": "APIs for managing user documents with upload, verification, and soft-delete"
+		},
+		{
+			"name": "Document Templates",
+			"item": [
+				{
+					"name": "List All Templates",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/templates/?category=ecourts",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "templates", ""],
+							"query": [
+								{
+									"key": "category",
+									"value": "ecourts",
+									"description": "Filter by category: ecourts, petition, application, affidavit, notice, agreement, other",
+									"disabled": true
+								},
+								{
+									"key": "search",
+									"value": "vakalatnama",
+									"description": "Search by name, description, or category",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all available document templates"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Template Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/templates/{{template_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "templates", "{{template_id}}", ""]
+						},
+						"description": "Get details of a specific template"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Template (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "Vakalatnama Form",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "Standard Vakalatnama form for client authorization",
+									"type": "text"
+								},
+								{
+									"key": "category",
+									"value": "ecourts",
+									"type": "text",
+									"description": "ecourts, petition, application, affidavit, notice, agreement, other"
+								},
+								{
+									"key": "template_file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "template_fields",
+									"value": "{\"client_name\": \"text\", \"case_number\": \"text\", \"court_name\": \"text\"}",
+									"type": "text",
+									"description": "JSON defining fillable fields"
+								},
+								{
+									"key": "is_active",
+									"value": "true",
+									"type": "text"
+								},
+								{
+									"key": "is_public",
+									"value": "true",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/documents/templates/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "templates", ""]
+						},
+						"description": "Create a new document template (Platform Owner/Super Admin only)"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Template",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated Template Name\",\n    \"description\": \"Updated description\",\n    \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/documents/templates/{{template_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "templates", "{{template_id}}", ""]
+						},
+						"description": "Update template details"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Template",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/templates/{{template_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "templates", "{{template_id}}", ""]
+						},
+						"description": "Delete a template"
+					},
+					"response": []
+				},
+				{
+					"name": "Templates for Case",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/templates/for-case/?case_id={{case_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "templates", "for-case", ""],
+							"query": [
+								{
+									"key": "case_id",
+									"value": "{{case_id}}"
+								}
+							]
+						},
+						"description": "Get available templates for a specific case"
+					},
+					"response": []
+				}
+			],
+			"description": "APIs for managing document templates (legal forms)"
+		},
+		{
+			"name": "Filled Templates",
+			"item": [
+				{
+					"name": "List Filled Templates",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/?status=completed",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", ""],
+							"query": [
+								{
+									"key": "status",
+									"value": "completed",
+									"description": "Filter by status: draft, completed, shared, signed, filed",
+									"disabled": true
+								},
+								{
+									"key": "search",
+									"value": "vakalatnama",
+									"description": "Search by template name, client name, or case number",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all filled templates"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Filled Template Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/{{filled_template_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "{{filled_template_id}}", ""]
+						},
+						"description": "Get details of a specific filled template"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Filled Template",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"template\": \"{{template_id}}\",\n    \"case\": \"{{case_id}}\",\n    \"client\": \"{{client_id}}\",\n    \"filled_data\": {\n        \"client_name\": \"Rajesh Mehta\",\n        \"case_number\": \"CRL-2026-1042\",\n        \"court_name\": \"Delhi High Court\",\n        \"date\": \"2026-05-13\"\n    },\n    \"status\": \"draft\",\n    \"notes\": \"Initial draft for review\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", ""]
+						},
+						"description": "Create a new filled template"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Filled Template",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"filled_data\": {\n        \"client_name\": \"Rajesh Kumar Mehta\",\n        \"case_number\": \"CRL-2026-1042\",\n        \"court_name\": \"Delhi High Court\",\n        \"date\": \"2026-05-13\"\n    },\n    \"status\": \"completed\",\n    \"notes\": \"Updated with correct client name\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/{{filled_template_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "{{filled_template_id}}", ""]
+						},
+						"description": "Update filled template data"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Filled Template",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/{{filled_template_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "{{filled_template_id}}", ""]
+						},
+						"description": "Delete a filled template"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Pre-filled Form",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "case_id",
+									"value": "{{case_id}}",
+									"type": "text"
+								},
+								{
+									"key": "client_id",
+									"value": "{{client_id}}",
+									"type": "text"
+								},
+								{
+									"key": "template_id",
+									"value": "{{template_id}}",
+									"type": "text",
+									"description": "Optional - if not provided, creates generic template"
+								},
+								{
+									"key": "notes",
+									"value": "Uploaded pre-filled form",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/upload-filled/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "upload-filled", ""]
+						},
+						"description": "Upload a pre-filled form document"
+					},
+					"response": []
+				},
+				{
+					"name": "Share with Client",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/{{filled_template_id}}/share/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "{{filled_template_id}}", "share", ""]
+						},
+						"description": "Share filled template with client"
+					},
+					"response": []
+				},
+				{
+					"name": "Sign Template (Client)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"signature_type\": \"client\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/{{filled_template_id}}/sign/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "{{filled_template_id}}", "sign", ""]
+						},
+						"description": "Client signs the filled template"
+					},
+					"response": []
+				},
+				{
+					"name": "Sign Template (Advocate)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"signature_type\": \"advocate\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/{{filled_template_id}}/sign/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "{{filled_template_id}}", "sign", ""]
+						},
+						"description": "Advocate signs the filled template"
+					},
+					"response": []
+				},
+				{
+					"name": "My Templates",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/my_templates/?status=shared&case_id={{case_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "my_templates", ""],
+							"query": [
+								{
+									"key": "status",
+									"value": "shared",
+									"description": "Filter by status",
+									"disabled": true
+								},
+								{
+									"key": "case_id",
+									"value": "{{case_id}}",
+									"description": "Filter by case",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get templates for current user (advocate sees created, client sees shared)"
+					},
+					"response": []
+				},
+				{
+					"name": "Templates by Case",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/by_case/?case_id={{case_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "by_case", ""],
+							"query": [
+								{
+									"key": "case_id",
+									"value": "{{case_id}}"
+								}
+							]
+						},
+						"description": "Get all filled templates for a specific case"
+					},
+					"response": []
+				},
+				{
+					"name": "Case Form Statistics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/case-stats/?case_id={{case_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "case-stats", ""],
+							"query": [
+								{
+									"key": "case_id",
+									"value": "{{case_id}}"
+								}
+							]
+						},
+						"description": "Get form statistics for a case (counts by status)"
+					},
+					"response": []
+				},
+				{
+					"name": "Download Form",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/{{filled_template_id}}/download/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "{{filled_template_id}}", "download", ""]
+						},
+						"description": "Download the generated form file"
+					},
+					"response": []
+				},
+				{
+					"name": "Preview Form",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/{{filled_template_id}}/preview/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "{{filled_template_id}}", "preview", ""]
+						},
+						"description": "Preview the form (returns URL and data)"
+					},
+					"response": []
+				},
+				{
+					"name": "Form History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/documents/filled-templates/{{filled_template_id}}/history/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "documents", "filled-templates", "{{filled_template_id}}", "history", ""]
+						},
+						"description": "Get form history/audit trail"
+					},
+					"response": []
+				}
+			],
+			"description": "APIs for managing filled templates (completed forms)"
+		}
+	]
+}
