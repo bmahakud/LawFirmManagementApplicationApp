@@ -6,11 +6,16 @@
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {
-		"type": "bearer",
-		"bearer": [
+		"type": "apikey",
+		"apikey": [
 			{
-				"key": "token",
-				"value": "{{auth_token}}",
+				"key": "value",
+				"value": "Token {{auth_token}}",
+				"type": "string"
+			},
+			{
+				"key": "key",
+				"value": "Authorization",
 				"type": "string"
 			}
 		]
@@ -55,9 +60,180 @@
 			"key": "user_id",
 			"value": "",
 			"type": "string"
+		},
+		{
+			"key": "notice_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "checklist_item_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "document_request_id",
+			"value": "",
+			"type": "string"
 		}
 	],
 	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login with Username/Password",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set(\"auth_token\", jsonData.token);",
+									"    console.log(\"Token saved: \" + jsonData.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"your_username_or_email\",\n    \"password\": \"your_password\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/login_username_password/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "login_username_password", ""]
+						},
+						"description": "Login with username/email and password. Token will be automatically saved to collection variables."
+					},
+					"response": []
+				},
+				{
+					"name": "Send OTP (Phone)",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"phone_number\": \"+919876543210\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/send_otp/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "send_otp", ""]
+						},
+						"description": "Request OTP for phone login"
+					},
+					"response": []
+				},
+				{
+					"name": "Send OTP (Email)",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/request_email_otp/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "request_email_otp", ""]
+						},
+						"description": "Request OTP for email login"
+					},
+					"response": []
+				},
+				{
+					"name": "Verify OTP",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.access) {",
+									"        pm.collectionVariables.set(\"auth_token\", jsonData.data.access);",
+									"        console.log(\"Token saved: \" + jsonData.data.access);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"phone_number\": \"+919876543210\",\n    \"otp_code\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/verify_otp/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "verify_otp", ""]
+						},
+						"description": "Verify OTP and login. Use phone_number OR email with otp_code. Token will be automatically saved."
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/auth/logout/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "logout", ""]
+						},
+						"description": "Logout current user"
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication endpoints - Login first to get your auth token"
+		},
 		{
 			"name": "User Documents",
 			"item": [
@@ -827,6 +1003,858 @@
 				}
 			],
 			"description": "APIs for managing filled templates (completed forms)"
+		},
+		{
+			"name": "Case Document Checklist",
+			"item": [
+				{
+					"name": "List Checklist Items",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/case-document-checklist/?status=pending",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "case-document-checklist", ""],
+							"query": [
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "Filter by status: pending, requested, received, verified, rejected, not_applicable",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all case document checklist items"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Checklist Item",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/case-document-checklist/{{checklist_item_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "case-document-checklist", "{{checklist_item_id}}", ""]
+						},
+						"description": "Get specific checklist item details"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Checklist from Template",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"case_id\": \"{{case_id}}\",\n    \"case_type\": \"property\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/case-document-checklist/create-from-template/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "case-document-checklist", "create-from-template", ""]
+						},
+						"description": "Auto-create checklist items from template for a case"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Checklist by Case",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/case-document-checklist/by-case/?case_id={{case_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "case-document-checklist", "by-case", ""],
+							"query": [
+								{
+									"key": "case_id",
+									"value": "{{case_id}}"
+								}
+							]
+						},
+						"description": "Get all checklist items for a specific case with statistics"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Checklist Item Status",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"received\",\n    \"received_date\": \"2024-05-15\",\n    \"uploaded_document\": \"document-uuid\",\n    \"notes\": \"Document received from client\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/case-document-checklist/{{checklist_item_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "case-document-checklist", "{{checklist_item_id}}", ""]
+						},
+						"description": "Update checklist item (mark as received, verified, rejected)"
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Document",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"verified\",\n    \"verified_date\": \"2024-05-16\",\n    \"notes\": \"Document verified successfully. All details correct.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/case-document-checklist/{{checklist_item_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "case-document-checklist", "{{checklist_item_id}}", ""]
+						},
+						"description": "Advocate verifies the document"
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Document",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"rejected\",\n    \"notes\": \"Photo is blurry. Please upload clear scan.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/case-document-checklist/{{checklist_item_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "case-document-checklist", "{{checklist_item_id}}", ""]
+						},
+						"description": "Advocate rejects the document with reason"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Pending Documents",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/case-document-checklist/pending-documents/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "case-document-checklist", "pending-documents", ""]
+						},
+						"description": "Get all pending documents across all cases"
+					},
+					"response": []
+				}
+			],
+			"description": "APIs for tracking document collection for cases"
+		},
+		{
+			"name": "Legal Notices",
+			"item": [
+				{
+					"name": "List Legal Notices",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/?status=sent&notice_type=legal_notice",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", ""],
+							"query": [
+								{
+									"key": "status",
+									"value": "sent",
+									"description": "Filter by status: draft, ready_to_send, sent, delivered, read, response_received, no_response, deadline_expired, bounced",
+									"disabled": true
+								},
+								{
+									"key": "notice_type",
+									"value": "legal_notice",
+									"description": "Filter by type: legal_notice, demand_notice, termination_notice, eviction_notice, cease_desist, other",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all legal notices"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Legal Notice",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", ""]
+						},
+						"description": "Get specific legal notice details"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Legal Notice",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"case\": \"{{case_id}}\",\n    \"notice_type\": \"legal_notice\",\n    \"subject\": \"Legal Notice for Property Dispute\",\n    \"recipient_name\": \"Mr. Rajesh Sharma\",\n    \"recipient_address\": \"123 Main Street, Delhi - 110001\",\n    \"recipient_email\": \"rajesh@example.com\",\n    \"recipient_phone\": \"+91-9876543210\",\n    \"notice_content\": \"This is to inform you that you have encroached on my property...\",\n    \"response_deadline\": \"2024-06-15\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", ""]
+						},
+						"description": "Create a new legal notice"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Legal Notice",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"notice_content\": \"Updated notice content...\",\n    \"status\": \"ready_to_send\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", ""]
+						},
+						"description": "Update legal notice"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Legal Notice",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", ""]
+						},
+						"description": "Delete a legal notice"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Notices by Case",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/by-case/?case_id={{case_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "by-case", ""],
+							"query": [
+								{
+									"key": "case_id",
+									"value": "{{case_id}}"
+								}
+							]
+						},
+						"description": "Get all legal notices for a specific case"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Pending Responses",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/pending-responses/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "pending-responses", ""]
+						},
+						"description": "Get all notices awaiting response"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Overdue Responses",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/overdue-responses/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "overdue-responses", ""]
+						},
+						"description": "Get all notices with overdue responses"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Status (Manual)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"delivered\",\n    \"status_notes\": \"Delivered via email on 15th May 2024\",\n    \"delivered_date\": \"2024-05-15\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/update-status/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", "update-status", ""]
+						},
+						"description": "Advocate manually updates notice status with notes"
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Sent via Email",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"sent_date\": \"2024-05-15T10:30:00Z\",\n    \"notes\": \"Sent to rajesh@example.com via Gmail\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-sent-email/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-sent-email", ""]
+						},
+						"description": "Mark notice as sent via email"
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Email Delivered",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-delivered-email/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-delivered-email", ""]
+						},
+						"description": "Mark email as delivered"
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Email Opened",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-opened-email/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-opened-email", ""]
+						},
+						"description": "Mark email as opened/read by recipient"
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Sent via WhatsApp",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"sent_date\": \"2024-05-15T10:35:00Z\",\n    \"notes\": \"Sent to +91-9876543210 via WhatsApp Business\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-sent-whatsapp/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-sent-whatsapp", ""]
+						},
+						"description": "Mark notice as sent via WhatsApp"
+					},
+					"response": []
+				},
+				{
+					"name": "Mark WhatsApp Delivered",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-delivered-whatsapp/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-delivered-whatsapp", ""]
+						},
+						"description": "Mark WhatsApp message as delivered"
+					},
+					"response": []
+				},
+				{
+					"name": "Mark WhatsApp Read",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-read-whatsapp/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-read-whatsapp", ""]
+						},
+						"description": "Mark WhatsApp message as read by recipient"
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Sent via Physical (Post)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"sent_date\": \"2024-05-15\",\n    \"tracking_number\": \"RR123456789IN\",\n    \"delivery_method\": \"registered_post\",\n    \"notes\": \"Sent via India Post Registered Post\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-sent-physical/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-sent-physical", ""]
+						},
+						"description": "Mark notice as sent via physical delivery (post/courier)"
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Physical Delivered (with Proof)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "delivered_date",
+									"value": "2024-05-20",
+									"type": "text"
+								},
+								{
+									"key": "proof_of_delivery",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-delivered-physical/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-delivered-physical", ""]
+						},
+						"description": "Mark physical delivery as completed with proof upload"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Delivery Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/delivery-status/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "legal-notices", "{{notice_id}}", "delivery-status", ""]
+						},
+						"description": "Get complete delivery status for all methods (email, WhatsApp, physical)"
+					},
+					"response": []
+				}
+			],
+			"description": "APIs for managing legal notices with multi-channel delivery tracking (Email, WhatsApp, Physical)"
+		},
+		{
+			"name": "Document Requests (Advocate → Client)",
+			"item": [
+				{
+					"name": "List All Document Requests",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/?status=pending&priority=high",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", ""],
+							"query": [
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "Filter by status: pending, uploaded, verified, rejected",
+									"disabled": true
+								},
+								{
+									"key": "priority",
+									"value": "high",
+									"description": "Filter by priority: high, medium, low",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all document requests based on user role.\n\n**Advocate**: Requests for their assigned cases\n**Client**: Requests for their cases\n**Admin**: All requests in their firm"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Document Request Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/{{document_request_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", "{{document_request_id}}", ""]
+						},
+						"description": "Get details of a specific document request including status, uploaded document, and notes."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Document Request (Advocate)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"case\": \"{{case_id}}\",\n    \"document_type\": \"pan\",\n    \"document_title\": \"PAN Card\",\n    \"description\": \"Need your PAN card for tax verification. Please upload a clear photo or scan.\",\n    \"priority\": \"high\",\n    \"due_date\": \"2024-05-20\",\n    \"advocate_notes\": \"Required for filing. Must be valid and not expired.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", ""]
+						},
+						"description": "Advocate creates a document request for client.\n\n**Required Fields:**\n- case: Case UUID\n- document_type: Type of document\n- document_title: Title/name of document\n\n**Optional Fields:**\n- description: What document is needed and why\n- priority: high, medium, low (default: medium)\n- due_date: Deadline for submission\n- advocate_notes: Internal notes"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Document Request (Advocate)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"description\": \"Updated description - Need PAN card urgently\",\n    \"priority\": \"high\",\n    \"due_date\": \"2024-05-18\",\n    \"advocate_notes\": \"Client called, will submit by tomorrow\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/{{document_request_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", "{{document_request_id}}", ""]
+						},
+						"description": "Advocate updates document request details like description, priority, or due date."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Document Request (Advocate)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/{{document_request_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", "{{document_request_id}}", ""]
+						},
+						"description": "Advocate deletes a document request. Only the advocate who created it can delete."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Requests by Case",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/by-case/?case_id={{case_id}}&status=pending",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", "by-case", ""],
+							"query": [
+								{
+									"key": "case_id",
+									"value": "{{case_id}}",
+									"description": "Case UUID (required)"
+								},
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "Filter by status (optional)",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all document requests for a specific case. Useful for case detail page."
+					},
+					"response": []
+				},
+				{
+					"name": "Get My Requests (Client)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/my-requests/?status=pending&priority=high",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", "my-requests", ""],
+							"query": [
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "Filter by status: pending, uploaded, verified, rejected",
+									"disabled": true
+								},
+								{
+									"key": "priority",
+									"value": "high",
+									"description": "Filter by priority: high, medium, low",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Client gets all document requests for their cases with summary statistics.\n\n**Response includes:**\n- List of requests\n- Summary: total, pending, uploaded, verified counts"
+					},
+					"response": []
+				},
+				{
+					"name": "Fulfill Request (Client Uploads)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"document_id\": \"uploaded-document-uuid\",\n    \"client_notes\": \"Here is my PAN card as requested. Valid till 2030.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/{{document_request_id}}/fulfill/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", "{{document_request_id}}", "fulfill", ""]
+						},
+						"description": "Client fulfills a document request by providing the uploaded document ID.\n\n**Workflow:**\n1. Client first uploads document using POST /api/documents/\n2. Client then calls this endpoint with the document_id\n3. Status changes from 'pending' to 'uploaded'\n4. Advocate gets notified to verify\n\n**Required:**\n- document_id: UUID of the uploaded document\n\n**Optional:**\n- client_notes: Any notes from client"
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Document (Advocate)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"action\": \"verify\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/{{document_request_id}}/verify/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", "{{document_request_id}}", "verify", ""]
+						},
+						"description": "Advocate verifies the uploaded document.\n\n**Action:** \"verify\"\n\nStatus changes from 'uploaded' to 'verified'.\nDocument verification_status also updated to 'verified'."
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Document (Advocate)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"action\": \"reject\",\n    \"rejection_reason\": \"PAN card photo is not clear. Please upload a clearer image or scan. Make sure all text is readable.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/{{document_request_id}}/verify/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", "{{document_request_id}}", "verify", ""]
+						},
+						"description": "Advocate rejects the uploaded document with reason.\n\n**Action:** \"reject\"\n**Required:** rejection_reason\n\nStatus changes from 'uploaded' to 'rejected'.\nClient can see the rejection reason and re-upload."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Pending Count (Notifications)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token {{auth_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/cases/document-requests/pending-count/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "cases", "document-requests", "pending-count", ""]
+						},
+						"description": "Get count of pending requests for showing badges/notifications.\n\n**For Client:**\nReturns count of pending requests (documents they need to upload)\n\n**For Advocate:**\nReturns count of uploaded documents waiting for verification\n\n**Response:**\n```json\n{\n  \"pending_count\": 3\n}\n```"
+					},
+					"response": []
+				}
+			],
+			"description": "APIs for advocates to request documents from clients with tracking and verification"
 		}
 	]
 }
