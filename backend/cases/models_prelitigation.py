@@ -190,8 +190,10 @@ class LegalNotice(models.Model):
         ('speed_post', 'Speed Post'),
         ('courier', 'Courier'),
         ('email', 'Email'),
+        ('whatsapp', 'WhatsApp'),
         ('hand_delivery', 'Hand Delivery'),
         ('publication', 'Publication in Newspaper'),
+        ('multiple', 'Multiple Methods'),
     ]
     
     STATUS_CHOICES = [
@@ -199,9 +201,11 @@ class LegalNotice(models.Model):
         ('ready_to_send', 'Ready to Send'),
         ('sent', 'Sent'),
         ('delivered', 'Delivered'),
+        ('read', 'Read by Recipient'),
         ('response_received', 'Response Received'),
         ('no_response', 'No Response'),
         ('deadline_expired', 'Deadline Expired'),
+        ('bounced', 'Delivery Failed/Bounced'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -228,8 +232,39 @@ class LegalNotice(models.Model):
     # Sending details
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     delivery_method = models.CharField(max_length=30, choices=DELIVERY_METHOD_CHOICES, blank=True)
+    
+    # Multiple delivery methods tracking (JSON)
+    # Example: [{"method": "email", "sent_date": "2024-05-15", "status": "delivered"}, 
+    #           {"method": "whatsapp", "sent_date": "2024-05-15", "status": "read"}]
+    delivery_attempts = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Track multiple delivery attempts with different methods"
+    )
+    
     sent_date = models.DateField(null=True, blank=True)
     delivered_date = models.DateField(null=True, blank=True)
+    read_date = models.DateField(null=True, blank=True, help_text="When recipient read the notice")
+    
+    # Email tracking
+    email_sent = models.BooleanField(default=False)
+    email_sent_date = models.DateTimeField(null=True, blank=True)
+    email_delivered = models.BooleanField(default=False)
+    email_opened = models.BooleanField(default=False)
+    email_opened_date = models.DateTimeField(null=True, blank=True)
+    
+    # WhatsApp tracking
+    whatsapp_sent = models.BooleanField(default=False)
+    whatsapp_sent_date = models.DateTimeField(null=True, blank=True)
+    whatsapp_delivered = models.BooleanField(default=False)
+    whatsapp_read = models.BooleanField(default=False)
+    whatsapp_read_date = models.DateTimeField(null=True, blank=True)
+    
+    # Physical delivery tracking
+    physical_sent = models.BooleanField(default=False)
+    physical_sent_date = models.DateField(null=True, blank=True)
+    physical_delivered = models.BooleanField(default=False)
+    physical_delivered_date = models.DateField(null=True, blank=True)
     
     # Tracking numbers
     tracking_number = models.CharField(max_length=100, blank=True, help_text="Post/courier tracking number")
@@ -257,6 +292,17 @@ class LegalNotice(models.Model):
     
     # Next actions
     next_action = models.TextField(blank=True, help_text="What to do next based on response")
+    
+    # Status update notes (for advocate to add notes when updating status)
+    status_notes = models.TextField(blank=True, help_text="Notes about status changes")
+    last_status_update = models.DateTimeField(null=True, blank=True)
+    last_status_updated_by = models.ForeignKey(
+        'accounts.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='notice_status_updates'
+    )
     
     # Metadata
     created_by = models.ForeignKey(

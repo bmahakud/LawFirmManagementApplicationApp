@@ -1,0 +1,330 @@
+{
+  "info": {
+    "name": "Legal Notice Tracking - Enhanced",
+    "description": "API endpoints for tracking legal notices via Email, WhatsApp, and Physical delivery",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Create Legal Notice",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", ""]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"case\": \"case-uuid-here\",\n  \"notice_type\": \"legal_notice\",\n  \"subject\": \"Legal Notice for Property Dispute\",\n  \"recipient_name\": \"Mr. Rajesh Sharma\",\n  \"recipient_address\": \"123 Main Street, Delhi - 110001\",\n  \"recipient_email\": \"rajesh@example.com\",\n  \"recipient_phone\": \"+91-9876543210\",\n  \"notice_content\": \"This is to inform you that you have encroached on my property...\",\n  \"response_deadline\": \"2024-06-15\"\n}"
+        }
+      }
+    },
+    {
+      "name": "2. Update Status (Manual)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/update-status/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "{{notice_id}}", "update-status", ""]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"sent\",\n  \"status_notes\": \"Notice sent via multiple methods on 15th May 2024\",\n  \"delivered_date\": \"2024-05-15\"\n}"
+        }
+      }
+    },
+    {
+      "name": "3. Mark Sent via Email",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-sent-email/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-sent-email", ""]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sent_date\": \"2024-05-15T10:30:00Z\",\n  \"notes\": \"Sent to rajesh@example.com via Gmail\"\n}"
+        }
+      }
+    },
+    {
+      "name": "4. Mark Email Delivered",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-delivered-email/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-delivered-email", ""]
+        }
+      }
+    },
+    {
+      "name": "5. Mark Email Opened",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-opened-email/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-opened-email", ""]
+        }
+      }
+    },
+    {
+      "name": "6. Mark Sent via WhatsApp",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-sent-whatsapp/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-sent-whatsapp", ""]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sent_date\": \"2024-05-15T10:35:00Z\",\n  \"notes\": \"Sent to +91-9876543210 via WhatsApp Business\"\n}"
+        }
+      }
+    },
+    {
+      "name": "7. Mark WhatsApp Delivered",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-delivered-whatsapp/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-delivered-whatsapp", ""]
+        }
+      }
+    },
+    {
+      "name": "8. Mark WhatsApp Read",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-read-whatsapp/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-read-whatsapp", ""]
+        }
+      }
+    },
+    {
+      "name": "9. Mark Sent via Physical (Post)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-sent-physical/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-sent-physical", ""]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sent_date\": \"2024-05-15\",\n  \"tracking_number\": \"RR123456789IN\",\n  \"delivery_method\": \"registered_post\",\n  \"notes\": \"Sent via India Post Registered Post\"\n}"
+        }
+      }
+    },
+    {
+      "name": "10. Mark Physical Delivered (with Proof)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/mark-delivered-physical/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "{{notice_id}}", "mark-delivered-physical", ""]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "delivered_date",
+              "value": "2024-05-20",
+              "type": "text"
+            },
+            {
+              "key": "proof_of_delivery",
+              "type": "file",
+              "src": "path/to/acknowledgment.pdf"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "11. Get Delivery Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/{{notice_id}}/delivery-status/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "{{notice_id}}", "delivery-status", ""]
+        }
+      }
+    },
+    {
+      "name": "12. Get Notices by Case",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/by-case/?case_id={{case_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "by-case", ""],
+          "query": [
+            {
+              "key": "case_id",
+              "value": "{{case_id}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "13. Get Pending Responses",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/pending-responses/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "pending-responses", ""]
+        }
+      }
+    },
+    {
+      "name": "14. Get Overdue Responses",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Token {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/cases/legal-notices/overdue-responses/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cases", "legal-notices", "overdue-responses", ""]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "your-auth-token-here",
+      "type": "string"
+    },
+    {
+      "key": "notice_id",
+      "value": "notice-uuid-here",
+      "type": "string"
+    },
+    {
+      "key": "case_id",
+      "value": "case-uuid-here",
+      "type": "string"
+    }
+  ]
+}
