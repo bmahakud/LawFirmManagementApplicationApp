@@ -32,6 +32,7 @@ const bottomNavItems = [
 
 const billingSubItems = [
   { label: 'Billing Center', path: '/firm-admin/billing', icon: CreditCard },
+  { label: 'Client Invoices', path: '/firm-admin/billing/client-invoices', icon: FileText },
   { label: 'Reports', path: '/firm-admin/billing/reports', icon: BarChart3 },
 ];
 
@@ -163,7 +164,7 @@ export default function FirmAdminSidebar() {
                 </div>
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${billingMenuOpen ? 'rotate-180 text-[#1a2a40]' : 'text-gray-500'}`} />
               </button>
-              <div className={`overflow-hidden transition-all duration-300 ease-in-out ${billingMenuOpen ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0'}`}>
+              <div className={`overflow-hidden transition-all duration-300 ease-in-out ${billingMenuOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
                 <div className="ml-[22px] mt-1 mb-1 border-l-2 border-[#1a2a40]/15 pl-3.5 space-y-0.5">
                   {billingSubItems.map(({ label, path, icon: Icon }) => {
                     const active = path === '/firm-admin/billing' ? pathname === '/firm-admin/billing' : pathname.startsWith(path);

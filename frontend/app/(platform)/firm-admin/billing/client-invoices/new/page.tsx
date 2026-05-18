@@ -42,7 +42,7 @@ interface Expense {
   amount: number;
 }
 
-export default function CreateInvoicePage() {
+export default function FirmAdminNewInvoicePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const invoiceId = searchParams.get('id'); // edit mode when present
@@ -143,7 +143,7 @@ export default function CreateInvoicePage() {
             setInvoiceStatus(inv.status || 'draft');
             if (inv.pdf_file) setExistingPdfUrl(inv.pdf_file);
 
-            // Pre-select client — match by user_account or client profile id
+            // Pre-select client
             const matchedClient = clientsList.find(
               (c: any) => c.user_account === inv.client_user_account_id || c.id === inv.client
             );
@@ -225,7 +225,6 @@ export default function CreateInvoicePage() {
 
     setIsSubmitting(true);
     try {
-      // Build FormData if a pdf file is attached, else use JSON
       let body: any;
       let headers: any = {};
 
@@ -279,7 +278,8 @@ export default function CreateInvoicePage() {
       const res = await customFetch(url, { method, headers, body });
 
       if (res.ok) {
-        router.push('/super-admin/finance/client-invoices');
+        toast.success(isEditMode ? 'Invoice updated!' : 'Invoice generated!');
+        router.push('/firm-admin/billing/client-invoices');
       } else {
         const error = await res.json();
         console.error(error);
@@ -298,7 +298,6 @@ export default function CreateInvoicePage() {
     return name.includes(clientSearch.toLowerCase()) || c.email?.toLowerCase().includes(clientSearch.toLowerCase());
   });
 
-  // Filter cases by matching client full name against case's client_name field
   const filteredCases = selectedClient
     ? cases.filter(c => {
         const clientFullName = `${selectedClient.first_name || ''} ${selectedClient.last_name || ''}`
@@ -361,7 +360,6 @@ export default function CreateInvoicePage() {
           <div className="relative" ref={clientRef}>
             <label className="block text-[13px] font-semibold text-red-600 mb-2">Client*</label>
             {isEditMode ? (
-              /* Read-only in edit mode */
               <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-[8px] cursor-not-allowed">
                 <span className="text-[14px] text-slate-900 font-medium">
                   {selectedClient ? (selectedClient.name || `${selectedClient.first_name || ''} ${selectedClient.last_name || ''}`.trim()) : 'Loading...'}
@@ -414,7 +412,6 @@ export default function CreateInvoicePage() {
           <div className="relative" ref={caseRef}>
             <label className="block text-[13px] font-semibold text-slate-700 mb-2">Case (Optional)</label>
             {isEditMode ? (
-              /* Read-only in edit mode */
               <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-[8px] cursor-not-allowed">
                 <span className="text-[14px] text-slate-900 font-medium">
                   {selectedCase ? selectedCase.case_title : 'No case linked'}
@@ -612,10 +609,7 @@ export default function CreateInvoicePage() {
         {/* Section 3 & 4 Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-5 border-t border-slate-100">
 
-          {/* Notes (Section 4) */}
           <div className="space-y-4">
-
-            {/* Edit-mode only: PDF Upload */}
             {isEditMode && (
               <div>
                   <label className="block text-[13px] font-semibold text-slate-700 mb-2">PDF Invoice File</label>
@@ -667,7 +661,7 @@ export default function CreateInvoicePage() {
             </div>
           </div>
 
-          {/* Billing Summary (Section 3) */}
+          {/* Billing Summary */}
           <div className="flex flex-col items-end">
             <div className="w-full max-w-sm space-y-4">
               <div className="flex justify-between items-center py-2">
@@ -691,7 +685,7 @@ export default function CreateInvoicePage() {
                     value={taxPercentage === 0 ? '' : taxPercentage}
                     onChange={(e) => {
                       setTaxPercentage(Math.max(0, parseFloat(e.target.value) || 0));
-                      setCustomTaxAmount(0); // clear custom tax when % is used
+                      setCustomTaxAmount(0);
                     }}
                     onWheel={(e) => e.currentTarget.blur()}
                     disabled={customTaxAmount > 0}
@@ -709,7 +703,7 @@ export default function CreateInvoicePage() {
                   onChange={(e) => {
                     const val = Math.max(0, parseFloat(e.target.value) || 0);
                     setCustomTaxAmount(val);
-                    if (val > 0) setTaxPercentage(0); // clear % when custom amount is used
+                    if (val > 0) setTaxPercentage(0);
                   }}
                   onWheel={(e) => e.currentTarget.blur()}
                   className="w-40 border border-slate-200 rounded-[8px] px-4 py-2 text-right text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500 transition-all bg-white placeholder:text-slate-500"

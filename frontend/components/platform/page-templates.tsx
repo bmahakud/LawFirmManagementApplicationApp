@@ -61,6 +61,7 @@ import {
 } from '@/components/platform/mock-data';
 import { customFetch } from '@/lib/fetch';
 import DocumentManager from '@/components/platform/DocumentManager';
+import DocumentViewer from '@/components/platform/DocumentViewer';
 import { API, API_BASE_URL } from '@/lib/api';
 import { useRouter, useParams } from 'next/navigation';
 import { Country, State, City } from 'country-state-city';
@@ -1001,7 +1002,7 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
 
   const [branches, setBranches] = useState<any[]>([]);
   useEffect(() => {
-    if (user?.user_type === 'admin') {
+    if (user?.user_type === 'admin' || user?.user_type === 'client') {
       customFetch(API.FIRMS.BRANCHES.LIST)
         .then(res => res.json())
         .then(data => {
@@ -1029,23 +1030,23 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
   useEffect(() => {
     if (user) {
       setEditData({
-        first_name: user.first_name,
-        last_name: user.last_name,
-        phone_number: user.phone_number,
-        address_line_1: user.address_line_1,
-        address_line_2: user.address_line_2,
-        city: user.city,
-        state: user.state,
-        country: user.country,
-        postal_code: user.postal_code,
-        date_of_birth: user.date_of_birth,
-        gender: user.gender,
-        aadhar_number: user.aadhar_number,
-        pan_number: user.pan_number,
-        bar_council_registration: user.bar_council_registration,
-        bar_council_state: user.bar_council_state,
-        is_active: user.is_active,
-        branch_id: user.available_firms?.[0]?.branch || '',
+        first_name: user.first_name || '',
+        last_name: user.last_name || '',
+        phone_number: user.phone_number || '',
+        address_line_1: user.address_line_1 || '',
+        address_line_2: user.address_line_2 || '',
+        city: user.city || '',
+        state: user.state || '',
+        country: user.country || '',
+        postal_code: user.postal_code || '',
+        date_of_birth: user.date_of_birth || '',
+        gender: user.gender || '',
+        aadhar_number: user.aadhar_number || '',
+        pan_number: user.pan_number || '',
+        bar_council_registration: user.bar_council_registration || '',
+        bar_council_state: user.bar_council_state || '',
+        is_active: user.is_active ?? true,
+        branch: user.available_firms?.[0]?.branch || '',
       });
     }
   }, [user, isEditing]);
@@ -1064,6 +1065,9 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
       }
       if (payload.phone_number) {
         payload.phone_number = payload.phone_number.replace(/\D/g, '');
+      }
+      if (!payload.branch) {
+        payload.branch = null;
       }
 
       let response;
@@ -1130,7 +1134,7 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
     { label: 'Phone', value: <span className="text-black font-semibold">{user.phone_number || '--'}</span> },
     { label: 'User Type', value: <Badge label={user.user_type} tone="info" /> },
     { label: 'Firm Name', value: <span className="text-black font-semibold">{user.firm_name || 'N/A'}</span> },
-    ...(user.user_type === 'admin' ? [{ label: 'Assigned Branch', value: <span className="text-black font-semibold">{user.available_firms?.[0]?.branch_name || 'N/A'}</span> }] : []),
+    { label: 'Assigned Branch', value: <span className="text-black font-semibold">{user.available_firms?.[0]?.branch_name || 'N/A'}</span> },
     { label: 'Gender', value: <span className="text-black font-semibold">{user.gender === 'M' ? 'Male' : user.gender === 'F' ? 'Female' : user.gender === 'O' ? 'Other' : '--'}</span> },
     { label: 'Date of Birth', value: <span className="text-black font-semibold">{user.date_of_birth || '--'}</span> },
   ];
@@ -1273,12 +1277,12 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
                         className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
                       />
                     </div>
-                    {user.user_type === 'admin' && branches.length > 0 && (
+                    {(user.user_type === 'admin' || user.user_type === 'client') && branches.length > 0 && (
                       <div className="md:col-span-2 pt-2 border-t border-gray-100">
-                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Assigned Branch</label>
+                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Assigned Branch {user.user_type === 'admin' && <span className="text-red-500">*</span>}</label>
                         <select
-                          value={editData.branch_id}
-                          onChange={e => updateField('branch_id', e.target.value)}
+                          value={editData.branch}
+                          onChange={e => updateField('branch', e.target.value)}
                           className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
                         >
                           <option value="">Select Branch</option>
@@ -1513,7 +1517,7 @@ export function TeamMemberFormPage({
     bar_council_registration: '',
     bar_council_state: '',
     is_active: true,
-    branch_id: '',
+    branch: '',
   });
   const [firms, setFirms] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
@@ -1537,7 +1541,7 @@ export function TeamMemberFormPage({
     // If we're creating/editing an admin, fetch branches
     // For Super Admin, /api/branches/ returns branches of their firm
     // For Platform Owner, we might filter by the selected firm later
-    if (formData.user_type === 'admin') {
+    if (formData.user_type === 'admin' || formData.user_type === 'client') {
       customFetch(API.FIRMS.BRANCHES.LIST)
         .then(res => res.json())
         .then(data => {
@@ -1555,10 +1559,27 @@ export function TeamMemberFormPage({
         .then(res => res.json())
         .then(data => {
           setFormData({
-            ...data,
-            password: '', // Don't populate password
+            first_name: data.first_name || '',
+            last_name: data.last_name || '',
+            email: data.email || '',
+            phone_number: data.phone_number || '',
+            password: '', 
+            user_type: data.user_type || fixedRole || 'advocate',
             firm: data.firm || '',
-            branch_id: data.available_firms?.[0]?.branch || '',
+            date_of_birth: data.date_of_birth || '',
+            gender: data.gender || '',
+            aadhar_number: data.aadhar_number || '',
+            pan_number: data.pan_number || '',
+            address_line_1: data.address_line_1 || '',
+            address_line_2: data.address_line_2 || '',
+            city: data.city || '',
+            state: data.state || '',
+            country: data.country || 'India',
+            postal_code: data.postal_code || '',
+            bar_council_registration: data.bar_council_registration || '',
+            bar_council_state: data.bar_council_state || '',
+            is_active: data.is_active ?? true,
+            branch: data.available_firms?.[0]?.branch || '',
           });
         })
         .catch(err => setError('Failed to load user data'))
@@ -1605,7 +1626,7 @@ export function TeamMemberFormPage({
       if (!payload.gender) payload.gender = "";
       if (!payload.bar_council_registration) payload.bar_council_registration = "";
       if (!payload.bar_council_state) payload.bar_council_state = "";
-      if (!payload.branch_id) payload.branch_id = null;
+      if (!payload.branch) payload.branch = null;
 
       const url = detail && userId ? API.USERS.DETAIL(userId as string) : API.USERS.ADD_USER;
       const method = detail && userId ? 'PATCH' : 'POST';
@@ -1709,18 +1730,18 @@ export function TeamMemberFormPage({
                       </select>
                     </div>
                   )}
-                  {(formData.user_type === 'admin' && branches.length > 0) && (
+                  {((formData.user_type === 'admin' || formData.user_type === 'client') && branches.length > 0) && (
                     <div className="md:col-span-2 pt-2 border-t border-gray-100">
                       <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
-                        Assign Branch <span className="text-red-500">*</span>
+                        Assign Branch {formData.user_type === 'admin' && <span className="text-red-500">*</span>}
                       </label>
                       <select
-                        value={formData.branch_id}
-                        onChange={e => update('branch_id', e.target.value)}
-                        required
+                        value={formData.branch}
+                        onChange={e => update('branch', e.target.value)}
+                        required={formData.user_type === 'admin'}
                         className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none"
                       >
-                        <option value="">Select a branch...</option>
+                        <option value="">{formData.user_type === 'client' ? 'Select a branch (optional)...' : 'Select a branch...'}</option>
                         {branches.map((b: any) => (
                           <option key={b.id} value={b.id}>{b.branch_name}</option>
                         ))}
@@ -2279,6 +2300,13 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
           </div>
         }
       />
+
+      <div className="animate-in fade-in zoom-in-95 duration-500 delay-150">
+        <DocumentViewer 
+          url={fileUrl} 
+          title={doc.document_title} 
+        />
+      </div>
 
       <SplitPanels
         left={

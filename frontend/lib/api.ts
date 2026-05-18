@@ -49,8 +49,18 @@ export const API = {
     UPLOAD: "/api/documents/",
     DETAIL: (uuid: string) => `/api/documents/${uuid}/`,
     USER_DOCUMENTS: "/api/documents/user_documents/",
-    BY_CLIENT: "/api/documents/by_client/",
-    BY_CASE: "/api/documents/by_case/"
+    BY_CLIENT: (id: string) => `/api/documents/by_client/?client_id=${id}`,
+    BY_CASE: (id: string) => `/api/documents/by_case/?case_id=${id}`,
+    TEMPLATES: "/api/documents/templates/"
+  },
+  DOCUMENT_REQUESTS: {
+    LIST: "/api/cases/document-requests/",
+    DETAIL: (id: string) => `/api/cases/document-requests/${id}/`,
+    BY_CASE: (caseId: string) => `/api/cases/document-requests/by-case/?case_id=${caseId}`,
+    MY_REQUESTS: "/api/cases/document-requests/my-requests/",
+    FULFILL: (id: string) => `/api/cases/document-requests/${id}/fulfill/`,
+    VERIFY: (id: string) => `/api/cases/document-requests/${id}/verify/`,
+    PENDING_COUNT: "/api/cases/document-requests/pending-count/",
   },
   CLIENTS: {
     LIST: "/api/users/?user_type=client",

@@ -42,6 +42,8 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   const [uploadData, setUploadData] = useState({
     document_type: 'other',
     document_title: '',
+    document_number: '',
+    document_category: 'legal',
     description: '',
     document_file: null as File | null,
   });
@@ -92,25 +94,22 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
       
       // If viewing a specific user's profile documents, use the user_documents endpoint
       if (userId) {
-        url = API.DOCUMENTS.USER_DOCUMENTS;
-        params.set('user_id', userId);
+        url = `${API.DOCUMENTS.USER_DOCUMENTS}?user_id=${userId}`;
       } 
       // If filtering by client, use by_client endpoint
       else if (clientId) {
-        url = API.DOCUMENTS.BY_CLIENT;
-        params.set('client_id', clientId);
+        url = typeof API.DOCUMENTS.BY_CLIENT === 'function' 
+          ? API.DOCUMENTS.BY_CLIENT(clientId) 
+          : `${API.DOCUMENTS.BY_CLIENT}?client_id=${clientId}`;
       } 
       // If filtering by case, use by_case endpoint
       else if (caseId) {
-        url = API.DOCUMENTS.BY_CASE;
-        params.set('case_id', caseId);
-      }
-      // Otherwise, use default LIST endpoint which returns only user's own documents
-
-      if (params.toString()) {
-        url = `${url}?${params.toString()}`;
+        url = typeof API.DOCUMENTS.BY_CASE === 'function' 
+          ? API.DOCUMENTS.BY_CASE(caseId) 
+          : `${API.DOCUMENTS.BY_CASE}?case_id=${caseId}`;
       }
 
+      console.log('DocumentManager - Fetching documents from:', url);
       const response = await customFetch(url);
       const data = await response.json();
 
@@ -143,7 +142,11 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
       formData.append('document_file', uploadData.document_file);
       formData.append('document_type', uploadData.document_type);
       formData.append('document_title', uploadData.document_title || uploadData.document_file.name);
+      if (uploadData.document_number) formData.append('document_number', uploadData.document_number);
+      if (uploadData.document_category) formData.append('document_category', uploadData.document_category);
       if (uploadData.description) formData.append('description', uploadData.description);
+      
+      // Handle IDs (ensuring they are sent as strings)
       if (clientId) formData.append('client', clientId);
       if (caseId) formData.append('case', caseId);
 
@@ -160,6 +163,8 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
       setUploadData({
         document_type: 'other',
         document_title: '',
+        document_number: '',
+        document_category: 'legal',
         description: '',
         document_file: null,
       });
@@ -254,6 +259,37 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                 placeholder="Enter document title"
                 className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-900 font-semibold outline-none focus:border-[#0e2340] transition-colors placeholder:text-gray-400"
               />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
+                Document Number
+              </label>
+              <input
+                type="text"
+                value={uploadData.document_number}
+                onChange={(e) => setUploadData({ ...uploadData, document_number: e.target.value })}
+                placeholder="e.g. PET-2026-001"
+                className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-900 font-semibold outline-none focus:border-[#0e2340] transition-colors placeholder:text-gray-400"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
+                Document Category
+              </label>
+              <select
+                value={uploadData.document_category}
+                onChange={(e) => setUploadData({ ...uploadData, document_category: e.target.value })}
+                className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-900 font-semibold outline-none focus:border-[#0e2340] transition-colors"
+              >
+                <option value="legal">Legal</option>
+                <option value="personal">Personal</option>
+                <option value="evidence">Evidence</option>
+                <option value="other">Other</option>
+              </select>
             </div>
           </div>
 

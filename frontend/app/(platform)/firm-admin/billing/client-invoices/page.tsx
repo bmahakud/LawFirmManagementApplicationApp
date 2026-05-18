@@ -16,9 +16,7 @@ import {
   Clock, Receipt, Loader2, FileSpreadsheet, CreditCard
 } from 'lucide-react';
 
-
-
-export default function ClientInvoicesPage() {
+export default function FirmAdminClientInvoicesPage() {
   useTopbarTitle('Client Invoices', 'Manage invoicing history and generate new client bills.');
 
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -115,7 +113,6 @@ export default function ClientInvoicesPage() {
     return 'bg-amber-100 text-amber-700';
   };
 
-  // How many days overdue (positive = overdue)
   const getOverdueDays = (dueDateStr: string) => {
     const due = new Date(dueDateStr);
     const today = new Date();
@@ -137,8 +134,8 @@ export default function ClientInvoicesPage() {
               <p className="text-sm font-semibold text-slate-400">View and manage all client billings</p>
             </div>
             <Link
-              href="/super-admin/finance/client-invoices/new"
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all text-sm"
+              href="/firm-admin/billing/client-invoices/new"
+              className="flex items-center gap-2 px-6 py-3 bg-[#2a4365] text-white rounded-2xl font-black shadow-lg shadow-[#2a4365]/20 hover:bg-[#1a2d4a] transition-all text-sm"
             >
               <Plus className="w-5 h-5" />
               Generate New Invoice
@@ -152,9 +149,8 @@ export default function ClientInvoicesPage() {
               animate={{ opacity: 1, y: 0 }}
               className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full"
             >
-              {/* Filter bar — fixed, with inline pagination + page size */}
+              {/* Filter bar */}
               <div className="shrink-0 p-4 border-b border-slate-100 flex flex-wrap justify-between items-center gap-3 bg-slate-50/50">
-                {/* Left: search */}
                 <div className="relative w-full sm:w-64">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
@@ -166,24 +162,18 @@ export default function ClientInvoicesPage() {
                   />
                 </div>
 
-                {/* Right: filter + page size + pagination */}
                 <div className="flex items-center gap-2 flex-wrap">
-
-                  {/* Active filter badge */}
                   {activeFilter !== 'all' && (
-                    <span className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg ${activeFilter === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
+                    <span className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg ${activeFilter === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                       {activeFilter === 'overdue' ? 'Overdue' : 'Unpaid'}
                       <button onClick={() => applyFilter('all')} className="ml-1 hover:opacity-70"><X className="w-3 h-3" /></button>
                     </span>
                   )}
 
-                  {/* Filter dropdown */}
                   <div className="relative">
                     <button
                       onClick={() => setFilterOpen(prev => !prev)}
-                      className={`flex items-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold shadow-sm transition-all ${activeFilter !== 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                        }`}
+                      className={`flex items-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold shadow-sm transition-all ${activeFilter !== 'all' ? 'bg-[#2a4365] text-white border-[#2a4365]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                     >
                       <Filter className="w-3.5 h-3.5" /> Filter
                     </button>
@@ -195,8 +185,7 @@ export default function ClientInvoicesPage() {
                         >
                           {([{ key: 'all', label: 'All Invoices', dot: 'bg-slate-400' }, { key: 'overdue', label: 'Overdue', dot: 'bg-red-500' }, { key: 'unpaid', label: 'Unpaid', dot: 'bg-amber-500' }] as const).map(opt => (
                             <button key={opt.key} onClick={() => applyFilter(opt.key)}
-                              className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-left transition-colors ${activeFilter === opt.key ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
-                                }`}>
+                              className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-left transition-colors ${activeFilter === opt.key ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'}`}>
                               <span className={`w-2 h-2 rounded-full ${opt.dot}`} />{opt.label}
                             </button>
                           ))}
@@ -205,10 +194,8 @@ export default function ClientInvoicesPage() {
                     </AnimatePresence>
                   </div>
 
-                  {/* Separator */}
                   <div className="w-px h-5 bg-slate-200" />
 
-                  {/* Inline pagination */}
                   <div className="flex items-center gap-1">
                     <button
                       disabled={currentPage === 1 || loading}
@@ -222,12 +209,10 @@ export default function ClientInvoicesPage() {
                       className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-40 transition-all"
                     ><ChevronRight className="w-4 h-4 text-slate-600" /></button>
                   </div>
-
                   <span className="text-xs font-medium text-slate-400">{count} total</span>
                 </div>
               </div>
 
-              {/* Table — only this scrolls */}
               <div className="flex-1 overflow-y-auto overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead className="sticky top-0 z-10">
@@ -311,9 +296,6 @@ export default function ClientInvoicesPage() {
                               className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
                               <Trash2 className="w-4 h-4" />
                             </button>
-                            <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="PDF">
-                              <FileDown className="w-4 h-4" />
-                            </button>
                           </div>
                         </td>
                       </tr>
@@ -321,7 +303,6 @@ export default function ClientInvoicesPage() {
                   </tbody>
                 </table>
               </div>
-
             </motion.div>
           </div>
         </div>
@@ -330,7 +311,6 @@ export default function ClientInvoicesPage() {
       {/* -------------------- DETAIL VIEW (SPLIT) -------------------- */}
       {viewMode === 'split' && selectedInvoice && (
         <>
-          {/* Master List (Sticky Left) */}
           <div className="w-[380px] shrink-0 border-r border-slate-200 flex flex-col bg-[#fdfdfd] z-10 shadow-xl relative">
             <div className="p-4 border-b border-slate-100 bg-white">
               <button
@@ -352,8 +332,7 @@ export default function ClientInvoicesPage() {
                     onClick={() => fetchInvoiceDetail(inv.id)}
                     className={`p-4 rounded-xl border cursor-pointer transition-all ${isSelected
                       ? 'bg-blue-50 border-blue-600/20 shadow-sm'
-                      : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'
-                      }`}
+                      : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
                   >
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="text-[15px] font-black tracking-tight text-slate-900">₹{parseFloat(inv.total_amount).toLocaleString('en-IN')}</h3>
@@ -375,7 +354,6 @@ export default function ClientInvoicesPage() {
             </div>
           </div>
 
-          {/* Right Panel: The Document Preview */}
           <div className="flex-1 flex flex-col bg-[#f0f2f5] overflow-hidden relative">
             <AnimatePresence mode="wait">
               <motion.div
@@ -386,7 +364,6 @@ export default function ClientInvoicesPage() {
                 className="flex-1 flex flex-col h-full absolute inset-0 font-sans"
               >
                 <div className="bg-white border-b border-slate-200 shadow-sm flex flex-col shrink-0">
-                  {/* Top Row: Navigation + Identity + Actions */}
                   <div className="px-4 py-4 flex justify-between items-center">
                     <div className="flex items-center gap-4">
                       <button
@@ -399,58 +376,24 @@ export default function ClientInvoicesPage() {
                       <div className="flex items-center gap-3">
                         <h2 className="text-xl font-black tracking-tight text-slate-900">{selectedInvoice.invoice_number}</h2>
                         <span className="text-[13px] font-bold text-slate-500 max-w-[280px] truncate">
-                          {firmProfile?.name || firmProfile?.firm_name || 'Anthem Global Technology'}
+                          {firmProfile?.name || firmProfile?.firm_name || 'Legal Firm'}
                         </span>
-                        {getOverdueDays(selectedInvoice.due_date) > 0 && (
-                          <div className="flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-1.5 rounded-full text-[11px] font-black border border-red-100">
-                            <Clock className="w-3.5 h-3.5" /> Overdue by {getOverdueDays(selectedInvoice.due_date)} days
-                          </div>
-                        )}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <Link
-                        href={`/super-admin/finance/client-invoices/new?id=${selectedInvoice.id}`}
+                        href={`/firm-admin/billing/client-invoices/new?id=${selectedInvoice.id}`}
                         className="flex items-center gap-2 px-3 py-2 text-xs font-black bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all"
                       >
                         <Edit className="w-4 h-4" /> Edit
                       </Link>
-                      <button className="flex items-center gap-2 px-3 py-2 text-xs font-black bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-all border border-green-100">
-                        <CreditCard className="w-4 h-4" /> Payment
-                      </button>
                       <button className="flex items-center gap-2 px-3 py-2 text-xs font-black bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-100">
                         <FileDown className="w-4 h-4" /> Save PDF
-                      </button>
-                      <button className="flex items-center gap-2 px-3 py-2 text-xs font-black bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all">
-                        <FileSpreadsheet className="w-4 h-4" /> CSV
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (confirm("Are you sure you want to delete this invoice?")) {
-                            try {
-                              const res = await customFetch(API.BILLING.INVOICES.DETAIL(selectedInvoice.id), { method: 'DELETE' });
-                              if (res.ok) {
-                                toast.success("Invoice deleted");
-                                setSelectedInvoice(null);
-                                setViewMode('full');
-                                fetchInvoices(currentPage);
-                              } else {
-                                toast.error("Failed to delete");
-                              }
-                            } catch (err) {
-                              toast.error("Error deleting invoice");
-                            }
-                          }
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 text-xs font-black bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all border border-red-100"
-                      >
-                        <Trash2 className="w-4 h-4" /> Delete
                       </button>
                     </div>
                   </div>
 
-                  {/* Bottom Row: Metadata + Totals */}
                   <div className="px-6 py-3 bg-slate-50/80 border-t border-slate-100 flex justify-between items-center text-[12px] font-black text-slate-500 uppercase tracking-widest">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-1.5">
@@ -462,14 +405,6 @@ export default function ClientInvoicesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-8 normal-case tracking-normal">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[14px] font-bold">Paid:</span>
-                        <span className="text-green-600 font-black text-[14px]">₹{parseFloat(selectedInvoice.paid_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[14px] font-bold">Due:</span>
-                        <span className="text-red-500 font-black text-[14px]">₹{parseFloat(selectedInvoice.balance_due || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                      </div>
                       <div className="flex items-center gap-2 ml-2">
                         <span className="text-[12px] font-bold text-slate-700 uppercase tracking-wider">Total:</span>
                         <span className="text-slate-900 font-black text-lg">₹{parseFloat(selectedInvoice.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
@@ -478,67 +413,53 @@ export default function ClientInvoicesPage() {
                   </div>
                 </div>
 
-                {/* Scrollable invoice preview panel */}
                 <div className="flex-1 min-h-0 overflow-y-auto bg-white">
-                  {/* Centering wrapper */}
-                  <div className="min-h-full flex flex-col items-center  py-6 px-4">
-                    <div style={{ zoom: '100 %', flexShrink: 0 }}>
-                      <InvoiceDefaultTemplate
-                        data={{
-                          number: selectedInvoice.invoice_number,
-                          date: selectedInvoice.invoice_date,
-                          due: selectedInvoice.due_date,
-                          currency: 'INR',
-                          to: { name: selectedInvoice.client_name },
-                          taxTypes: {},
-                          discountMode: 'AMOUNT',
-                          discountAmountManual: Number(selectedInvoice.discount_amount) || 0,
-                          notes: selectedInvoice.notes,
-                          terms: selectedInvoice.terms_and_conditions,
-                          placeOfSupply: selectedInvoice.branch_name,
-                          items: [
-                            ...(selectedInvoice.time_entries_detail || []).map((t: any) => ({
-                              id: t.id, name: t.description,
-                              desc: `Activity: ${t.activity_type}`,
-                              qty: Number(t.hours), price: Number(t.hourly_rate),
-                            })),
-                            ...(selectedInvoice.expenses_detail || []).map((e: any) => ({
-                              id: e.id, name: e.description,
-                              desc: `Expense: ${e.expense_type}`,
-                              qty: 1, price: Number(e.amount),
-                            })),
-                          ],
-                        }}
-                        profile={{
-                          company: firmProfile?.name || firmProfile?.firm_name || 'Law Firm',
-                          address: [
-                            firmProfile?.address_line_1,
-                            firmProfile?.city,
-                            firmProfile?.state,
-                          ].filter(Boolean).join(', ') || 'Address not provided',
-                          email: firmProfile?.email || '',
-                          phone: firmProfile?.phone_number || firmProfile?.phone || '',
-                          gstin: firmProfile?.gstin || '',
-                        }}
-                        logo={firmProfile?.logo || firmProfile?.profile_image || null}
-                        subtotal={parseFloat(selectedInvoice.subtotal) || 0}
-                        perLineTax={[]}
-                        taxOverride={(parseFloat(selectedInvoice.tax_amount) || null) as any}
-                        taxLabelOverride={`Tax (${parseFloat(selectedInvoice.tax_percentage) || 0}%)` as any}
-                        totalAmountOverride={(parseFloat(selectedInvoice.total_amount) || null) as any}
-                        fmt={(v: number) =>
-                          `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
-                        }
-                        previewOpen={true}
-                        showTotals={true}
-                        paymentInfo={{
-                          paid_amount: parseFloat(selectedInvoice.paid_amount) || 0,
-                          outstanding_amount: parseFloat(selectedInvoice.balance_due) || 0,
-                        }}
-                      />
-                    </div>  {/* zoom wrapper */}
-                  </div>  {/* centering wrapper */}
-                </div>  {/* scrollable panel */}
+                  <div className="min-h-full flex flex-col items-center py-6 px-4">
+                    <InvoiceDefaultTemplate
+                      data={{
+                        number: selectedInvoice.invoice_number,
+                        date: selectedInvoice.invoice_date,
+                        due: selectedInvoice.due_date,
+                        currency: 'INR',
+                        to: { name: selectedInvoice.client_name },
+                        taxTypes: {},
+                        discountMode: 'AMOUNT',
+                        discountAmountManual: Number(selectedInvoice.discount_amount) || 0,
+                        notes: selectedInvoice.notes,
+                        terms: selectedInvoice.terms_and_conditions,
+                        items: [
+                          ...(selectedInvoice.time_entries_detail || []).map((t: any) => ({
+                            id: t.id, name: t.description,
+                            qty: Number(t.hours), price: Number(t.hourly_rate),
+                          })),
+                          ...(selectedInvoice.expenses_detail || []).map((e: any) => ({
+                            id: e.id, name: e.description,
+                            qty: 1, price: Number(e.amount),
+                          })),
+                        ],
+                      }}
+                      profile={{
+                        company: firmProfile?.name || firmProfile?.firm_name || 'Law Firm',
+                        address: [
+                          firmProfile?.address_line_1,
+                          firmProfile?.city,
+                          firmProfile?.state,
+                        ].filter(Boolean).join(', ') || 'Address not provided',
+                        email: firmProfile?.email || '',
+                        phone: firmProfile?.phone_number || firmProfile?.phone || '',
+                      }}
+                      logo={firmProfile?.logo || firmProfile?.profile_image || null}
+                      subtotal={parseFloat(selectedInvoice.subtotal) || 0}
+                      perLineTax={[]}
+                      taxOverride={(parseFloat(selectedInvoice.tax_amount) || null) as any}
+                      taxLabelOverride={`Tax (${parseFloat(selectedInvoice.tax_percentage) || 0}%)` as any}
+                      totalAmountOverride={(parseFloat(selectedInvoice.total_amount) || null) as any}
+                      fmt={(v: number) => `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+                      previewOpen={true}
+                      showTotals={true}
+                    />
+                  </div>
+                </div>
               </motion.div>
             </AnimatePresence>
           </div>

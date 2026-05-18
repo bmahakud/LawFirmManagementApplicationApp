@@ -117,7 +117,7 @@ export default function CreateInvoicePage() {
     const fetchData = async () => {
       try {
         const [clientsRes, casesRes, advocatesRes] = await Promise.all([
-          customFetch('/api/clients/'),
+          customFetch(`${API.USERS.LIST}?user_type=client`),
           customFetch(API.CASES.LIST),
           customFetch('/api/users/?user_type=advocate'),
         ]);

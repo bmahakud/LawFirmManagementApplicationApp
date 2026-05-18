@@ -8,12 +8,15 @@ import {
   Upload, PenTool, Clock, Search, Filter,
   Plus, MoreVertical, Eye, Download, Edit2,
   Trash2, File, ChevronLeft, ChevronRight,
-  Info, Users, Scale, FileOutput, CheckCircle2
+  Info, Users, Scale, FileOutput, CheckCircle2,
+  ArrowRight, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 import { useTopbarTitle } from './TopbarContext';
+import DocumentManager from './DocumentManager';
+import DocumentRequests from './DocumentRequests';
 
 // --- Types ---
 interface CaseData {
@@ -110,7 +113,15 @@ const Field = ({ label, value, isBadge = false, badgeVariant = '' }: { label: st
   </div>
 );
 
-export function CaseWorkspace({ viewBase = '/advocate/cases' }: { viewBase?: string }) {
+export function CaseWorkspace({ 
+  viewBase = '/advocate/cases',
+  role = 'advocate',
+  accent = '#311042'
+}: { 
+  viewBase?: string;
+  role?: 'advocate' | 'client' | 'firm-admin' | 'super-admin';
+  accent?: string;
+}) {
   const params = useParams();
   const router = useRouter();
   const caseId = params?.caseId as string;
@@ -118,6 +129,26 @@ export function CaseWorkspace({ viewBase = '/advocate/cases' }: { viewBase?: str
   const [activeTab, setActiveTab] = useState('Overview');
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        setTemplatesLoading(true);
+        const endpoint = API.DOCUMENTS.TEMPLATES;
+        console.log('Fetching templates from:', endpoint);
+        const res = await customFetch(endpoint);
+        const data = await res.json();
+        setTemplates(Array.isArray(data) ? data : (data.results || []));
+      } catch (err) {
+        console.error('Error fetching templates:', err);
+      } finally {
+        setTemplatesLoading(false);
+      }
+    };
+    fetchTemplates();
+  }, []);
 
   useTopbarTitle(
     caseData?.case_title ?? 'Loading...',
@@ -143,7 +174,7 @@ export function CaseWorkspace({ viewBase = '/advocate/cases' }: { viewBase?: str
 
   if (loading || !caseData) return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-800"></div>
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: accent }}></div>
     </div>
   );
 
@@ -167,21 +198,28 @@ export function CaseWorkspace({ viewBase = '/advocate/cases' }: { viewBase?: str
           <span className="text-gray-900 font-medium">Case Detail</span>
         </div>
         <div className="flex items-center gap-3">
-          <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Add Hearing
-          </button>
-          <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
-            <FileText className="w-4 h-4" /> Generate Form
-          </button>
+          {role !== 'client' && (
+            <>
+              <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
+                <Plus className="w-4 h-4" /> Add Hearing
+              </button>
+              <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
+                <FileText className="w-4 h-4" /> Generate Form
+              </button>
+            </>
+          )}
           <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
             <Upload className="w-4 h-4" /> Upload Document
           </button>
-          <button
-            onClick={() => router.push(`${viewBase}/${caseId}/edit`)}
-            className="px-5 py-2 bg-[#311042] hover:bg-[#461a5e] text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-          >
-            <Edit2 className="w-4 h-4" /> Edit Case
-          </button>
+          {role !== 'client' && (
+            <button
+              onClick={() => router.push(`${viewBase}/${caseId}/edit`)}
+              className="px-5 py-2 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+              style={{ backgroundColor: accent }}
+            >
+              <Edit2 className="w-4 h-4" /> Edit Case
+            </button>
+          )}
         </div>
       </div>
 
@@ -224,7 +262,7 @@ export function CaseWorkspace({ viewBase = '/advocate/cases' }: { viewBase?: str
             </div>
             <div className="flex flex-col text-center">
               <span className="text-xs text-gray-500 font-medium mb-1">Next Hearing</span>
-              <div className="flex items-center text-sm font-bold text-purple-800 gap-1.5">
+              <div className="flex items-center text-sm font-bold gap-1.5" style={{ color: accent }}>
                 <Calendar className="w-4 h-4" />
                 {formatDate(caseData.next_hearing_date)}
               </div>
@@ -239,9 +277,10 @@ export function CaseWorkspace({ viewBase = '/advocate/cases' }: { viewBase?: str
               key={tab.name}
               onClick={() => setActiveTab(tab.name)}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${activeTab === tab.name
-                ? 'border-purple-800 text-purple-800'
+                ? 'text-gray-900'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
+              style={activeTab === tab.name ? { borderBottomColor: accent, color: accent } : {}}
             >
               <tab.icon className="w-4 h-4" />
               {tab.name}
@@ -445,8 +484,109 @@ export function CaseWorkspace({ viewBase = '/advocate/cases' }: { viewBase?: str
           </div>
         )}
 
+        {activeTab === 'Documents' && (
+          <div className="space-y-8">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <DocumentRequests 
+                caseId={caseId} 
+                clientId={caseData.client || caseData.client_id}
+                role={role}
+                accent={accent}
+              />
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-purple-700" />
+                Case Specific Documents
+              </h3>
+              <DocumentManager 
+                accent={accent} 
+                caseId={caseId} 
+                clientId={caseData.client || caseData.client_id}
+                viewBase={viewBase.replace('/cases', '/documents')}
+              />
+            </div>
+
+            {(caseData.client || caseData.client_id) && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-purple-700" />
+                  General Client Documents
+                </h3>
+                <DocumentManager 
+                  accent={accent} 
+                  clientId={caseData.client || caseData.client_id} 
+                  viewBase={viewBase.replace('/cases', '/documents')}
+                  showUpload={false} 
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'Court Forms' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Legal Document Templates</h3>
+                  <p className="text-sm text-gray-500 mt-1">Select a standardized template to generate court forms and petitions.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Search templates..." 
+                      className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-800/20"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {templatesLoading ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-800 mb-4" />
+                  <p className="text-sm text-gray-500">Loading templates...</p>
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="text-center py-20 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                  <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500 font-medium">No templates found in library</p>
+                  <p className="text-xs text-gray-400 mt-1">Please contact admin to add document templates.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {templates.map((template) => (
+                    <div 
+                      key={template.id} 
+                      className="group p-4 border border-gray-100 rounded-xl bg-gray-50/50 hover:bg-white hover:border-purple-200 hover:shadow-md transition-all cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center text-purple-700">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <Badge variant="default">{template.category || 'General'}</Badge>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900 mb-1 group-hover:text-purple-800 transition-colors">{template.template_title}</h4>
+                      <p className="text-xs text-gray-500 line-clamp-2 mb-4">{template.description || 'Standardized legal form for court submissions.'}</p>
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">v{template.version || '1.0'}</span>
+                        <button className="text-xs font-bold text-purple-700 hover:underline flex items-center gap-1">
+                          Use Template <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Mock for other tabs to keep UI populated */}
-        {['Documents', 'Court Forms', 'Drafting', 'Hearings'].includes(activeTab) && (
+        {['Drafting', 'Hearings'].includes(activeTab) && (
           <div className="text-center py-20 bg-white rounded-xl border border-gray-200">
             <div className="mx-auto w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mb-4">
               <FileText className="w-8 h-8 text-purple-300" />
