@@ -7,6 +7,7 @@ export default function ClientCasesPage() {
       title="My Cases"
       description="Simple case view for progress, hearing dates, documents, and billing visibility."
       viewBase="/client/cases"
+      filterByAssignedAdvocate={true}
     />
   );
 }
