@@ -30,7 +30,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         Filter documents based on user permissions.
         
         For the main documents page (/documents):
-        - Users see ONLY their own documents
+        - Users see their own documents
+        - Advocates also see documents from their clients/cases
         
         For user profile pages, use the 'user_documents' action endpoint
         which has different visibility rules.
@@ -39,14 +40,61 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         show_deleted = self.request.query_params.get('show_deleted', 'false').lower() == 'true'
         
         # Base queryset - show user's own documents
-        # For solo advocates and their clients, firm can be None
         queryset = UserDocument.objects.filter(uploaded_by=user)
+        
+        # Advocates can also see documents from their clients and cases
+        if user.user_type == 'advocate':
+            from cases.models import Case
+            from clients.models import Client
+            
+            # Get cases assigned to this advocate
+            if user.firm:
+                # Firm advocate
+                advocate_cases = Case.objects.filter(firm=user.firm, assigned_advocate=user)
+                advocate_clients = Client.objects.filter(firm=user.firm, assigned_advocate=user)
+            else:
+                # Solo advocate
+                advocate_cases = Case.objects.filter(solo_advocate=user)
+                advocate_clients = Client.objects.filter(solo_advocate=user)
+            
+            # Get client users from these profiles
+            client_users = [client.user for client in advocate_clients if hasattr(client, 'user') and client.user]
+            
+            # Include documents uploaded by their clients
+            if client_users:
+                queryset = queryset | UserDocument.objects.filter(uploaded_by__in=client_users)
+            
+            # Include documents linked to their cases via document requests
+            from cases.models_document_requests import CaseDocumentRequest
+            case_requests = CaseDocumentRequest.objects.filter(case__in=advocate_cases)
+            
+            # Get document IDs from uploaded documents in requests
+            fulfilled_doc_ids = []
+            for req in case_requests:
+                if req.uploaded_document:
+                    fulfilled_doc_ids.append(req.uploaded_document.id)
+            
+            # Include these documents
+            if fulfilled_doc_ids:
+                queryset = queryset | UserDocument.objects.filter(id__in=fulfilled_doc_ids)
+        
+        # Admins can see all documents in their firm
+        elif user.user_type in ['admin', 'super_admin']:
+            if user.firm:
+                queryset = UserDocument.objects.filter(firm=user.firm)
+            else:
+                # Solo admin (shouldn't happen but handle it)
+                queryset = UserDocument.objects.filter(uploaded_by=user)
+        
+        # Platform owners see everything
+        elif user.user_type == 'platform_owner':
+            queryset = UserDocument.objects.all()
         
         # Filter by deletion status
         if not show_deleted:
             queryset = queryset.filter(is_deleted=False)
         
-        return queryset
+        return queryset.distinct()
     
     def get_object(self):
         """Check permissions before returning object"""

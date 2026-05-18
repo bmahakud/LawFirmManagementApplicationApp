@@ -16,7 +16,7 @@ import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 import { useTopbarTitle } from './TopbarContext';
 import DocumentManager from './DocumentManager';
-import DocumentRequests from './DocumentRequests';
+import DocumentVerificationSystem from './DocumentVerificationSystem';
 
 // --- Types ---
 interface CaseData {
@@ -487,7 +487,7 @@ export function CaseWorkspace({
         {activeTab === 'Documents' && (
           <div className="space-y-8">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <DocumentRequests 
+              <DocumentVerificationSystem 
                 caseId={caseId} 
                 clientId={caseData.client || caseData.client_id}
                 role={role}

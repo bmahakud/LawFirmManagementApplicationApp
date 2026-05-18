@@ -8,6 +8,7 @@ import {
   AlertCircle, Check, Loader2, Edit2, Trash2, Eye 
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import DocumentViewer from './DocumentViewer';
 
 type DocumentRequest = {
   id: string;
@@ -91,6 +92,10 @@ export default function DocumentRequests({ caseId, clientId, role, accent = '#31
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState<string | null>(null);
+
+  // Document viewing/reviewing state
+  const [viewingDoc, setViewingDoc] = useState<any | null>(null);
+  const [reviewingDoc, setReviewingDoc] = useState<{ request: DocumentRequest; document: any } | null>(null);
 
   // Store case documents to resolve direct file URLs
   const [caseDocuments, setCaseDocuments] = useState<any[]>([]);
@@ -553,46 +558,43 @@ export default function DocumentRequests({ caseId, clientId, role, accent = '#31
                     </>
                   )}
 
-                  {/* View Document for Verified/Rejected States (Advocate & Client) */}
-                  {(request.status === 'verified' || request.status === 'fulfilled' || request.status === 'uploaded' || request.status === 'rejected') && (
+                  {/* View Document for Uploaded/Under Review (Advocate can verify/reject) */}
+                  {(role === 'advocate' || role === 'firm-admin') && request.status === 'uploaded' && (
                     <button
                       onClick={() => {
-                        const docField = request.document || request.fulfilled_document || request.uploaded_document || request.document_file || request.uploaded_file;
-                        let url = null;
-                        
+                        // Open modal to review document
+                        const docField = request.uploaded_document;
                         if (docField) {
-                          if (typeof docField === 'string') {
-                            if (!docField.includes('/') && docField.length > 20) {
-                              // It's a UUID. Look it up in caseDocuments.
-                              const matchedDoc = caseDocuments.find((d: any) => d.id === docField || d.uuid === docField);
-                              if (matchedDoc && (matchedDoc.document_file || matchedDoc.file || matchedDoc.file_url)) {
-                                url = matchedDoc.document_file || matchedDoc.file || matchedDoc.file_url;
-                              } else {
-                                const basePath = role === 'client' ? '/client/documents' : '/advocate/documents';
-                                url = `${basePath}/${docField}`;
-                              }
-                            } else {
-                              url = docField;
-                            }
+                          const docId = typeof docField === 'string' ? docField : docField.id;
+                          // Find the document details
+                          const matchedDoc = caseDocuments.find((d: any) => d.id === docId);
+                          if (matchedDoc) {
+                            setReviewingDoc({ request, document: matchedDoc });
                           } else {
-                            url = docField.file || docField.url || docField.document_file || docField.id || docField.uuid;
-                            if (url && !url.includes('/') && url.length > 20) {
-                               const matchedDoc = caseDocuments.find((d: any) => d.id === url || d.uuid === url);
-                               if (matchedDoc && (matchedDoc.document_file || matchedDoc.file || matchedDoc.file_url)) {
-                                 url = matchedDoc.document_file || matchedDoc.file || matchedDoc.file_url;
-                               } else {
-                                 const basePath = role === 'client' ? '/client/documents' : '/advocate/documents';
-                                 url = `${basePath}/${url}`;
-                               }
-                            }
+                            toast.error('Document not found');
                           }
                         }
+                      }}
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Review Document
+                    </button>
+                  )}
 
-                        if (url) {
-                          window.location.href = url; // Open in current tab
-                        } else {
-                          toast.error('Document link is not currently available.');
-                          console.log("DEBUG - Request object missing document URL:", request);
+                  {/* View Document for Verified/Rejected States (Read-only) */}
+                  {(request.status === 'verified' || request.status === 'rejected') && (
+                    <button
+                      onClick={() => {
+                        const docField = request.uploaded_document;
+                        if (docField) {
+                          const docId = typeof docField === 'string' ? docField : docField.id;
+                          const matchedDoc = caseDocuments.find((d: any) => d.id === docId);
+                          if (matchedDoc) {
+                            setViewingDoc(matchedDoc);
+                          } else {
+                            toast.error('Document not found');
+                          }
                         }
                       }}
                       className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
@@ -709,6 +711,106 @@ export default function DocumentRequests({ caseId, clientId, role, accent = '#31
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Document Review Modal (for advocates to verify/reject) */}
+      {reviewingDoc && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{reviewingDoc.document.document_title}</h3>
+                <p className="text-sm text-gray-600 mt-0.5">Review and verify this document</p>
+              </div>
+              <button
+                onClick={() => setReviewingDoc(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-6">
+              <DocumentViewer 
+                url={reviewingDoc.document.document_file || reviewingDoc.document.file_url}
+                title={reviewingDoc.document.document_title}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+              <button
+                onClick={() => setReviewingDoc(null)}
+                className="px-6 py-2.5 rounded-xl border-2 border-gray-300 bg-white text-gray-700 text-sm font-bold hover:bg-gray-50 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (confirm('Are you sure you want to reject this document?')) {
+                    const reason = prompt('Rejection reason:');
+                    if (reason) {
+                      setRejectReason(reason);
+                      await handleVerifyRequest(reviewingDoc.request.id, 'reject');
+                      setReviewingDoc(null);
+                    }
+                  }
+                }}
+                className="px-6 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-all shadow-lg"
+              >
+                <XCircle className="w-4 h-4 inline mr-2" />
+                Reject
+              </button>
+              <button
+                onClick={async () => {
+                  if (confirm('Verify this document?')) {
+                    await handleVerifyRequest(reviewingDoc.request.id, 'verify');
+                    setReviewingDoc(null);
+                  }
+                }}
+                className="px-6 py-2.5 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition-all shadow-lg"
+              >
+                <CheckCircle className="w-4 h-4 inline mr-2" />
+                Verify
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document View Modal (read-only for verified/rejected docs) */}
+      {viewingDoc && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{viewingDoc.document_title}</h3>
+                <p className="text-sm text-gray-600 mt-0.5">Document preview</p>
+              </div>
+              <button
+                onClick={() => setViewingDoc(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-6">
+              <DocumentViewer 
+                url={viewingDoc.document_file || viewingDoc.file_url}
+                title={viewingDoc.document_title}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <button
+                onClick={() => setViewingDoc(null)}
+                className="px-6 py-2.5 rounded-xl bg-gray-700 text-white text-sm font-bold hover:bg-gray-800 transition-all"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

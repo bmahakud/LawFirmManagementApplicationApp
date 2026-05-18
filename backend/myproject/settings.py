@@ -191,8 +191,8 @@ else:
     STATIC_URL = '/static/'
     STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
+    # For local development, store media files locally
     MEDIA_URL = '/media/'
-    # Store media files in project media directory
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
     STORAGES = {
@@ -244,10 +244,26 @@ DEFAULT_FROM_EMAIL = 'Exam Flow System <diracai.info@gmail.com>'
 # CORS Configuration
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # CSRF Trusted Origins
 CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:3000').split(',')
 
+# Allow iframes for media files (for document viewer)
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+
+# Security headers for PDF viewing
+SECURE_CROSS_ORIGIN_OPENER_POLICY = None
 # MSG91 OTP Configuration
 MSG91_AUTHKEY = os.getenv("MSG91_AUTHKEY")
 MSG91_TEMPLATE_ID = os.getenv("MSG91_TEMPLATE_ID")
