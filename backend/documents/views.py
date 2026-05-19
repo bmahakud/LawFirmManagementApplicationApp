@@ -29,57 +29,27 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         """
         Filter documents based on user permissions.
         
-        For the main documents page (/documents):
-        - Users see their own documents
-        - Advocates also see documents from their clients/cases
+        Document Visibility Rules:
+        1. Personal Documents (/documents page):
+           - Users see ONLY their own uploaded documents
+           - Advocates see ONLY their own documents (NOT client or case documents)
+           - Clients see ONLY their own documents (NOT case documents here)
         
-        For user profile pages, use the 'user_documents' action endpoint
-        which has different visibility rules.
+        2. Case Documents (/cases/{id}/documents - via by_case endpoint):
+           - Shows documents where case field is set to that case
+           - Visible to: client, assigned advocate, admins
+        
+        3. Profile Documents (admin view):
+           - Admins can see all documents in their firm
         """
         user = self.request.user
         show_deleted = self.request.query_params.get('show_deleted', 'false').lower() == 'true'
         
-        # Base queryset - show user's own documents
+        # Base queryset - show ONLY user's own documents
         queryset = UserDocument.objects.filter(uploaded_by=user)
         
-        # Advocates can also see documents from their clients and cases
-        if user.user_type == 'advocate':
-            from cases.models import Case
-            from clients.models import Client
-            
-            # Get cases assigned to this advocate
-            if user.firm:
-                # Firm advocate
-                advocate_cases = Case.objects.filter(firm=user.firm, assigned_advocate=user)
-                advocate_clients = Client.objects.filter(firm=user.firm, assigned_advocate=user)
-            else:
-                # Solo advocate
-                advocate_cases = Case.objects.filter(solo_advocate=user)
-                advocate_clients = Client.objects.filter(solo_advocate=user)
-            
-            # Get client users from these profiles
-            client_users = [client.user for client in advocate_clients if hasattr(client, 'user') and client.user]
-            
-            # Include documents uploaded by their clients
-            if client_users:
-                queryset = queryset | UserDocument.objects.filter(uploaded_by__in=client_users)
-            
-            # Include documents linked to their cases via document requests
-            from cases.models_document_requests import CaseDocumentRequest
-            case_requests = CaseDocumentRequest.objects.filter(case__in=advocate_cases)
-            
-            # Get document IDs from uploaded documents in requests
-            fulfilled_doc_ids = []
-            for req in case_requests:
-                if req.uploaded_document:
-                    fulfilled_doc_ids.append(req.uploaded_document.id)
-            
-            # Include these documents
-            if fulfilled_doc_ids:
-                queryset = queryset | UserDocument.objects.filter(id__in=fulfilled_doc_ids)
-        
         # Admins can see all documents in their firm
-        elif user.user_type in ['admin', 'super_admin']:
+        if user.user_type in ['admin', 'super_admin']:
             if user.firm:
                 queryset = UserDocument.objects.filter(firm=user.firm)
             else:
@@ -89,6 +59,9 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         # Platform owners see everything
         elif user.user_type == 'platform_owner':
             queryset = UserDocument.objects.all()
+        
+        # For advocates and clients: show ONLY their own documents
+        # Case documents are accessed via the by_case() action endpoint
         
         # Filter by deletion status
         if not show_deleted:
@@ -112,7 +85,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         return obj
     
     def perform_create(self, serializer):
-        """Create document with proper firm assignment"""
+        """Create document with proper firm assignment and verification status"""
         user = self.request.user
         
         # Determine firm (can be None for solo advocates and their clients)
@@ -135,10 +108,25 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             if hasattr(user, 'client_profile') and user.client_profile:
                 client = user.client_profile
         
+        # Determine verification status
+        # Documents uploaded by advocates/admins are auto-verified
+        # Documents uploaded by clients need verification
+        verification_status = 'pending'
+        verified_by = None
+        verified_at = None
+        
+        if user.user_type in ['advocate', 'super_admin', 'admin', 'platform_owner']:
+            verification_status = 'verified'
+            verified_by = user
+            verified_at = timezone.now()
+        
         serializer.save(
             uploaded_by=user,
             firm=firm,  # Can be None for solo advocates
-            client=client or serializer.validated_data.get('client')
+            client=client or serializer.validated_data.get('client'),
+            verification_status=verification_status,
+            verified_by=verified_by,
+            verified_at=verified_at
         )
     
     def perform_update(self, serializer):
@@ -146,10 +134,10 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         user = self.request.user
         obj = self.get_object()
         
-        # Only super_admin/admin can update verification status
+        # Advocates, admins, and super_admins can update verification status
         if 'verification_status' in self.request.data:
-            if user.user_type not in ['platform_owner', 'super_admin', 'admin']:
-                raise PermissionDenied("Only admins can verify documents.")
+            if user.user_type not in ['platform_owner', 'super_admin', 'admin', 'advocate']:
+                raise PermissionDenied("Only advocates and admins can verify documents.")
             
             # Update verification details
             if self.request.data['verification_status'] in ['verified', 'rejected']:
@@ -233,7 +221,12 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def by_case(self, request):
-        """Get documents for a specific case"""
+        """
+        Get documents for a specific case.
+        
+        Returns ALL documents linked to the case (uploaded by anyone).
+        Permission check: User must have access to this case.
+        """
         case_id = request.query_params.get('case_id')
         
         if not case_id:
@@ -242,7 +235,42 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        queryset = self.get_queryset().filter(case_id=case_id)
+        user = request.user
+        
+        # Check if user has permission to access this case
+        from cases.models import Case
+        try:
+            case = Case.objects.get(id=case_id)
+        except Case.DoesNotExist:
+            return Response(
+                {"detail": "Case not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Permission check
+        has_permission = False
+        
+        if user.user_type == 'platform_owner':
+            has_permission = True
+        elif user.user_type in ['super_admin', 'admin']:
+            # Admins can see cases in their firm
+            has_permission = case.firm == user.firm
+        elif user.user_type == 'advocate':
+            # Advocates can see their assigned cases
+            if case.firm:
+                has_permission = case.assigned_advocate == user and case.firm == user.firm
+            else:
+                has_permission = case.solo_advocate == user
+        elif user.user_type == 'client':
+            # Clients can see their own cases
+            if hasattr(user, 'client_profile') and user.client_profile:
+                has_permission = case.client == user.client_profile
+        
+        if not has_permission:
+            raise PermissionDenied("You do not have permission to access this case.")
+        
+        # Return ALL documents for this case
+        queryset = UserDocument.objects.filter(case_id=case_id, is_deleted=False)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
     

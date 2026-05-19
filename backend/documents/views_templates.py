@@ -28,6 +28,7 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
     """
     serializer_class = DocumentTemplateSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None  # Disable pagination to show all templates
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description', 'category']
     ordering_fields = ['name', 'category', 'created_at']

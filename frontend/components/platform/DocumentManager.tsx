@@ -30,14 +30,19 @@ type DocumentManagerProps = {
   showUpload?: boolean;
   viewBase?: string;
   userDocuments?: Document[]; // Optional: pass documents from parent (e.g., from profile API)
+  role?: string; // User role to determine if they can verify documents
+  onDocumentVerified?: () => void; // Callback after verification
 };
 
-export default function DocumentManager({ accent, userId, clientId, caseId, showUpload = true, viewBase, userDocuments }: DocumentManagerProps) {
+export default function DocumentManager({ accent, userId, clientId, caseId, showUpload = true, viewBase, userDocuments, role, onDocumentVerified }: DocumentManagerProps) {
   const [documents, setDocuments] = useState<Document[]>(userDocuments || []);
   const [loading, setLoading] = useState(!userDocuments); // Don't load if documents are provided
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [showUploadForm, setShowUploadForm] = useState(false);
+  const [verifying, setVerifying] = useState<string | null>(null); // Document ID being verified
+
+  const isAdvocateRole = role === 'advocate' || role === 'super-admin' || role === 'firm-admin';
 
   const [uploadData, setUploadData] = useState({
     document_type: 'other',
@@ -92,21 +97,22 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
       let url = API.DOCUMENTS.LIST; // Default: user's own documents
       const params = new URLSearchParams();
       
+      // Priority order: userId > caseId > clientId > default
       // If viewing a specific user's profile documents, use the user_documents endpoint
       if (userId) {
         url = `${API.DOCUMENTS.USER_DOCUMENTS}?user_id=${userId}`;
+      } 
+      // If filtering by case, use by_case endpoint (higher priority than clientId)
+      else if (caseId) {
+        url = typeof API.DOCUMENTS.BY_CASE === 'function' 
+          ? API.DOCUMENTS.BY_CASE(caseId) 
+          : `${API.DOCUMENTS.BY_CASE}?case_id=${caseId}`;
       } 
       // If filtering by client, use by_client endpoint
       else if (clientId) {
         url = typeof API.DOCUMENTS.BY_CLIENT === 'function' 
           ? API.DOCUMENTS.BY_CLIENT(clientId) 
           : `${API.DOCUMENTS.BY_CLIENT}?client_id=${clientId}`;
-      } 
-      // If filtering by case, use by_case endpoint
-      else if (caseId) {
-        url = typeof API.DOCUMENTS.BY_CASE === 'function' 
-          ? API.DOCUMENTS.BY_CASE(caseId) 
-          : `${API.DOCUMENTS.BY_CASE}?case_id=${caseId}`;
       }
 
       console.log('DocumentManager - Fetching documents from:', url);
@@ -124,6 +130,32 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyDocument = async (documentId: string, action: 'verify' | 'reject') => {
+    setVerifying(documentId);
+    try {
+      const response = await customFetch(API.DOCUMENTS.DETAIL(documentId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          verification_status: action === 'verify' ? 'verified' : 'rejected'
+        })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Failed to update document');
+      }
+
+      // Refresh documents
+      await fetchDocuments();
+      if (onDocumentVerified) onDocumentVerified();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setVerifying(null);
     }
   };
 
@@ -372,6 +404,33 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 {getStatusBadge(doc.verification_status)}
+                
+                {/* Verification actions for advocates on pending documents */}
+                {isAdvocateRole && doc.verification_status === 'pending' && (
+                  <>
+                    <button
+                      onClick={() => handleVerifyDocument(doc.id, 'verify')}
+                      disabled={verifying === doc.id}
+                      className="inline-flex items-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 transition-colors disabled:opacity-50"
+                    >
+                      {verifying === doc.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-3.5 h-3.5" />
+                      )}
+                      Verify
+                    </button>
+                    <button
+                      onClick={() => handleVerifyDocument(doc.id, 'reject')}
+                      disabled={verifying === doc.id}
+                      className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      Reject
+                    </button>
+                  </>
+                )}
+                
                 <Link
                   href={`${viewBase || '/super-admin/documents'}/${doc.id}`}
                   className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors"

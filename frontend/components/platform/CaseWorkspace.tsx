@@ -17,6 +17,7 @@ import { API } from '@/lib/api';
 import { useTopbarTitle } from './TopbarContext';
 import DocumentManager from './DocumentManager';
 import DocumentVerificationSystem from './DocumentVerificationSystem';
+import CourtFormsManager from './CourtFormsManager';
 
 // --- Types ---
 interface CaseData {
@@ -505,10 +506,11 @@ export function CaseWorkspace({
                 caseId={caseId} 
                 clientId={caseData.client || caseData.client_id}
                 viewBase={viewBase.replace('/cases', '/documents')}
+                role={role}
               />
             </div>
 
-            {(caseData.client || caseData.client_id) && (
+            {/* {(caseData.client || caseData.client_id) && (
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <Users className="w-5 h-5 text-purple-700" />
@@ -521,67 +523,18 @@ export function CaseWorkspace({
                   showUpload={false} 
                 />
               </div>
-            )}
+            )} */}
           </div>
         )}
 
         {activeTab === 'Court Forms' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Legal Document Templates</h3>
-                  <p className="text-sm text-gray-500 mt-1">Select a standardized template to generate court forms and petitions.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Search templates..." 
-                      className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-800/20"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {templatesLoading ? (
-                <div className="flex flex-col items-center justify-center py-20">
-                  <Loader2 className="w-8 h-8 animate-spin text-purple-800 mb-4" />
-                  <p className="text-sm text-gray-500">Loading templates...</p>
-                </div>
-              ) : templates.length === 0 ? (
-                <div className="text-center py-20 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                  <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 font-medium">No templates found in library</p>
-                  <p className="text-xs text-gray-400 mt-1">Please contact admin to add document templates.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {templates.map((template) => (
-                    <div 
-                      key={template.id} 
-                      className="group p-4 border border-gray-100 rounded-xl bg-gray-50/50 hover:bg-white hover:border-purple-200 hover:shadow-md transition-all cursor-pointer"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center text-purple-700">
-                          <FileText className="w-5 h-5" />
-                        </div>
-                        <Badge variant="default">{template.category || 'General'}</Badge>
-                      </div>
-                      <h4 className="text-sm font-bold text-gray-900 mb-1 group-hover:text-purple-800 transition-colors">{template.template_title}</h4>
-                      <p className="text-xs text-gray-500 line-clamp-2 mb-4">{template.description || 'Standardized legal form for court submissions.'}</p>
-                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">v{template.version || '1.0'}</span>
-                        <button className="text-xs font-bold text-purple-700 hover:underline flex items-center gap-1">
-                          Use Template <ArrowRight className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <CourtFormsManager 
+              caseId={caseId}
+              clientId={caseData.client || caseData.client_id}
+              role={role}
+              accent={accent}
+            />
           </div>
         )}
 
