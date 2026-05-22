@@ -1,433 +1,344 @@
 """
-Views for Document Templates
+ViewSets for PDF-style court form templates
 """
-from rest_framework import viewsets, permissions, status, filters
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Q
+from rest_framework.permissions import IsAuthenticated
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from .models_templates import DocumentTemplate, FilledTemplate
+from .models_templates import CourtFormTemplate, FilledCourtForm
 from .serializers_templates import (
-    DocumentTemplateSerializer,
-    FilledTemplateSerializer,
-    FilledTemplateListSerializer
+    CourtFormTemplateSerializer,
+    FilledCourtFormSerializer,
+    FilledCourtFormCreateSerializer
 )
+from cases.models import Case
+from clients.models import Client
 
 
-class DocumentTemplateViewSet(viewsets.ModelViewSet):
+class CourtFormTemplateViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing document templates
-    
-    Endpoints:
-    - GET /api/documents/templates/ - List all templates
-    - GET /api/documents/templates/{id}/ - Get template details
-    - POST /api/documents/templates/ - Create template (Platform Owner/Super Admin)
-    - PUT/PATCH /api/documents/templates/{id}/ - Update template
-    - DELETE /api/documents/templates/{id}/ - Delete template
+    ViewSet for managing court form templates
     """
-    serializer_class = DocumentTemplateSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    pagination_class = None  # Disable pagination to show all templates
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'description', 'category']
-    ordering_fields = ['name', 'category', 'created_at']
-    ordering = ['category', 'name']
+    queryset = CourtFormTemplate.objects.filter(is_active=True)
+    serializer_class = CourtFormTemplateSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        user = self.request.user
+        queryset = super().get_queryset()
         
-        # Platform Owner sees all templates
-        if user.user_type == 'platform_owner':
-            return DocumentTemplate.objects.all()
-        
-        # Others see only active and public templates
-        queryset = DocumentTemplate.objects.filter(is_active=True, is_public=True)
-        
-        # Filter by category if provided
+        # Filter by category
         category = self.request.query_params.get('category')
         if category:
             queryset = queryset.filter(category=category)
+        
+        # Search
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(name__icontains=search) | queryset.filter(description__icontains=search)
         
         return queryset
     
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
     
-    @action(detail=False, methods=['get'], url_path='for-case')
-    def templates_for_case(self, request):
-        """
-        Get available templates for a specific case
+    @action(detail=True, methods=['post'])
+    def duplicate(self, request, pk=None):
+        """Duplicate a template"""
+        template = self.get_object()
         
-        GET /api/documents/templates/for-case/?case_id=uuid
-        Returns templates suitable for the case type
-        """
-        case_id = request.query_params.get('case_id')
-        
-        if case_id:
-            # Optionally filter templates based on case type
-            # For now, return all active templates
-            from cases.models import Case
-            try:
-                case = Case.objects.get(id=case_id)
-                # You can add logic here to filter templates by case type
-                # For example: if case.case_type == 'criminal', show criminal forms
-            except Case.DoesNotExist:
-                return Response({'error': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        templates = self.get_queryset()
-        serializer = self.get_serializer(templates, many=True)
-        return Response(serializer.data)
-
-
-class FilledTemplateViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for managing filled templates
-    
-    Endpoints:
-    - GET /api/documents/filled-templates/ - List filled templates
-    - GET /api/documents/filled-templates/{id}/ - Get filled template details
-    - POST /api/documents/filled-templates/ - Create filled template
-    - PUT/PATCH /api/documents/filled-templates/{id}/ - Update filled template
-    - DELETE /api/documents/filled-templates/{id}/ - Delete filled template
-    - POST /api/documents/filled-templates/{id}/share/ - Share with client
-    - POST /api/documents/filled-templates/{id}/sign/ - Sign template
-    """
-    permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['template__name', 'client__first_name', 'client__last_name', 'case__case_number']
-    ordering_fields = ['created_at', 'status']
-    ordering = ['-created_at']
-    
-    def get_serializer_class(self):
-        if self.action == 'list':
-            return FilledTemplateListSerializer
-        return FilledTemplateSerializer
-    
-    def get_queryset(self):
-        user = self.request.user
-        
-        if user.user_type == 'platform_owner':
-            return FilledTemplate.objects.all()
-        
-        elif user.user_type in ['super_admin', 'admin', 'advocate', 'paralegal']:
-            # Firm members see their firm's filled templates
-            return FilledTemplate.objects.filter(firm=user.firm)
-        
-        elif user.user_type == 'client':
-            # Clients see only templates shared with them
-            client_profile = getattr(user, 'client_profile', None)
-            if client_profile:
-                return FilledTemplate.objects.filter(
-                    client=client_profile,
-                    is_shared_with_client=True
-                )
-        
-        return FilledTemplate.objects.none()
-    
-    def perform_create(self, serializer):
-        user = self.request.user
-        serializer.save(
-            created_by=user,
-            firm=user.firm if user.firm else None
-        )
-    
-    @action(detail=False, methods=['post'], url_path='upload-filled')
-    def upload_filled(self, request):
-        """
-        Upload a pre-filled form document
-        
-        POST /api/documents/filled-templates/upload-filled/
-        Body: FormData with file, case_id, client_id, template_id (optional)
-        """
-        file = request.FILES.get('file')
-        case_id = request.data.get('case_id')
-        client_id = request.data.get('client_id')
-        template_id = request.data.get('template_id')
-        notes = request.data.get('notes', '')
-        
-        if not file:
-            return Response({'error': 'File is required'}, status=status.HTTP_400_BAD_REQUEST)
-        if not case_id:
-            return Response({'error': 'case_id is required'}, status=status.HTTP_400_BAD_REQUEST)
-        if not client_id:
-            return Response({'error': 'client_id is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Get or create a generic "Uploaded Form" template if no template specified
-        if template_id:
-            try:
-                template = DocumentTemplate.objects.get(id=template_id)
-            except DocumentTemplate.DoesNotExist:
-                return Response({'error': 'Template not found'}, status=status.HTTP_404_NOT_FOUND)
-        else:
-            # Create/get a generic template for uploaded forms
-            template, _ = DocumentTemplate.objects.get_or_create(
-                name='Uploaded Form',
-                category='other',
-                defaults={
-                    'description': 'Generic template for uploaded forms',
-                    'is_public': True,
-                    'created_by': request.user
-                }
-            )
-        
-        # Create filled template with uploaded file
-        filled_template = FilledTemplate.objects.create(
-            template=template,
-            case_id=case_id,
-            client_id=client_id,
-            firm=request.user.firm,
-            generated_file=file,
-            status='completed',
-            notes=notes,
+        new_template = CourtFormTemplate.objects.create(
+            name=f"{template.name} (Copy)",
+            description=template.description,
+            category=template.category,
+            content_structure=template.content_structure,
+            default_field_mappings=template.default_field_mappings,
             created_by=request.user
         )
         
-        serializer = FilledTemplateSerializer(filled_template)
-        return Response({
-            'message': 'Form uploaded successfully',
-            'filled_template': serializer.data
-        }, status=status.HTTP_201_CREATED)
+        serializer = self.get_serializer(new_template)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class FilledCourtFormViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing filled court forms
+    """
+    queryset = FilledCourtForm.objects.all()
+    permission_classes = [IsAuthenticated]
     
-    @action(detail=True, methods=['post'])
-    def share(self, request, pk=None):
-        """
-        Share filled template with client
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return FilledCourtFormCreateSerializer
+        return FilledCourtFormSerializer
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
         
-        POST /api/documents/filled-templates/{id}/share/
-        """
-        filled_template = self.get_object()
+        # Filter based on user role (user_type in CustomUser model)
+        user_type = getattr(user, 'user_type', None)
         
-        # Only advocate, admin, or super_admin can share
-        if request.user.user_type not in ['advocate', 'admin', 'super_admin']:
-            return Response(
-                {'error': 'Only advocates and admins can share templates'},
-                status=status.HTTP_403_FORBIDDEN
+        if user_type == 'client':
+            # Clients see ONLY forms that have been shared with them
+            queryset = queryset.filter(
+                client__user_account=user,
+                is_shared_with_client=True
             )
+        elif user_type == 'advocate':
+            # Advocates see forms from their cases
+            queryset = queryset.filter(case__assigned_advocate=user)
+        elif user_type == 'paralegal':
+            # Paralegals see forms from their cases
+            queryset = queryset.filter(case__assigned_paralegal=user)
+        elif user_type in ['admin', 'super_admin', 'platform_owner']:
+            # Admins see all forms in their firm
+            if hasattr(user, 'firm') and user.firm:
+                queryset = queryset.filter(case__firm=user.firm)
         
-        filled_template.share_with_client()
+        # Filter by case
+        case_id = self.request.query_params.get('case')
+        if case_id:
+            queryset = queryset.filter(case_id=case_id)
         
-        serializer = self.get_serializer(filled_template)
-        return Response({
-            'message': f'Template "{filled_template.template.name}" shared with {filled_template.client.get_full_name()}',
-            'filled_template': serializer.data
-        })
+        # Filter by status
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        return queryset.select_related('template', 'case', 'client', 'created_by')
     
-    @action(detail=True, methods=['post'])
-    def sign(self, request, pk=None):
+    def update(self, request, *args, **kwargs):
+        """Custom update to handle partial updates properly"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # Allow updating only field_values and status
+        data = {}
+        if 'field_values' in request.data:
+            data['field_values'] = request.data['field_values']
+        if 'status' in request.data:
+            data['status'] = request.data['status']
+        
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return Response(serializer.data)
+    
+    def partial_update(self, request, *args, **kwargs):
+        """Handle PATCH requests"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+    
+    @action(detail=False, methods=['post'])
+    def create_from_template(self, request):
         """
-        Sign the filled template
-        
-        POST /api/documents/filled-templates/{id}/sign/
-        {
-            "signature_type": "client" or "advocate"
-        }
+        Create a new filled form from a template
+        Auto-populates fields from case/client data
         """
-        filled_template = self.get_object()
-        signature_type = request.data.get('signature_type')
+        template_id = request.data.get('template_id')
+        case_id = request.data.get('case_id')
         
-        if signature_type == 'client':
-            # Client signing
-            if request.user.user_type != 'client':
-                return Response(
-                    {'error': 'Only clients can sign as client'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            
-            filled_template.mark_client_signed()
-            message = 'Template signed by client successfully'
-        
-        elif signature_type == 'advocate':
-            # Advocate signing
-            if request.user.user_type not in ['advocate', 'admin', 'super_admin']:
-                return Response(
-                    {'error': 'Only advocates can sign as advocate'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            
-            filled_template.mark_advocate_signed()
-            message = 'Template signed by advocate successfully'
-        
-        else:
+        if not template_id or not case_id:
             return Response(
-                {'error': 'signature_type must be "client" or "advocate"'},
+                {'error': 'template_id and case_id are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        serializer = self.get_serializer(filled_template)
-        return Response({
-            'message': message,
-            'filled_template': serializer.data
-        })
-    
-    @action(detail=False, methods=['get'])
-    def my_templates(self, request):
-        """
-        Get templates for the current user
+        template = get_object_or_404(CourtFormTemplate, id=template_id)
+        case = get_object_or_404(Case, id=case_id)
         
-        GET /api/documents/filled-templates/my_templates/
-        - Advocates see templates they created
-        - Clients see templates shared with them
-        """
-        user = request.user
+        # Initialize filled content from template structure
+        filled_content = template.content_structure.copy()
         
-        if user.user_type == 'client':
-            client_profile = getattr(user, 'client_profile', None)
-            if not client_profile:
-                return Response({'error': 'Client profile not found'}, status=status.HTTP_404_NOT_FOUND)
-            
-            templates = FilledTemplate.objects.filter(
-                client=client_profile,
-                is_shared_with_client=True
-            )
+        # Auto-populate field values from case/client data
+        field_values = {}
+        if template.default_field_mappings:
+            for field_name, mapping_path in template.default_field_mappings.items():
+                value = self._extract_value(case, case.client, mapping_path)
+                if value:
+                    field_values[field_name] = value
         
-        elif user.user_type in ['advocate', 'admin', 'super_admin']:
-            templates = FilledTemplate.objects.filter(created_by=user)
-        
-        else:
-            templates = FilledTemplate.objects.none()
-        
-        # Filter by status if provided
-        status_filter = request.query_params.get('status')
-        if status_filter:
-            templates = templates.filter(status=status_filter)
-        
-        # Filter by case if provided
-        case_id = request.query_params.get('case_id')
-        if case_id:
-            templates = templates.filter(case_id=case_id)
-        
-        serializer = FilledTemplateListSerializer(templates, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def by_case(self, request):
-        """
-        Get all filled templates for a specific case
-        
-        GET /api/documents/filled-templates/by_case/?case_id=uuid
-        """
-        case_id = request.query_params.get('case_id')
-        if not case_id:
-            return Response({'error': 'case_id is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        templates = self.get_queryset().filter(case_id=case_id)
-        serializer = FilledTemplateListSerializer(templates, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'], url_path='case-stats')
-    def case_stats(self, request):
-        """
-        Get form statistics for a case
-        
-        GET /api/documents/filled-templates/case-stats/?case_id=uuid
-        Returns: {all: 4, pending: 0, completed: 3, draft: 1}
-        """
-        case_id = request.query_params.get('case_id')
-        if not case_id:
-            return Response({'error': 'case_id is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        templates = self.get_queryset().filter(case_id=case_id)
-        
-        stats = {
-            'all': templates.count(),
-            'draft': templates.filter(status='draft').count(),
-            'completed': templates.filter(status='completed').count(),
-            'shared': templates.filter(status='shared').count(),
-            'signed': templates.filter(status='signed').count(),
-            'filed': templates.filter(status='filed').count(),
-        }
-        
-        return Response(stats)
-    
-    @action(detail=True, methods=['get'])
-    def download(self, request, pk=None):
-        """
-        Download the generated form file
-        
-        GET /api/documents/filled-templates/{id}/download/
-        """
-        from django.http import FileResponse
-        
-        filled_template = self.get_object()
-        
-        if not filled_template.generated_file:
-            return Response(
-                {'error': 'No generated file available for this form'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        return FileResponse(
-            filled_template.generated_file.open('rb'),
-            as_attachment=True,
-            filename=f"{filled_template.template.name}_{filled_template.id}.pdf"
+        # Create filled form
+        filled_form = FilledCourtForm.objects.create(
+            template=template,
+            case=case,
+            client=case.client,
+            filled_content=filled_content,
+            field_values=field_values,
+            status='draft',
+            created_by=request.user
         )
+        
+        serializer = FilledCourtFormSerializer(filled_form)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
     
-    @action(detail=True, methods=['get'])
-    def preview(self, request, pk=None):
-        """
-        Preview the form (returns URL or data)
+    @action(detail=True, methods=['post'])
+    def share_with_client(self, request, pk=None):
+        """Share form with client"""
+        filled_form = self.get_object()
+        filled_form.is_shared_with_client = True
+        filled_form.shared_at = timezone.now()
+        filled_form.save()
         
-        GET /api/documents/filled-templates/{id}/preview/
-        """
-        filled_template = self.get_object()
+        serializer = self.get_serializer(filled_form)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def sign(self, request, pk=None):
+        """Sign the form (advocate or client) with optional signature image"""
+        filled_form = self.get_object()
+        user = request.user
+        user_type = getattr(user, 'user_type', None)
         
-        if filled_template.generated_file:
-            file_url = request.build_absolute_uri(filled_template.generated_file.url)
+        # Get signature image if provided
+        signature_file = request.FILES.get('signature')
+        
+        if user_type in ['advocate', 'admin', 'super_admin', 'platform_owner']:
+            filled_form.advocate_signed = True
+            filled_form.advocate_signature_date = timezone.now()
+            if signature_file:
+                filled_form.advocate_signature_image = signature_file
+        elif user_type == 'client':
+            filled_form.client_signed = True
+            filled_form.client_signature_date = timezone.now()
+            if signature_file:
+                filled_form.client_signature_image = signature_file
         else:
-            file_url = None
+            return Response(
+                {'error': 'You do not have permission to sign this form'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        filled_form.save()
+        serializer = self.get_serializer(filled_form)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def generate_pdf(self, request, pk=None):
+        """Generate PDF from filled form"""
+        filled_form = self.get_object()
+        
+        # TODO: Implement PDF generation using ReportLab or WeasyPrint
+        # For now, return success message
         
         return Response({
-            'id': filled_template.id,
-            'template_name': filled_template.template.name,
-            'filled_data': filled_template.filled_data,
-            'file_url': file_url,
-            'status': filled_template.status,
-            'created_at': filled_template.created_at,
+            'message': 'PDF generation will be implemented',
+            'form_id': str(filled_form.id)
         })
     
-    @action(detail=True, methods=['get'])
-    def history(self, request, pk=None):
-        """
-        Get form history/audit trail
-        
-        GET /api/documents/filled-templates/{id}/history/
-        """
-        filled_template = self.get_object()
-        
-        history = [
-            {
-                'action': 'Created',
-                'timestamp': filled_template.created_at,
-                'user': filled_template.created_by.get_full_name() if filled_template.created_by else None,
-            }
+    def _extract_value(self, case, client, mapping_path):
+        """Extract value from case or client using dot notation"""
+        try:
+            parts = mapping_path.split('.')
+            if parts[0] == 'case':
+                obj = case
+            elif parts[0] == 'client':
+                obj = client
+            else:
+                return None
+            
+            for part in parts[1:]:
+                obj = getattr(obj, part, None)
+                if obj is None:
+                    return None
+            
+            return str(obj) if obj else None
+        except:
+            return None
+
+
+
+# Original template system ViewSets (for backward compatibility)
+from .models_templates import DocumentTemplate, FilledTemplate
+from rest_framework import serializers
+
+
+class DocumentTemplateSerializer(serializers.ModelSerializer):
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    
+    class Meta:
+        model = DocumentTemplate
+        fields = [
+            'id', 'name', 'description', 'category', 'category_display',
+            'template_file', 'file_size_kb', 'template_fields',
+            'is_active', 'is_public', 'created_at', 'updated_at',
+            'created_by', 'created_by_name'
         ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'file_size_kb']
+
+
+class FilledTemplateSerializer(serializers.ModelSerializer):
+    template_name = serializers.CharField(source='template.name', read_only=True)
+    template_category = serializers.CharField(source='template.category', read_only=True)
+    case_number = serializers.CharField(source='case.case_number', read_only=True)
+    client_name = serializers.CharField(source='client.full_name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = FilledTemplate
+        fields = [
+            'id', 'template', 'template_name', 'template_category',
+            'case', 'case_number', 'client', 'client_name', 'firm',
+            'filled_data', 'generated_file', 'status', 'status_display',
+            'is_shared_with_client', 'shared_at',
+            'client_signed', 'client_signed_at',
+            'advocate_signed', 'advocate_signed_at',
+            'notes', 'created_at', 'updated_at', 'created_by'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class DocumentTemplateViewSet(viewsets.ModelViewSet):
+    """ViewSet for original document templates"""
+    queryset = DocumentTemplate.objects.filter(is_active=True)
+    serializer_class = DocumentTemplateSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        category = self.request.query_params.get('category')
+        if category:
+            queryset = queryset.filter(category=category)
+        return queryset
+
+
+class FilledTemplateViewSet(viewsets.ModelViewSet):
+    """ViewSet for filled templates"""
+    queryset = FilledTemplate.objects.all()
+    serializer_class = FilledTemplateSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        user_type = getattr(user, 'user_type', None)
         
-        if filled_template.shared_at:
-            history.append({
-                'action': 'Shared with client',
-                'timestamp': filled_template.shared_at,
-                'user': filled_template.created_by.get_full_name() if filled_template.created_by else None,
-            })
+        # Filter based on user role
+        if user_type == 'client':
+            queryset = queryset.filter(client__user_account=user)
+        elif user_type == 'advocate':
+            queryset = queryset.filter(case__assigned_advocate=user)
+        elif user_type in ['admin', 'super_admin']:
+            if hasattr(user, 'firm') and user.firm:
+                queryset = queryset.filter(firm=user.firm)
         
-        if filled_template.client_signed_at:
-            history.append({
-                'action': 'Signed by client',
-                'timestamp': filled_template.client_signed_at,
-                'user': filled_template.client.get_full_name(),
-            })
+        # Filter by case
+        case_id = self.request.query_params.get('case')
+        if case_id:
+            queryset = queryset.filter(case_id=case_id)
         
-        if filled_template.advocate_signed_at:
-            history.append({
-                'action': 'Signed by advocate',
-                'timestamp': filled_template.advocate_signed_at,
-                'user': filled_template.created_by.get_full_name() if filled_template.created_by else None,
-            })
-        
-        history.append({
-            'action': 'Last updated',
-            'timestamp': filled_template.updated_at,
-            'user': None,
-        })
-        
-        return Response({'history': history})
+        return queryset.select_related('template', 'case', 'client')
+    
+    @action(detail=True, methods=['post'])
+    def share(self, request, pk=None):
+        """Share template with client"""
+        filled = self.get_object()
+        filled.is_shared_with_client = True
+        filled.shared_at = timezone.now()
+        filled.save()
+        return Response(self.get_serializer(filled).data)

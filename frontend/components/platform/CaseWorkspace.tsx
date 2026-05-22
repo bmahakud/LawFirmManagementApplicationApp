@@ -17,7 +17,7 @@ import { API } from '@/lib/api';
 import { useTopbarTitle } from './TopbarContext';
 import DocumentManager from './DocumentManager';
 import DocumentVerificationSystem from './DocumentVerificationSystem';
-import CourtFormsManager from './CourtFormsManager';
+import PDFCourtFormEditor from './PDFCourtFormEditor';
 
 // --- Types ---
 interface CaseData {
@@ -529,7 +529,7 @@ export function CaseWorkspace({
 
         {activeTab === 'Court Forms' && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <CourtFormsManager 
+            <PDFCourtFormEditor 
               caseId={caseId}
               clientId={caseData.client || caseData.client_id}
               role={role}

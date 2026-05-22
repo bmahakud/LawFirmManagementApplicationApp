@@ -235,3 +235,9 @@ class UserDocument(models.Model):
         self.deleted_at = None
         self.deleted_by = None
         self.save()
+
+
+# Import PDF-style court form templates
+from .models_templates import CourtFormTemplate, FilledCourtForm
+
+__all__ = ['UserDocument', 'CourtFormTemplate', 'FilledCourtForm']
