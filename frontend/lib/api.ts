@@ -1,8 +1,11 @@
-export const API_BASE_URL = "https://antlegal.anthemgt.com";
+// Use environment variable or default to production
+// To use local: set NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 in .env.local
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://antlegal.anthemgt.com";
 
 /**
  * Complete AntLegal API Reference Layer.
- * Base URL: https://antlegal.anthemgt.com
+ * Base URL: Configurable via NEXT_PUBLIC_API_BASE_URL environment variable
+ * Default: https://antlegal.anthemgt.com
  */
 export const API = {
   AUTH: {
@@ -51,7 +54,17 @@ export const API = {
     USER_DOCUMENTS: "/api/documents/user_documents/",
     BY_CLIENT: (id: string) => `/api/documents/by_client/?client_id=${id}`,
     BY_CASE: (id: string) => `/api/documents/by_case/?case_id=${id}`,
-    TEMPLATES: "/api/documents/templates/"
+    TEMPLATES: "/api/documents/templates/",
+    FILLED_TEMPLATES: {
+      LIST: "/api/documents/filled-templates/",
+      CREATE: "/api/documents/filled-templates/",
+      DETAIL: (id: string) => `/api/documents/filled-templates/${id}/`,
+      BY_CASE: (caseId: string) => `/api/documents/filled-templates/by_case/?case_id=${caseId}`,
+      SHARE: (id: string) => `/api/documents/filled-templates/${id}/share_with_client/`,
+      CLIENT_SIGN: (id: string) => `/api/documents/filled-templates/${id}/client_sign/`,
+      ADVOCATE_SIGN: (id: string) => `/api/documents/filled-templates/${id}/advocate_sign/`,
+      GENERATE_PDF: (id: string) => `/api/documents/filled-templates/${id}/generate_pdf/`,
+    }
   },
   DOCUMENT_REQUESTS: {
     LIST: "/api/cases/document-requests/",

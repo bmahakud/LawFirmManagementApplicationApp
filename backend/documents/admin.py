@@ -1,6 +1,11 @@
 from django.contrib import admin
 from .models import UserDocument
-from .models_templates import DocumentTemplate, FilledTemplate
+from .models_templates import (
+    DocumentTemplate, 
+    FilledTemplate,
+    CourtFormTemplate,
+    FilledCourtForm
+)
 
 
 @admin.register(UserDocument)
@@ -107,6 +112,73 @@ class FilledTemplateAdmin(admin.ModelAdmin):
         ('Signatures', {
             'fields': ('client_signed', 'client_signed_at', 
                       'advocate_signed', 'advocate_signed_at')
+        }),
+        ('Metadata', {
+            'fields': ('created_by', 'created_at', 'updated_at')
+        }),
+    )
+
+
+@admin.register(CourtFormTemplate)
+class CourtFormTemplateAdmin(admin.ModelAdmin):
+    list_display = [
+        'name', 'category', 'is_active', 'created_by', 'created_at'
+    ]
+    list_filter = ['category', 'is_active', 'created_at']
+    search_fields = ['name', 'description']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Template Information', {
+            'fields': ('name', 'description', 'category')
+        }),
+        ('Content Structure', {
+            'fields': ('content_structure', 'default_field_mappings')
+        }),
+        ('Settings', {
+            'fields': ('is_active', 'created_by')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+
+
+@admin.register(FilledCourtForm)
+class FilledCourtFormAdmin(admin.ModelAdmin):
+    list_display = [
+        'template', 'case', 'client', 'status',
+        'advocate_signed', 'client_signed', 'is_shared_with_client',
+        'created_at'
+    ]
+    list_filter = [
+        'status', 'advocate_signed', 'client_signed',
+        'is_shared_with_client', 'created_at'
+    ]
+    search_fields = [
+        'template__name', 'case__case_number',
+        'client__first_name', 'client__last_name'
+    ]
+    readonly_fields = [
+        'id', 'created_at', 'updated_at', 'shared_at',
+        'advocate_signature_date', 'client_signature_date'
+    ]
+    
+    fieldsets = (
+        ('Form Information', {
+            'fields': ('template', 'case', 'client')
+        }),
+        ('Content', {
+            'fields': ('filled_content', 'field_values', 'generated_pdf')
+        }),
+        ('Status', {
+            'fields': ('status', 'is_shared_with_client', 'shared_at')
+        }),
+        ('Signatures', {
+            'fields': (
+                'advocate_signed', 'advocate_signature_date',
+                'client_signed', 'client_signature_date'
+            )
         }),
         ('Metadata', {
             'fields': ('created_by', 'created_at', 'updated_at')

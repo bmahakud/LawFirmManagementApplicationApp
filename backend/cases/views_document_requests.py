@@ -78,12 +78,16 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
             if instance.requested_by != user:
                 raise PermissionDenied("You can only update your own document requests.")
         
-        # Clients can only update client_notes when uploading
+        # Clients can update client_notes, uploaded_document, and status when uploading
         elif user.user_type == 'client':
-            allowed_fields = {'client_notes', 'uploaded_document'}
+            allowed_fields = {'client_notes', 'uploaded_document', 'status'}
             request_fields = set(self.request.data.keys())
             if not request_fields.issubset(allowed_fields):
-                raise PermissionDenied("Clients can only update client_notes and uploaded_document.")
+                raise PermissionDenied("Clients can only update client_notes, uploaded_document, and status.")
+            
+            # Clients can only change status to 'uploaded'
+            if 'status' in self.request.data and self.request.data['status'] != 'uploaded':
+                raise PermissionDenied("Clients can only set status to 'uploaded'.")
         
         serializer.save()
     

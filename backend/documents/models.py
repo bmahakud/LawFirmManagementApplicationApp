@@ -1,3 +1,4 @@
+
 from django.db import models
 from django.utils import timezone
 import uuid
@@ -7,29 +8,114 @@ class UserDocument(models.Model):
     """Store user documents for verification - Soft delete enabled"""
     
     DOCUMENT_TYPE_CHOICES = [
+        # Identity Documents
         ('aadhar', 'Aadhar Card'),
         ('pan', 'PAN Card'),
         ('passport', 'Passport'),
         ('driving_license', 'Driving License'),
+        ('voter_id', 'Voter ID Card'),
+        ('ration_card', 'Ration Card'),
+        
+        # Certificates
+        ('birth_certificate', 'Birth Certificate'),
+        ('death_certificate', 'Death Certificate'),
+        ('marriage_certificate', 'Marriage Certificate'),
+        ('divorce_certificate', 'Divorce Certificate'),
+        ('domicile_certificate', 'Domicile Certificate'),
+        ('caste_certificate', 'Caste Certificate'),
+        ('income_certificate', 'Income Certificate'),
+        ('residence_certificate', 'Residence Certificate'),
+        ('character_certificate', 'Character Certificate'),
         ('bar_certificate', 'Bar Council Certificate'),
+        ('medical_certificate', 'Medical Certificate'),
+        ('disability_certificate', 'Disability Certificate'),
+        
+        # Educational Documents
         ('degree', 'Educational Degree'),
-        ('fir', 'FIR'),
+        ('marksheet', 'Marksheet'),
+        ('transfer_certificate', 'Transfer Certificate'),
+        ('migration_certificate', 'Migration Certificate'),
+        ('provisional_certificate', 'Provisional Certificate'),
+        
+        # Financial Documents
+        ('bank_statement', 'Bank Statement'),
+        ('salary_slip', 'Salary Slip'),
+        ('itr', 'Income Tax Return'),
+        ('form_16', 'Form 16'),
+        ('invoice', 'Invoice'),
+        ('receipt', 'Receipt'),
+        ('cheque', 'Cheque Copy'),
+        ('loan_documents', 'Loan Documents'),
+        
+        # Property Documents
+        ('property_documents', 'Property Documents'),
+        ('sale_deed', 'Sale Deed'),
+        ('lease_agreement', 'Lease Agreement'),
+        ('rent_agreement', 'Rent Agreement'),
+        ('property_tax_receipt', 'Property Tax Receipt'),
+        ('encumbrance_certificate', 'Encumbrance Certificate'),
+        ('mutation_certificate', 'Mutation Certificate'),
+        
+        # Legal Documents
+        ('fir', 'FIR (First Information Report)'),
         ('petition', 'Petition'),
+        ('plaint', 'Plaint'),
+        ('written_statement', 'Written Statement'),
         ('evidence', 'Evidence'),
         ('order', 'Court Order'),
+        ('judgment', 'Judgment'),
+        ('decree', 'Decree'),
         ('agreement', 'Agreement'),
         ('affidavit', 'Affidavit'),
         ('notice', 'Legal Notice'),
         ('contract', 'Contract'),
-        ('invoice', 'Invoice'),
-        ('receipt', 'Receipt'),
-        ('correspondence', 'Correspondence'),
-        ('medical_report', 'Medical Report'),
-        ('police_report', 'Police Report'),
-        ('witness_statement', 'Witness Statement'),
+        ('mou', 'Memorandum of Understanding (MOU)'),
         ('power_of_attorney', 'Power of Attorney'),
         ('vakalatnama', 'Vakalatnama'),
-        ('other', 'Other'),
+        ('bail_bond', 'Bail Bond'),
+        ('surety_bond', 'Surety Bond'),
+        ('undertaking', 'Undertaking'),
+        ('indemnity_bond', 'Indemnity Bond'),
+        
+        # Medical & Police Documents
+        ('medical_report', 'Medical Report'),
+        ('prescription', 'Medical Prescription'),
+        ('discharge_summary', 'Hospital Discharge Summary'),
+        ('police_report', 'Police Report'),
+        ('police_verification', 'Police Verification'),
+        ('noc', 'No Objection Certificate (NOC)'),
+        
+        # Employment Documents
+        ('appointment_letter', 'Appointment Letter'),
+        ('experience_certificate', 'Experience Certificate'),
+        ('relieving_letter', 'Relieving Letter'),
+        ('employment_contract', 'Employment Contract'),
+        
+        # Witness & Statements
+        ('witness_statement', 'Witness Statement'),
+        ('dying_declaration', 'Dying Declaration'),
+        ('confession', 'Confession Statement'),
+        
+        # Business Documents
+        ('gst_certificate', 'GST Certificate'),
+        ('trade_license', 'Trade License'),
+        ('partnership_deed', 'Partnership Deed'),
+        ('incorporation_certificate', 'Certificate of Incorporation'),
+        ('board_resolution', 'Board Resolution'),
+        
+        # Miscellaneous
+        ('correspondence', 'Correspondence'),
+        ('email', 'Email Communication'),
+        ('sms', 'SMS/Text Message'),
+        ('audio_transcript', 'Audio Transcript'),
+        ('video_evidence', 'Video Evidence'),
+        ('photograph', 'Photograph'),
+        ('screenshot', 'Screenshot'),
+        ('application', 'Application'),
+        ('complaint', 'Complaint'),
+        ('reply', 'Reply'),
+        ('rejoinder', 'Rejoinder'),
+        ('other', 'Other Document'),
     ]
     
     VERIFICATION_STATUS_CHOICES = [
@@ -149,3 +235,9 @@ class UserDocument(models.Model):
         self.deleted_at = None
         self.deleted_by = None
         self.save()
+
+
+# Import PDF-style court form templates
+from .models_templates import CourtFormTemplate, FilledCourtForm
+
+__all__ = ['UserDocument', 'CourtFormTemplate', 'FilledCourtForm']
