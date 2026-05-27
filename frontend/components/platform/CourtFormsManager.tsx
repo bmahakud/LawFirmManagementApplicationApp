@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
-import { 
-  FileText, Plus, Search, Filter, Eye, Edit, Share2, 
+import {
+  FileText, Plus, Search, Filter, Eye, Edit, Share2,
   CheckCircle, Clock, Send, Download, Loader2, X, Save
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import SignaturePad from './SignaturePad';
 
 type Template = {
   id: string;
@@ -53,7 +54,9 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  
+  const [showSignaturePad, setShowSignaturePad] = useState(false);
+  const [signatureType, setSignatureType] = useState<'advocate' | 'client'>('advocate');
+
   // Form data for filling template
   const [filledData, setFilledData] = useState<Record<string, any>>({});
 
@@ -69,7 +72,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
       setLoading(true);
       console.log('Fetching templates from:', API.DOCUMENTS.TEMPLATES);
       console.log('Fetching filled templates from:', API.DOCUMENTS.FILLED_TEMPLATES.BY_CASE(caseId));
-      
+
       const [templatesRes, filledRes] = await Promise.all([
         customFetch(API.DOCUMENTS.TEMPLATES),
         customFetch(API.DOCUMENTS.FILLED_TEMPLATES.BY_CASE(caseId))
@@ -92,7 +95,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
         console.error('Templates fetch failed:', templatesData);
         toast.error('Failed to load templates: ' + (templatesData.detail || 'Unknown error'));
       }
-      
+
       if (filledRes.ok) {
         setFilledTemplates(Array.isArray(filledData) ? filledData : filledData.results || []);
       } else {
@@ -114,7 +117,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
 
   const handleSaveDraft = async () => {
     if (!selectedTemplate) return;
-    
+
     setSaving(true);
     try {
       const response = await customFetch(API.DOCUMENTS.FILLED_TEMPLATES.CREATE, {
@@ -156,6 +159,42 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
     }
   };
 
+  const handleSign = async (formId: string, signatureData: string) => {
+    setSaving(true);
+    try {
+      // Convert base64 to blob
+      const res = await fetch(signatureData);
+      const blob = await res.blob();
+
+      // Create form data
+      const formData = new FormData();
+      formData.append('signature', blob, 'signature.png');
+
+      // Use the appropriate API endpoint for signing
+      // We'll use a dynamic URL since it's not in the API helper yet
+      const response = await customFetch(`/api/documents/filled-templates/${formId}/sign/`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) throw new Error('Failed to sign');
+
+      toast.success('Signed successfully');
+      setShowSignaturePad(false);
+      await fetchData();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openSignaturePad = (type: 'advocate' | 'client', filledForm: FilledTemplate) => {
+    setSelectedFilled(filledForm);
+    setSignatureType(type);
+    setShowSignaturePad(true);
+  };
+
   const getStatusBadge = (status: string) => {
     const badges = {
       draft: { color: 'bg-gray-100 text-gray-700', icon: Clock },
@@ -164,10 +203,10 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
       signed: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
       filed: { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
     };
-    
+
     const badge = badges[status as keyof typeof badges] || badges.draft;
     const Icon = badge.icon;
-    
+
     return (
       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg ${badge.color} text-xs font-semibold`}>
         <Icon className="w-3 h-3" />
@@ -178,7 +217,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
 
   const filteredTemplates = templates.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         t.description.toLowerCase().includes(searchQuery.toLowerCase());
+      t.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || t.category === categoryFilter;
     return matchesSearch && matchesCategory && t.is_active;
   });
@@ -285,8 +324,8 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
     const renderField = (fieldName: string, fieldConfig: any) => {
       // Handle new structure (object with type) or old structure (string)
       const fieldType = typeof fieldConfig === 'string' ? fieldConfig : fieldConfig.type;
-      const fieldLabel = typeof fieldConfig === 'object' ? fieldConfig.label : 
-                        fieldName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      const fieldLabel = typeof fieldConfig === 'object' ? fieldConfig.label :
+        fieldName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       const fieldDefault = typeof fieldConfig === 'object' ? fieldConfig.default : '';
 
       // Static content (non-editable text)
@@ -310,7 +349,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
             <p className="text-sm text-gray-600 italic mb-2">{fieldConfig.template}</p>
             <textarea
               value={filledData[fieldName] || ''}
-              onChange={(e) => setFilledData({...filledData, [fieldName]: e.target.value})}
+              onChange={(e) => setFilledData({ ...filledData, [fieldName]: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
               rows={3}
               placeholder="Fill in the details..."
@@ -323,7 +362,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
       if (fieldType === 'table') {
         const tableData = filledData[fieldName] || [{}];
         const columns = fieldConfig.columns || [];
-        
+
         return (
           <div key={fieldName} className="space-y-3">
             <label className="block text-sm font-semibold text-gray-700">
@@ -351,8 +390,8 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
                             value={row[col.key] || ''}
                             onChange={(e) => {
                               const newTableData = [...tableData];
-                              newTableData[rowIndex] = {...newTableData[rowIndex], [col.key]: e.target.value};
-                              setFilledData({...filledData, [fieldName]: newTableData});
+                              newTableData[rowIndex] = { ...newTableData[rowIndex], [col.key]: e.target.value };
+                              setFilledData({ ...filledData, [fieldName]: newTableData });
                             }}
                             className="w-full px-2 py-1 text-xs text-gray-900 bg-white border-none focus:outline-none focus:ring-1 focus:ring-purple-300"
                           />
@@ -363,7 +402,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
                           <button
                             onClick={() => {
                               const newTableData = tableData.filter((_: any, i: number) => i !== rowIndex);
-                              setFilledData({...filledData, [fieldName]: newTableData});
+                              setFilledData({ ...filledData, [fieldName]: newTableData });
                             }}
                             className="text-red-500 hover:text-red-700"
                           >
@@ -380,7 +419,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
               <button
                 onClick={() => {
                   const newTableData = [...tableData, {}];
-                  setFilledData({...filledData, [fieldName]: newTableData});
+                  setFilledData({ ...filledData, [fieldName]: newTableData });
                 }}
                 className="text-sm text-purple-600 hover:text-purple-700 font-semibold flex items-center gap-1"
               >
@@ -401,7 +440,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
           {fieldType === 'textarea' ? (
             <textarea
               value={filledData[fieldName] || fieldDefault}
-              onChange={(e) => setFilledData({...filledData, [fieldName]: e.target.value})}
+              onChange={(e) => setFilledData({ ...filledData, [fieldName]: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
               rows={3}
             />
@@ -409,7 +448,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
             <input
               type="date"
               value={filledData[fieldName] || fieldDefault}
-              onChange={(e) => setFilledData({...filledData, [fieldName]: e.target.value})}
+              onChange={(e) => setFilledData({ ...filledData, [fieldName]: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           ) : fieldType === 'signature' ? (
@@ -420,7 +459,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
             <input
               type="text"
               value={filledData[fieldName] || fieldDefault}
-              onChange={(e) => setFilledData({...filledData, [fieldName]: e.target.value})}
+              onChange={(e) => setFilledData({ ...filledData, [fieldName]: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           )}
@@ -446,7 +485,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
 
         {/* Dynamic Form */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-          {Object.entries(selectedTemplate.template_fields).map(([fieldName, fieldConfig]) => 
+          {Object.entries(selectedTemplate.template_fields).map(([fieldName, fieldConfig]) =>
             renderField(fieldName, fieldConfig)
           )}
         </div>
@@ -474,7 +513,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
         <div>
           <h3 className="text-lg font-bold text-gray-900">Court Forms & Templates</h3>
           <p className="text-sm text-gray-500 mt-1">
-            {filledTemplates.length > 0 
+            {filledTemplates.length > 0
               ? `${filledTemplates.length} form${filledTemplates.length !== 1 ? 's' : ''} created`
               : 'Select a template to get started'}
           </p>
@@ -498,7 +537,7 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
               <strong>{templates.length} templates</strong> available. {filteredTemplates.length} matching your search.
             </p>
           </div>
-          
+
           {/* Search and Filter */}
           <div className="flex gap-3">
             <div className="flex-1 relative">
@@ -574,17 +613,17 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
                     </p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-3">
                   {getStatusBadge(filled.status)}
-                  
+
                   {filled.client_signed && (
                     <span className="text-xs text-green-600 font-semibold">Client Signed</span>
                   )}
                   {filled.advocate_signed && (
                     <span className="text-xs text-blue-600 font-semibold">Advocate Signed</span>
                   )}
-                  
+
                   {isAdvocateRole && filled.status === 'draft' && (
                     <button
                       onClick={() => handleShareWithClient(filled.id)}
@@ -594,7 +633,27 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
                       Share
                     </button>
                   )}
-                  
+
+                  {isAdvocateRole && !filled.advocate_signed && (
+                    <button
+                      onClick={() => openSignaturePad('advocate', filled)}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+                    >
+                      <CheckCircle className="w-3 h-3 inline mr-1" />
+                      Sign
+                    </button>
+                  )}
+
+                  {isClientRole && !filled.client_signed && filled.is_shared_with_client && (
+                    <button
+                      onClick={() => openSignaturePad('client', filled)}
+                      className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700"
+                    >
+                      <CheckCircle className="w-3 h-3 inline mr-1" />
+                      Sign
+                    </button>
+                  )}
+
                   <button className="p-2 hover:bg-gray-100 rounded-lg">
                     <Eye className="w-4 h-4 text-gray-400" />
                   </button>
@@ -603,6 +662,15 @@ export default function CourtFormsManager({ caseId, clientId, role, accent = '#4
             </div>
           ))}
         </div>
+      )}
+
+      {showSignaturePad && selectedFilled && (
+        <SignaturePad
+          title={`Sign as ${signatureType}`}
+          saving={saving}
+          onSave={(data) => handleSign(selectedFilled.id, data)}
+          onCancel={() => setShowSignaturePad(false)}
+        />
       )}
     </div>
   );

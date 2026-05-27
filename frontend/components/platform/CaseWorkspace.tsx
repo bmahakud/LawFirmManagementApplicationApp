@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   Briefcase, Gavel, FileText, ClipboardList,
   CreditCard, History, Settings, Calendar,
@@ -114,11 +114,11 @@ const Field = ({ label, value, isBadge = false, badgeVariant = '' }: { label: st
   </div>
 );
 
-export function CaseWorkspace({ 
+export function CaseWorkspace({
   viewBase = '/advocate/cases',
   role = 'advocate',
   accent = '#311042'
-}: { 
+}: {
   viewBase?: string;
   role?: 'advocate' | 'client' | 'firm-admin' | 'super-admin';
   accent?: string;
@@ -127,11 +127,22 @@ export function CaseWorkspace({
   const router = useRouter();
   const caseId = params?.caseId as string;
 
-  const [activeTab, setActiveTab] = useState('Overview');
+  const searchParams = useSearchParams();
+  const initialTabFromUrl = searchParams.get('tab');
+  const initialFormId = searchParams.get('formId');
+  const newBlank = searchParams.get('newBlank') === 'true';
+
+  const [activeTab, setActiveTab] = useState(initialTabFromUrl || 'Overview');
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialTabFromUrl) {
+      setActiveTab(initialTabFromUrl);
+    }
+  }, [initialTabFromUrl]);
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -488,8 +499,8 @@ export function CaseWorkspace({
         {activeTab === 'Documents' && (
           <div className="space-y-8">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <DocumentVerificationSystem 
-                caseId={caseId} 
+              <DocumentVerificationSystem
+                caseId={caseId}
                 clientId={caseData.client || caseData.client_id}
                 role={role}
                 accent={accent}
@@ -501,9 +512,9 @@ export function CaseWorkspace({
                 <FileText className="w-5 h-5 text-purple-700" />
                 Case Specific Documents
               </h3>
-              <DocumentManager 
-                accent={accent} 
-                caseId={caseId} 
+              <DocumentManager
+                accent={accent}
+                caseId={caseId}
                 clientId={caseData.client || caseData.client_id}
                 viewBase={viewBase.replace('/cases', '/documents')}
                 role={role}
@@ -529,17 +540,33 @@ export function CaseWorkspace({
 
         {activeTab === 'Court Forms' && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <PDFCourtFormEditor 
+            <PDFCourtFormEditor
               caseId={caseId}
               clientId={caseData.client || caseData.client_id}
               role={role}
               accent={accent}
+              initialFormId={initialFormId}
+              newBlank={newBlank}
+            />
+          </div>
+        )}
+
+        {activeTab === 'Drafting' && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <PDFCourtFormEditor
+              caseId={caseId}
+              clientId={caseData.client || caseData.client_id}
+              role={role}
+              accent={accent}
+              categoryFilter="drafting"
+              initialFormId={initialFormId}
+              newBlank={newBlank}
             />
           </div>
         )}
 
         {/* Mock for other tabs to keep UI populated */}
-        {['Drafting', 'Hearings'].includes(activeTab) && (
+        {['Hearings'].includes(activeTab) && (
           <div className="text-center py-20 bg-white rounded-xl border border-gray-200">
             <div className="mx-auto w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mb-4">
               <FileText className="w-8 h-8 text-purple-300" />

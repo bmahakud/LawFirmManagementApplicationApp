@@ -5,7 +5,9 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.db import models
 from django.shortcuts import get_object_or_404
+from django.http import HttpResponse
 from django.utils import timezone
 
 from .models_templates import CourtFormTemplate, FilledCourtForm
@@ -173,8 +175,144 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
             created_by=request.user
         )
         
+        # Auto-populate INDEX data if it's an index template
+        if "INDEX" in template.name.upper():
+            self._populate_index_data(filled_form)
+        
         serializer = FilledCourtFormSerializer(filled_form)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['post'])
+    def refresh_index(self, request, pk=None):
+        """Refresh index table data from current case forms"""
+        filled_form = self.get_object()
+        if "INDEX" not in filled_form.template.name.upper():
+            return Response(
+                {'error': 'This is not an index form'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        self._populate_index_data(filled_form)
+        serializer = self.get_serializer(filled_form)
+        return Response(serializer.data)
+
+    def _populate_index_data(self, filled_form):
+        """Helper to populate index table with other forms and auto-calculate page ranges"""
+        case = filled_form.case
+        # Get all drafting workspace forms for this case
+        # Use custom_sequence if set (>0), otherwise fallback to template sequence
+        other_forms = FilledCourtForm.objects.filter(
+            case=case,
+            template__category='drafting'
+        ).exclude(id=filled_form.id).select_related('template').annotate(
+            effective_sequence=models.Case(
+                models.When(custom_sequence__gt=0, then=models.F('custom_sequence')),
+                default=models.F('template__sequence'),
+                output_field=models.IntegerField()
+            )
+        ).order_by('effective_sequence', 'template__name')
+        
+        field_values = filled_form.field_values or {}
+        
+        # Clear existing table fields
+        for k in list(field_values.keys()):
+            if k.startswith(('sl_no_', 'desc_', 'page_')):
+                del field_values[k]
+        
+        current_page = 1
+        has_petition_started = False
+        
+        for i, form in enumerate(other_forms):
+            idx = i + 1
+            field_values[f"sl_no_{i}"] = f"{idx:02d}."
+            
+            name = form.template.name.upper()
+            page_val = ""
+            desc = name
+            
+            if "SYNOPSIS" in name:
+                desc = "APPENDIX-I\nSYNOPSIS"
+                page_val = "A"
+            elif "LIST OF DATES" in name:
+                desc = "APPENDIX-II\nLIST OF DATES & EVENTS"
+                page_val = "B"
+            elif "PETITION" in name:
+                desc = name.split('(')[0].strip()
+                # Petition always starts at page 1 as per image 1
+                page_val = "1 to 7" # Default range, can be manual edit later
+                current_page = 8
+                has_petition_started = True
+            elif "VAKALATNAMA" in name:
+                desc = "VAKALATNAMA"
+                page_val = "" # Vakalatnama is usually at the end without a page number listed
+            elif "LIST OF DOCUMENTS" in name:
+                desc = "LIST OF DOCUMENTS"
+                # If petition hasn't started yet, these shouldn't show numbers or show A, B?
+                # Usually List of Docs follows the Petition
+                if has_petition_started:
+                    page_val = str(current_page)
+                    current_page += 1
+                else:
+                    page_val = ""
+            else:
+                # Other documents (like Annexures)
+                if has_petition_started:
+                    # Annexures typically have ranges like 8-13, 14-15
+                    # For now we use incremental numbering as a proxy
+                    next_page = current_page + 2 # Assume average 2-3 pages for annexures
+                    page_val = f"{current_page}-{next_page}"
+                    current_page = next_page + 1
+                else:
+                    page_val = ""
+
+            field_values[f"desc_{i}"] = desc
+            field_values[f"page_{i}"] = page_val
+            
+        filled_form.field_values = field_values
+        filled_form.save()
+
+    @action(detail=True, methods=['post'])
+    def update_priority(self, request, pk=None):
+        """Update document priority and refresh associated index"""
+        filled_form = self.get_object()
+        priority = request.data.get('priority')
+        
+        if priority is not None:
+            filled_form.custom_sequence = int(priority)
+            filled_form.save()
+            
+            # Find associated index form for this case and refresh it
+            index_form = FilledCourtForm.objects.filter(
+                case=filled_form.case,
+                template__name__icontains='INDEX'
+            ).first()
+            
+            if index_form:
+                self._populate_index_data(index_form)
+            
+            return Response({'status': 'priority updated'})
+        
+        return Response({'error': 'priority required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def download_master_pdf(self, request):
+        """Download a merged PDF of all documents in a case's filing pack"""
+        case_id = request.query_params.get('case_id')
+        if not case_id:
+            return Response({'error': 'case_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        from cases.models import Case
+        case = get_object_or_404(Case, id=case_id)
+        
+        from .utils_pdf import PDFService
+        pdf_bytes = PDFService.merge_case_forms(case)
+        
+        if not pdf_bytes:
+            return Response({'error': 'Could not generate PDF'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="Case_{case.case_number}_Filing_Pack.pdf"'
+        return response
     
     @action(detail=True, methods=['post'])
     def share_with_client(self, request, pk=None):
@@ -286,8 +424,8 @@ class FilledTemplateSerializer(serializers.ModelSerializer):
             'case', 'case_number', 'client', 'client_name', 'firm',
             'filled_data', 'generated_file', 'status', 'status_display',
             'is_shared_with_client', 'shared_at',
-            'client_signed', 'client_signed_at',
-            'advocate_signed', 'advocate_signed_at',
+            'client_signed', 'client_signed_at', 'client_signature_image',
+            'advocate_signed', 'advocate_signed_at', 'advocate_signature_image',
             'notes', 'created_at', 'updated_at', 'created_by'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -342,3 +480,33 @@ class FilledTemplateViewSet(viewsets.ModelViewSet):
         filled.shared_at = timezone.now()
         filled.save()
         return Response(self.get_serializer(filled).data)
+
+    @action(detail=True, methods=['post'])
+    def sign(self, request, pk=None):
+        """Sign the form (advocate or client) with optional signature image"""
+        filled_form = self.get_object()
+        user = request.user
+        user_type = getattr(user, 'user_type', None)
+        
+        # Get signature image if provided
+        signature_file = request.FILES.get('signature')
+        
+        if user_type in ['advocate', 'admin', 'super_admin', 'platform_owner']:
+            filled_form.advocate_signed = True
+            filled_form.advocate_signed_at = timezone.now()
+            if signature_file:
+                filled_form.advocate_signature_image = signature_file
+        elif user_type == 'client':
+            filled_form.client_signed = True
+            filled_form.client_signed_at = timezone.now()
+            if signature_file:
+                filled_form.client_signature_image = signature_file
+        else:
+            return Response(
+                {'error': 'You do not have permission to sign this form'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        filled_form.save()
+        serializer = self.get_serializer(filled_form)
+        return Response(serializer.data)

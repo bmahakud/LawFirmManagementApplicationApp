@@ -22,6 +22,7 @@ class CourtFormTemplate(models.Model):
         ('notice', 'Notice'),
         ('undertaking', 'Undertaking'),
         ('surety_bond', 'Surety Bond'),
+        ('drafting', 'Drafting Workspace'),
         ('other', 'Other'),
     ]
     
@@ -77,6 +78,7 @@ class CourtFormTemplate(models.Model):
     )
     
     is_active = models.BooleanField(default=True)
+    sequence = models.IntegerField(default=0, help_text="Ordering sequence for templates")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
@@ -88,7 +90,7 @@ class CourtFormTemplate(models.Model):
     )
     
     class Meta:
-        ordering = ['category', 'name']
+        ordering = ['sequence', 'category', 'name']
         verbose_name = 'Court Form Template'
         verbose_name_plural = 'Court Form Templates'
     
@@ -138,6 +140,7 @@ class FilledCourtForm(models.Model):
     )
     
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    custom_sequence = models.IntegerField(default=0, help_text="Manual override for document ordering")
     
     # Signatures
     advocate_signed = models.BooleanField(default=False)
@@ -298,10 +301,26 @@ class FilledTemplate(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     is_shared_with_client = models.BooleanField(default=False)
     shared_at = models.DateTimeField(null=True, blank=True)
+    
+    # Signatures
     client_signed = models.BooleanField(default=False)
     client_signed_at = models.DateTimeField(null=True, blank=True)
+    client_signature_image = models.ImageField(
+        upload_to='signatures/client/',
+        null=True,
+        blank=True,
+        help_text="Client's signature image"
+    )
+    
     advocate_signed = models.BooleanField(default=False)
     advocate_signed_at = models.DateTimeField(null=True, blank=True)
+    advocate_signature_image = models.ImageField(
+        upload_to='signatures/advocate/',
+        null=True,
+        blank=True,
+        help_text="Advocate's signature image"
+    )
+    
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -1,0 +1,144 @@
+{% load document_tags %}
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        @page {
+            size: a4;
+            margin: 1in;
+        }
+
+        body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            font-size: 12pt;
+            color: black;
+            line-height: 1.5;
+        }
+
+        .doc-header {
+            text-align: center;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 14pt;
+            margin-bottom: 20px;
+        }
+
+        .doc-paragraph {
+            text-align: justify;
+            margin-bottom: 12pt;
+        }
+
+        .doc-spacer {
+            display: block;
+        }
+
+        .bold {
+            font-weight: bold;
+        }
+
+        .underline {
+            text-decoration: underline;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .rich-text p {
+            margin: 0;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        table,
+        th,
+        td {
+            border: 1px solid black;
+        }
+
+        th,
+        td {
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .signature-section {
+            margin-top: 50px;
+            float: right;
+            width: 250px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    {% for section in sections %}
+
+    {% if section.type == "header" %}
+    <div class="doc-header">
+        {{ section.content|default:"" }}
+    </div>
+
+    {% elif section.type == "paragraph" %}
+    <div class="doc-paragraph">
+        {{ section.content|default:"" }}
+    </div>
+
+    {% elif section.type == "textarea" %}
+    {% with field_name=section.field|default:"document_content" %}
+    <div class="rich-text">
+        {{ values|get_item:field_name|default:""|safe }}
+    </div>
+    {% endwith %}
+
+    {% elif section.type == "spacer" %}
+    <div style="height: 20px;"></div>
+
+    {% elif section.type == "table" or section.type == "dynamic_table" %}
+    <table>
+        <thead>
+            <tr>
+                {% for col in section.columns %}
+                <th>{{ col }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row_idx in section.rows|get_range %}
+            <tr>
+                {% for col in section.columns %}
+                <td>
+                    {% with col_idx=forloop.counter0 %}
+                    {% with cell_key="cell_"|add_str:row_idx|add_str:"_"|add_str:col_idx %}
+                    {{ values|get_item:cell_key|default:"" }}
+                    {% endwith %}
+                    {% endwith %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% endif %}
+
+    {% endfor %}
+
+    {% if form.advocate_signed %}
+    <div class="signature-section">
+        <p>Advocate's Signature</p>
+        <p>{{ form.advocate_signature_date|date:"d/m/Y" }}</p>
+    </div>
+    {% endif %}
+
+</body>
+
+</html>

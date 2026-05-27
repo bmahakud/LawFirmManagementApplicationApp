@@ -64,6 +64,13 @@ export const API = {
       CLIENT_SIGN: (id: string) => `/api/documents/filled-templates/${id}/client_sign/`,
       ADVOCATE_SIGN: (id: string) => `/api/documents/filled-templates/${id}/advocate_sign/`,
       GENERATE_PDF: (id: string) => `/api/documents/filled-templates/${id}/generate_pdf/`,
+    },
+    FILLED_COURT_FORMS: {
+      LIST: "/api/documents/filled-court-forms/",
+      CREATE: "/api/documents/filled-court-forms/",
+      DETAIL: (id: string) => `/api/documents/filled-court-forms/${id}/`,
+      CREATE_FROM_TEMPLATE: "/api/documents/filled-court-forms/create_from_template/",
+      REFRESH_INDEX: (id: string) => `/api/documents/filled-court-forms/${id}/refresh_index/`,
     }
   },
   DOCUMENT_REQUESTS: {

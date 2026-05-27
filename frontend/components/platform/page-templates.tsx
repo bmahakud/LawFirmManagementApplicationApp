@@ -24,6 +24,7 @@ import {
   ExternalLink,
   Download,
   PlusCircle,
+  Plus,
   Save,
   ChevronDown,
   AlertCircle,
@@ -1058,7 +1059,7 @@ export function UserDetailPage({ accent, userId }: AccentProps & { userId: strin
 
     try {
       const payload: any = { ...editData };
-      
+
       // Payload cleaning for backend compatibility
       if (payload.aadhar_number) {
         payload.aadhar_number = payload.aadhar_number.replace(/\s/g, '');
@@ -1563,7 +1564,7 @@ export function TeamMemberFormPage({
             last_name: data.last_name || '',
             email: data.email || '',
             phone_number: data.phone_number || '',
-            password: '', 
+            password: '',
             user_type: data.user_type || fixedRole || 'advocate',
             firm: data.firm || '',
             date_of_birth: data.date_of_birth || '',
@@ -1618,7 +1619,7 @@ export function TeamMemberFormPage({
       if (payload.phone_number) {
         payload.phone_number = payload.phone_number.replace(/\D/g, '');
       }
-      
+
       if (!payload.firm) payload.firm = null;
       if (!payload.date_of_birth) payload.date_of_birth = null;
       if (!payload.aadhar_number) payload.aadhar_number = null;
@@ -1680,7 +1681,7 @@ export function TeamMemberFormPage({
               <div>
                 <h3 className="text-base font-bold text-amber-900 mb-1">Subscription Limit Reached</h3>
                 <p className="text-sm font-medium text-amber-800 mb-4 leading-relaxed">{limitError.error}</p>
-                
+
                 <div className="flex items-center flex-wrap gap-4 text-xs font-semibold text-amber-700 bg-amber-100/50 px-4 py-3 rounded-lg mb-4">
                   <div>Plan: <span className="uppercase font-bold text-amber-900">{limitError.subscription_type}</span></div>
                   <div className="w-1 h-1 bg-amber-300 rounded-full"></div>
@@ -2196,10 +2197,10 @@ export function ReportsPage({ accent }: AccentProps) {
 export function DocumentLibraryPage({ accent, roleTitle, viewBase }: AccentProps & { roleTitle: string; viewBase?: string }) {
   return (
     <div className="space-y-8">
-      <PageSection 
-        eyebrow="Documents" 
-        title={`${roleTitle} Document Library`} 
-        description="Personal and professional documents for verification and record keeping." 
+      <PageSection
+        eyebrow="Documents"
+        title={`${roleTitle} Document Library`}
+        description="Personal and professional documents for verification and record keeping."
       />
       <Panel title="My Documents" subtitle="Upload and manage your documents">
         <DocumentManager accent={accent} showUpload={true} viewBase={viewBase} />
@@ -2261,7 +2262,7 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
       setDownloading(true);
       const filename = doc.document_title || 'document';
       const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(fileUrl)}&filename=${encodeURIComponent(filename)}`;
-      
+
       // Trigger the download through the proxy
       window.location.href = proxyUrl;
     } catch (err) {
@@ -2302,9 +2303,9 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
       />
 
       <div className="animate-in fade-in zoom-in-95 duration-500 delay-150">
-        <DocumentViewer 
-          url={fileUrl} 
-          title={doc.document_title} 
+        <DocumentViewer
+          url={fileUrl}
+          title={doc.document_title}
         />
       </div>
 
@@ -2396,29 +2397,232 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
 }
 
 export function DraftsPage({ accent, roleTitle, approvalMode, viewBase }: AccentProps & { roleTitle: string; approvalMode?: boolean; viewBase?: string }) {
+  const [drafts, setDrafts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const fetchDrafts = async () => {
+      try {
+        setLoading(true);
+        const response = await customFetch(API.DOCUMENTS.FILLED_COURT_FORMS.LIST);
+        const data = await response.json();
+        setDrafts(Array.isArray(data) ? data : (data.results || []));
+      } catch (err: any) {
+        setError(err.message || 'Failed to load drafts');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDrafts();
+  }, []);
+
+  const draftRows = drafts.map((d) => ({
+    draft: d.template_name || 'Untitled Draft',
+    matter: d.case_number || 'N/A',
+    owner: d.created_by_name || 'N/A',
+    status: (
+      <Badge
+        label={d.status_display || d.status}
+        tone={
+          d.status === 'draft' ? 'default' :
+            d.status === 'signed' ? 'success' :
+              d.status === 'completed' ? 'info' : 'warning'
+        }
+      />
+    ),
+    updated: new Date(d.updated_at).toLocaleDateString(),
+    viewHref: viewBase?.includes('paralegal')
+      ? `/paralegal/cases/${d.case}?tab=Drafting&formId=${d.id}`
+      : `/advocate/cases/${d.case}?tab=Drafting&formId=${d.id}`,
+  }));
+
+  const groupedByCase = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    drafts.forEach((d) => {
+      const caseKey = d.case_number || 'Unknown Case';
+      if (!groups[caseKey]) groups[caseKey] = [];
+      groups[caseKey].push(d);
+    });
+    // Sort items within each case by priority/sequence
+    Object.keys(groups).forEach(key => {
+      groups[key].sort((a, b) => {
+        const seqA = a.custom_sequence > 0 ? a.custom_sequence : (a.template_sequence || 0);
+        const seqB = b.custom_sequence > 0 ? b.custom_sequence : (b.template_sequence || 0);
+        return seqA - seqB;
+      });
+    });
+    return groups;
+  }, [drafts]);
+
+  const handleDownloadMasterPDF = async (caseId: string) => {
+    toast.loading('Generating Master PDF filing pack...', { id: 'pdf-gen' });
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/documents/filled-court-forms/download_master_pdf/?case_id=${caseId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        }
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Master_Filing_Pack_${caseId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        toast.success('Filing pack ready for download', { id: 'pdf-gen' });
+      } else {
+        toast.error('Failed to generate master PDF', { id: 'pdf-gen' });
+      }
+    } catch (error) {
+      toast.error('Error downloading PDF', { id: 'pdf-gen' });
+    }
+  };
+
+  const handleUpdatePriority = async (formId: string, priority: string) => {
+    if (!priority) return;
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/documents/filled-court-forms/${formId}/update_priority/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: JSON.stringify({ priority })
+      });
+      if (response.ok) {
+        toast.success('Priority updated');
+        // Refresh drafts list
+        if (typeof window !== 'undefined') {
+          window.location.reload(); // Simple refresh to show new order
+        }
+      }
+    } catch (error) {
+      toast.error('Failed to update priority');
+    }
+  };
+
   return (
     <div className="space-y-8">
-      <PageSection eyebrow="Drafting" title={`${roleTitle} Draft Workspace`} description={approvalMode ? 'Review draft submissions, approval state, and revision history.' : 'Draft petitions and supporting legal documents for assigned matters.'} />
-      <SplitPanels
-        left={
-          <Panel title="Draft Queue" subtitle="Draft status, linked case, and current revision state.">
-            <DataTable
-              columns={[
-                { key: 'draft', label: 'Draft' },
-                { key: 'matter', label: 'Matter' },
-                { key: 'owner', label: 'Owner' },
-                { key: 'status', label: 'Status' },
-                { key: 'updated', label: 'Updated' },
-              ]}
-              rows={[
-                { draft: 'Bail Petition v4', matter: 'State vs Mehta', owner: 'Ritika Iyer', status: approvalMode ? 'Awaiting approval' : 'In progress', updated: 'Today', viewHref: viewBase ? `${viewBase}/1` : undefined },
-                { draft: 'Evidence Synopsis v2', matter: 'Apex Traders Arbitration', owner: 'S. Nair', status: 'Needs revision', updated: 'Yesterday', viewHref: viewBase ? `${viewBase}/2` : undefined },
-              ]}
-            />
-          </Panel>
-        }
-        right={<InfoAside accent={accent} title="Draft Controls" items={approvalMode ? ['Approve or return advocate drafts.', 'Track revision history and version lineage.', 'Link draft status to case lifecycle timeline.'] : ['Rich-text editor shell reserved for petition drafting.', 'Final approval remains restricted by role.', 'Draft actions will later connect to document storage and collaboration.']} />}
+      <PageSection
+        eyebrow="Drafting"
+        title={`${roleTitle} Draft Workspace`}
+        description="Draft petitions and supporting legal documents for assigned matters. Documents are organized by Case for easy filing pack management."
       />
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+          <p className="ml-3 text-sm text-gray-400">Loading your draft workspace...</p>
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-12 text-red-500">
+          <AlertCircle className="w-5 h-5 mr-2" />
+          <p>{error}</p>
+        </div>
+      ) : Object.keys(groupedByCase).length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center text-gray-500 bg-white rounded-2xl border border-gray-100 shadow-sm">
+          <PenTool className="w-16 h-16 text-gray-200 mb-4" />
+          <p className="text-lg font-semibold text-gray-700">Your draft workspace is empty</p>
+          <p className="text-sm mt-1 max-w-sm">Go to any Case Detail page &gt; Drafting tab to start creating court forms and petitions.</p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {Object.entries(groupedByCase).map(([caseNumber, entries]) => (
+            <Panel
+              key={caseNumber}
+              title={`Case Filing Pack: ${caseNumber}`}
+              subtitle={`${entries.length} documents arranged for filing`}
+              actions={
+                <div className="flex gap-2">
+                  <Link
+                    href={viewBase?.includes('paralegal')
+                      ? `/paralegal/cases/${entries[0].case}?tab=Drafting&newBlank=true`
+                      : `/advocate/cases/${entries[0].case}?tab=Drafting&newBlank=true`
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 border border-emerald-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    New Blank Draft
+                  </Link>
+                  <button
+                    onClick={() => handleDownloadMasterPDF(entries[0].case)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-purple-900 border border-purple-800 px-3 py-1.5 text-xs font-bold text-white hover:bg-purple-800 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download Master PDF
+                  </button>
+                  <Link
+                    href={viewBase?.includes('paralegal') ? `/paralegal/cases/${entries[0].case}` : `/advocate/cases/${entries[0].case}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                  >
+                    Go to Case
+                  </Link>
+                </div>
+              }
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/50">
+                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Sl. No</th>
+                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Priority</th>
+                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Document Type</th>
+                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Owner</th>
+                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Status</th>
+                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Last Update</th>
+                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 text-right">Draft Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {entries.map((d, index) => (
+                      <tr key={d.id} className="hover:bg-gray-50/30 transition-colors">
+                        <td className="px-4 py-4 text-sm font-bold text-gray-500">{String(index + 1).padStart(2, '0')}.</td>
+                        <td className="px-4 py-4">
+                          <input
+                            type="number"
+                            defaultValue={d.custom_sequence || d.template_sequence || 0}
+                            className="w-12 p-1 text-xs border rounded text-center focus:ring-1 focus:ring-purple-500 outline-none"
+                            onBlur={(e) => handleUpdatePriority(d.id, e.target.value)}
+                            title="Enter number to change order (Press Tab or Click away to save)"
+                          />
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="text-sm font-bold text-gray-900">{d.template_name}</p>
+                          <p className="text-[10px] text-gray-400 uppercase font-semibold">Base Seq: {d.template_sequence}</p>
+                        </td>
+                        <td className="px-4 py-4 text-sm text-gray-600 font-medium">{d.created_by_name}</td>
+                        <td className="px-4 py-4">
+                          <Badge
+                            label={d.status_display || d.status}
+                            tone={
+                              d.status === 'draft' ? 'default' :
+                                d.status === 'signed' ? 'success' :
+                                  d.status === 'completed' ? 'info' : 'warning'
+                            }
+                          />
+                        </td>
+                        <td className="px-4 py-4 text-sm text-gray-500">{new Date(d.updated_at).toLocaleDateString()}</td>
+                        <td className="px-4 py-4 text-right">
+                          <Link
+                            href={viewBase?.includes('paralegal') ? `/paralegal/cases/${d.case}?tab=Drafting&formId=${d.id}` : `/advocate/cases/${d.case}?tab=Drafting&formId=${d.id}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-purple-900 hover:bg-purple-50 transition-colors"
+                          >
+                            Edit Draft
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2694,7 +2898,7 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
 
     try {
       const payload: any = { ...formData };
-      
+
       // Payload cleaning for backend compatibility
       if (payload.aadhar_number) {
         payload.aadhar_number = payload.aadhar_number.replace(/\s/g, '');
@@ -2702,7 +2906,7 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
       if (payload.phone_number) {
         payload.phone_number = payload.phone_number.replace(/\D/g, '');
       }
-      
+
       if (!payload.date_of_birth) payload.date_of_birth = null;
       if (!payload.aadhar_number) payload.aadhar_number = null;
       if (!payload.pan_number) payload.pan_number = null;
