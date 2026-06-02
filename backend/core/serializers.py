@@ -284,11 +284,30 @@ class ClientField(serializers.Field):
         # Try user account ID
         try:
             user = CustomUser.objects.get(id=data)
-            client_profile = getattr(user, 'client_profile', None)
+            
+            # Get firm context from request
+            request = self.context.get('request')
+            firm = None
+            if request:
+                # 1. From query params
+                firm_id = request.query_params.get('firm') or request.query_params.get('firm_id')
+                if firm_id:
+                    firm = Firm.objects.filter(id=firm_id).first()
+                # 2. From user's current firm if not in query params
+                if not firm:
+                    firm = getattr(request.user, 'firm', None)
+            
+            # If no firm context found, use the first available profile or error
+            if firm:
+                client_profile = user.client_profiles.filter(firm=firm).first()
+            else:
+                client_profile = user.client_profiles.first()
+                
             if client_profile:
                 return client_profile
+                
             raise serializers.ValidationError(
-                f'No client profile found for user {data}. Ask admin to create a client profile first.'
+                f'No client profile found for user {data} in the current firm context.'
             )
         except CustomUser.DoesNotExist:
             pass

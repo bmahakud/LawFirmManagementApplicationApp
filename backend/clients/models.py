@@ -26,12 +26,13 @@ class Client(models.Model):
     brief_summary = models.TextField(blank=True, help_text="Brief summary of the client's legal matter")
     
     # Link to the user account (if client has registered/signed up)
-    user_account = models.OneToOneField(
+    # Changed from OneToOneField to ForeignKey to allow representation by multiple firms
+    user_account = models.ForeignKey(
         'accounts.CustomUser',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='client_profile'
+        related_name='client_profiles'
     )
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -39,6 +40,7 @@ class Client(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        unique_together = ('user_account', 'firm')
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"

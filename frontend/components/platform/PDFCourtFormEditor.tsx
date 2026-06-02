@@ -5,7 +5,7 @@ import { customFetch } from '@/lib/fetch';
 import { API, API_BASE_URL } from '@/lib/api';
 import {
   FileText, Plus, Search, X, Save, Loader2, Eye,
-  Download, Share2, CheckCircle, Edit, ArrowLeft
+  Download, Share2, CheckCircle, Edit, ArrowLeft, RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import SignaturePad from './SignaturePad';
@@ -54,9 +54,12 @@ type Props = {
   clientId: string;
   role: string;
   accent?: string;
+  categoryFilter?: string;
+  initialFormId?: string | null;
+  newBlank?: boolean;
 };
 
-export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#4a1c40' }: Props) {
+export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#4a1c40', categoryFilter, initialFormId, newBlank }: Props) {
   const [view, setView] = useState<'list' | 'templates' | 'edit' | 'preview'>('list');
   const [templates, setTemplates] = useState<CourtFormTemplate[]>([]);
   const [filledForms, setFilledForms] = useState<FilledCourtForm[]>([]);
@@ -94,12 +97,55 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
 
       if (templatesRes.ok) {
         const data = await templatesRes.json();
-        setTemplates(Array.isArray(data) ? data : data.results || []);
+        let fetchedTemplates = Array.isArray(data) ? data : data.results || [];
+
+        // Filter by category if provided
+        if (categoryFilter) {
+          fetchedTemplates = fetchedTemplates.filter((t: any) => t.category === categoryFilter);
+        }
+
+        // Sort by sequence then name
+        fetchedTemplates.sort((a: any, b: any) => {
+          if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+          return a.name.localeCompare(b.name);
+        });
+
+        setTemplates(fetchedTemplates);
       }
 
       if (formsRes.ok) {
         const data = await formsRes.json();
-        setFilledForms(Array.isArray(data) ? data : data.results || []);
+        const fetchedForms = Array.isArray(data) ? data : data.results || [];
+        setFilledForms(fetchedForms);
+
+        // Auto-open form if initialFormId is provided
+        if (initialFormId) {
+          const formToOpen = fetchedForms.find((f: any) => String(f.id) === String(initialFormId));
+          if (formToOpen) {
+            setSelectedForm(formToOpen);
+            setFieldValues(formToOpen.field_values || {});
+
+            // Find the template
+            const templatesData = await (await customFetch(`/api/documents/court-form-templates/${formToOpen.template}/`)).json();
+            setSelectedTemplate(templatesData);
+
+            setView('edit');
+            return; // Stop here if we've opened a form
+          }
+        }
+
+        // New Blank Logic
+        if (newBlank) {
+          const fetchedTemplatesResponse = await customFetch('/api/documents/court-form-templates/');
+          if (fetchedTemplatesResponse.ok) {
+            const temps = await fetchedTemplatesResponse.json();
+            const tempArray = Array.isArray(temps) ? temps : temps.results || [];
+            const blankTemp = tempArray.find((t: any) => t.name.includes('BLANK A4'));
+            if (blankTemp) {
+              handleSelectTemplate(blankTemp);
+            }
+          }
+        }
       }
     } catch (err: any) {
       console.error('Error fetching data:', err);
@@ -625,6 +671,77 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           </div>
         );
 
+      case 'textarea':
+        const taFieldName = section.field || 'document_content';
+        const isEditing = view === 'edit';
+
+        const handleExecCommand = (command: string) => {
+          if (!isEditing) return;
+          document.execCommand(command, false, undefined);
+          // Sync with state after command
+          const editor = document.getElementById(`editor_${taFieldName}`);
+          if (editor) {
+            setFieldValues({ ...fieldValues, [taFieldName]: editor.innerHTML });
+          }
+        };
+
+        return (
+          <div key={index} className="w-full my-4 group">
+            {/* Rich Text Toolbar - Only visible during editing */}
+            {isEditing && (
+              <div className="flex gap-2 mb-2 p-1 bg-white border border-gray-300 rounded-lg flex-wrap items-center shadow-sm">
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); handleExecCommand('bold'); }}
+                  className="w-10 h-10 flex items-center justify-center rounded font-bold text-gray-900 border border-gray-200 hover:bg-gray-100 transition-colors"
+                  title="Bold (Ctrl+B)"
+                >
+                  B
+                </button>
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); handleExecCommand('underline'); }}
+                  className="w-10 h-10 flex items-center justify-center rounded underline text-gray-900 border border-gray-200 hover:bg-gray-100 transition-colors"
+                  title="Underline (Ctrl+U)"
+                >
+                  U
+                </button>
+                <div className="w-px h-6 bg-gray-300 mx-2" />
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); handleExecCommand('justifyLeft'); }}
+                  className="w-10 h-10 flex items-center justify-center rounded text-gray-900 border border-gray-200 hover:bg-gray-100 transition-colors font-bold"
+                >
+                  L
+                </button>
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); handleExecCommand('justifyCenter'); }}
+                  className="w-10 h-10 flex items-center justify-center rounded text-gray-900 border border-gray-200 hover:bg-gray-100 transition-colors font-bold"
+                >
+                  C
+                </button>
+                <span className="text-xs text-gray-500 ml-3 uppercase font-bold tracking-wider">Formatting Tools</span>
+              </div>
+            )}
+
+            {/* Visual Editor */}
+            <div
+              id={`editor_${taFieldName}`}
+              contentEditable={isEditing}
+              onBlur={(e) => {
+                if (isEditing) {
+                  setFieldValues({ ...fieldValues, [taFieldName]: e.currentTarget.innerHTML });
+                }
+              }}
+              className={`w-full min-h-[500px] p-6 outline-none bg-white text-gray-900 ${isEditing ? 'border border-gray-200 shadow-inner' : 'border-none'} rounded-lg mt-2 font-normal`}
+              style={{
+                fontSize: style.size ? `${style.size + 2}px` : '16px',
+                lineHeight: style.line_height || 1.8,
+                textAlign: style.align || 'justify' as any,
+                fontWeight: 'normal'
+              }}
+              dangerouslySetInnerHTML={{ __html: fieldValues[taFieldName] || (isEditing ? '<p>Start typing your document here...</p>' : '') }}
+            />
+          </div>
+        );
+
       case 'dotted_line':
         // Deprecated: Use editable_line instead
         // This is kept for backward compatibility with old forms
@@ -650,7 +767,19 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           </span>
         );
       }
-      return <span key={i}>{part}</span>;
+
+      // Handle simple markdown bold **text** and underline __text__
+      // This allows bolding only specific words
+      const subParts = part.split(/(\*\*[^*]+\*\*|__[^*]+__)/g);
+      return subParts.map((sub, j) => {
+        if (sub.startsWith('**') && sub.endsWith('**')) {
+          return <strong key={j}>{sub.slice(2, -2)}</strong>;
+        }
+        if (sub.startsWith('__') && sub.endsWith('__')) {
+          return <u key={j}>{sub.slice(2, -2)}</u>;
+        }
+        return <span key={j}>{sub}</span>;
+      });
     });
   };
 
@@ -881,6 +1010,28 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                 <Eye className="w-4 h-4" />
                 Preview
               </button>
+              {selectedForm && selectedTemplate.name.toUpperCase().includes('INDEX') && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await customFetch(`/api/documents/filled-court-forms/${selectedForm.id}/refresh_index/`, {
+                        method: 'POST'
+                      });
+                      if (response.ok) {
+                        const updatedForm = await response.json();
+                        setFieldValues(updatedForm.field_values);
+                        toast.success('Index refreshed with case documents');
+                      }
+                    } catch (err) {
+                      toast.error('Failed to refresh index');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 flex items-center gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Refresh Index
+                </button>
+              )}
               <button
                 onClick={() => {
                   setView('list');

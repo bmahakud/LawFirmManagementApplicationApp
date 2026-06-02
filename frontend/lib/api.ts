@@ -20,11 +20,14 @@ export const API = {
   },
   USERS: {
     LIST: "/api/users/",
+    ME: "/api/users/me/",
     DETAIL: (id: string) => `/api/users/${id}/`,
     REGISTER: "/api/users/register/",
     ADD_USER: "/api/users/add_user/",
     SWITCH_FIRM: "/api/users/switch_firm/",
     CHANGE_PASSWORD: "/api/users/change_password/",
+    ALL_ADVOCATES: "/api/users/all_advocates/",
+    LOOKUP: "/api/users/lookup/",
     // Phone verification endpoints
     SEND_PHONE_OTP: "/api/users/send_phone_otp/",
     VERIFY_PHONE_OTP: "/api/users/verify_phone_otp/",
@@ -64,6 +67,14 @@ export const API = {
       CLIENT_SIGN: (id: string) => `/api/documents/filled-templates/${id}/client_sign/`,
       ADVOCATE_SIGN: (id: string) => `/api/documents/filled-templates/${id}/advocate_sign/`,
       GENERATE_PDF: (id: string) => `/api/documents/filled-templates/${id}/generate_pdf/`,
+    },
+    FILLED_COURT_FORMS: {
+      LIST: "/api/documents/filled-court-forms/",
+      CREATE: "/api/documents/filled-court-forms/",
+      DETAIL: (id: string) => `/api/documents/filled-court-forms/${id}/`,
+      CREATE_FROM_TEMPLATE: "/api/documents/filled-court-forms/create_from_template/",
+      REFRESH_INDEX: (id: string) => `/api/documents/filled-court-forms/${id}/refresh_index/`,
+      PREVIEW_FILING_PACK: (caseId: string) => `/api/documents/filled-court-forms/preview_filing_pack/?case_id=${caseId}`,
     }
   },
   DOCUMENT_REQUESTS: {

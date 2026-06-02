@@ -95,7 +95,7 @@ class DashboardViewSet(viewsets.ViewSet):
         elif role == 'paralegal':
             stats.update(self.get_paralegal_stats(user, firm))
         elif role == 'client':
-            stats.update(self.get_client_stats(user))
+            stats.update(self.get_client_stats(user, firm))
         else:
             stats.update(self.get_generic_user_stats(user, firm))
 
@@ -444,10 +444,13 @@ class DashboardViewSet(viewsets.ViewSet):
             ))
         }
     
-    def get_client_stats(self, user):
+    def get_client_stats(self, user, firm):
         """Client sees stats for their own cases and documents"""
-        # Get client profile
-        client_profile = getattr(user, 'client_profile', None)
+        if not firm:
+            return {'error': 'No firm context found'}
+            
+        # Get client profile for THIS firm
+        client_profile = user.client_profiles.filter(firm=firm).first()
         
         if not client_profile:
             return {
@@ -455,7 +458,7 @@ class DashboardViewSet(viewsets.ViewSet):
                     'my_cases': 0,
                     'my_documents': 0,
                 },
-                'message': 'No client profile found'
+                'message': 'No client profile found for this firm'
             }
         
         # My cases

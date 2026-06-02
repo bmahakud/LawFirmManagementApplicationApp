@@ -13,9 +13,388 @@ class Command(BaseCommand):
         
         templates = [
             {
+                'name': 'BLANK A4 DRAFTING PAPER',
+                'description': 'A blank A4 sheet for custom drafting from scratch',
+                'category': 'drafting',
+                'sequence': 10,
+                'content_structure': {
+                    'page_size': 'A4',
+                    'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
+                    'sections': [
+                        {
+                            'type': 'header',
+                            'content': '{document_title}',
+                            'style': {'align': 'center', 'bold': True, 'size': 14, 'underline': True}
+                        },
+                        {
+                            'type': 'spacer', 'height': 40
+                        },
+                        {
+                            'type': 'textarea',
+                            'field': 'document_content',
+                            'placeholder': 'Start typing your document here...',
+                            'style': {'align': 'justify', 'line_height': 1.8, 'size': 13}
+                        },
+                        {
+                            'type': 'spacer', 'height': 500
+                        }
+                    ]
+                },
+                'default_field_mappings': {}
+            },
+            {
+                'name': 'SYNOPSIS (Orissa High Court)',
+                'description': 'Appendix-I Synopsis for Criminal Miscellaneous documents',
+                'category': 'drafting',
+                'sequence': 2,
+                'content_structure': {
+                    'page_size': 'A4',
+                    'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
+                    'sections': [
+                        {
+                            'type': 'header',
+                            'content': '[A]',
+                            'style': {'align': 'right', 'bold': False, 'size': 12}
+                        },
+                        {
+                            'type': 'spacer', 'height': 20
+                        },
+                        {
+                            'type': 'header',
+                            'content': 'APPENDIX-I',
+                            'style': {'align': 'left', 'bold': True, 'size': 12, 'underline': True}
+                        },
+                        {
+                            'type': 'spacer', 'height': 20
+                        },
+                        {
+                            'type': 'header',
+                            'content': 'S Y N O P S I S',
+                            'style': {'align': 'center', 'bold': True, 'size': 14, 'underline': True}
+                        },
+                        {
+                            'type': 'spacer', 'height': 40
+                        },
+                        {
+                            'type': 'paragraph',
+                            'content': '       The petitioner has file the above anticipatory bail application as he has been falsely implicated and due to apprehending his arrest in connection with {police_station} P.S. Case No.{fir_number} of {year} corresponding to {gr_number} of {year} pending before the court of learned {lower_court_name}, {place}.',
+                            'style': {'align': 'justify', 'line_height': 1.8, 'size': 13}
+                        },
+                        {
+                            'type': 'spacer', 'height': 100
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {
+                                    'prefix': 'CUTTACK\nDATE: _____._____.2026', 
+                                    'field': 'place_date', 
+                                    'flex': 1
+                                },
+                                {
+                                    'prefix': '(AMULYA RATNA PANDA)\nEn.No.O-612/2008\nPh.No.9438173166\nADVOCATE\nFOR THE PETITIONER', 
+                                    'field': 'advocate_signature', 
+                                    'flex': 1, 
+                                    'align': 'center'
+                                }
+                            ],
+                            'style': {'bold': True, 'size': 11}
+                        }
+                    ]
+                },
+                'default_field_mappings': {
+                    'police_station': 'case.police_station',
+                    'fir_number': 'case.fir_number',
+                    'year': 'case.year',
+                    'gr_number': 'case.gr_number',
+                    'lower_court_name': 'case.court_name'
+                }
+            },
+            {
+                'name': 'LIST OF DATES & EVENTS (Orissa High Court)',
+                'description': 'Appendix-II List of Dates and Events',
+                'category': 'drafting',
+                'sequence': 3,
+                'content_structure': {
+                    'page_size': 'A4',
+                    'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
+                    'sections': [
+                        {
+                            'type': 'header',
+                            'content': 'APPENDIX-II',
+                            'style': {'align': 'right', 'bold': True, 'size': 12}
+                        },
+                        {
+                            'type': 'header',
+                            'content': 'LIST OF DATES & EVENTS',
+                            'style': {'align': 'center', 'bold': True, 'size': 14, 'underline': True}
+                        },
+                        {
+                            'type': 'spacer', 'height': 30
+                        },
+                        {
+                            'type': 'dynamic_table',
+                            'columns': [
+                                {'header': 'DATE', 'field': 'date', 'width': '25%'},
+                                {'header': 'EVENTS', 'field': 'events', 'width': '75%'}
+                            ],
+                            'rows': 10
+                        },
+                        {
+                            'type': 'spacer', 'height': 40
+                        },
+                        {
+                            'type': 'signature_block',
+                            'content': 'Advocate for the Petitioner',
+                            'style': {'align': 'right'}
+                        }
+                    ]
+                },
+                'default_field_mappings': {}
+            },
+            {
+                'name': 'ABLAPL PETITION (Orissa High Court)',
+                'description': 'Anticipatory Bail Application (ABLAPL) Petition',
+                'category': 'drafting',
+                'sequence': 4,
+                'content_structure': {
+                    'page_size': 'A4',
+                    'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
+                    'sections': [
+                        {
+                            'type': 'header',
+                            'content': 'IN THE HIGH COURT OF ORISSA, CUTTACK',
+                            'style': {'align': 'center', 'bold': True, 'size': 14}
+                        },
+                        {
+                            'type': 'header',
+                            'content': '(Criminal Miscellaneous Jurisdiction)',
+                            'style': {'align': 'center', 'size': 12}
+                        },
+                        {
+                            'type': 'spacer', 'height': 20
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {'prefix': 'ABLAPL NO.', 'field': 'ablapl_no', 'flex': 2},
+                                {'prefix': 'OF 202', 'field': 'year_suffix', 'flex': 1}
+                            ],
+                            'style': {'bold': True}
+                        },
+                        {
+                            'type': 'spacer', 'height': 20
+                        },
+                        {
+                            'type': 'editable_line',
+                            'prefix': '',
+                            'field': 'petitioner_name',
+                            'suffix': '... Petitioner',
+                            'style': {'bold': True}
+                        },
+                        {
+                            'type': 'header',
+                            'content': '-Versus-',
+                            'style': {'align': 'center', 'bold': True}
+                        },
+                        {
+                            'type': 'editable_line',
+                            'prefix': 'State of Odisha',
+                            'field': 'state_opp_party',
+                            'suffix': '... Opp. Party',
+                            'style': {'bold': True}
+                        },
+                        {
+                            'type': 'spacer', 'height': 30
+                        },
+                        {
+                            'type': 'header',
+                            'content': 'PETITION UNDER SECTION 438 OF Cr.P.C.',
+                            'style': {'align': 'center', 'bold': True, 'size': 12, 'underline': True}
+                        },
+                        {
+                            'type': 'paragraph',
+                            'content': 'The petitioner above named most respectfully showeth:',
+                            'style': {'align': 'left', 'size': 11}
+                        },
+                        {
+                            'type': 'paragraph',
+                            'content': '1. That the petitioner is a law-abiding citizen of India.\n2. That the petitioner has been falsely implicated in the above-mentioned case due to local village politics.\n3. That the petitioner is ready and willing to cooperate with the investigation.',
+                            'style': {'align': 'justify', 'line_height': 1.6, 'size': 11}
+                        },
+                        {
+                            'type': 'spacer', 'height': 40
+                        },
+                        {
+                            'type': 'signature_block',
+                            'content': 'Advocate for the Petitioner',
+                            'style': {'align': 'right'}
+                        }
+                    ]
+                },
+                'default_field_mappings': {
+                    'petitioner_name': 'client.full_name'
+                }
+            },
+            {
+                'name': 'ANNEXURE (Generic Cover Page)',
+                'description': 'Generic cover page for an annexure (FIR, Orders, Evidence, etc.)',
+                'category': 'drafting',
+                'sequence': 5,
+                'content_structure': {
+                    'page_size': 'A4',
+                    'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
+                    'sections': [
+                        {
+                            'type': 'header',
+                            'content': 'ANNEXURE-{annexure_no}',
+                            'style': {'align': 'center', 'bold': True, 'size': 16, 'underline': True}
+                        },
+                        {
+                            'type': 'spacer', 'height': 60
+                        },
+                        {
+                            'type': 'paragraph',
+                            'content': '       True copy of the {document_description} dated {document_date}.',
+                            'style': {'align': 'justify', 'line_height': 1.8, 'size': 14}
+                        },
+                        {
+                            'type': 'spacer', 'height': 150
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {
+                                    'prefix': 'CUTTACK\nDATE: {current_date}', 
+                                    'field': 'place_date', 
+                                    'flex': 1
+                                },
+                                {
+                                    'prefix': 'ADVOCATE\nFOR THE PETITIONER', 
+                                    'field': 'advocate_signature', 
+                                    'flex': 1, 
+                                    'align': 'center'
+                                }
+                            ],
+                            'style': {'bold': True, 'size': 11}
+                        }
+                    ]
+                },
+                'default_field_mappings': {
+                    'annexure_no': '1',
+                    'document_description': 'F.I.R.',
+                    'document_date': '01.01.2026'
+                }
+            },
+            {
+                'name': 'INDEX (Orissa High Court)',
+                'description': 'Document Index for Orissa High Court filing (Criminal Miscellaneous)',
+                'category': 'drafting',
+                'sequence': 1,
+                'content_structure': {
+                    'page_size': 'A4',
+                    'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
+                    'sections': [
+                        {
+                            'type': 'header',
+                            'content': 'IN THE HIGH COURT OF ORISSA, CUTTACK',
+                            'style': {'align': 'center', 'bold': True, 'size': 14}
+                        },
+                        {
+                            'type': 'header',
+                            'content': '(Criminal Miscellaneous Jurisdiction)',
+                            'style': {'align': 'center', 'size': 12}
+                        },
+                        {
+                            'type': 'spacer', 'height': 20
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {'prefix': 'ABLAPL NO.', 'field': 'ablapl_no', 'flex': 2},
+                                {'prefix': 'OF 202', 'field': 'year_suffix', 'flex': 1}
+                            ],
+                            'style': {'bold': True}
+                        },
+                        {
+                            'type': 'header',
+                            'content': 'CODE NO.091002.',
+                            'style': {'align': 'right', 'bold': True, 'size': 11, 'underline': True}
+                        },
+                        {
+                            'type': 'spacer', 'height': 20
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {'prefix': '', 'field': 'petitioner_name', 'flex': 3},
+                                {'prefix': '...Petitioner', 'field': '', 'flex': 1}
+                            ],
+                            'style': {'bold': True}
+                        },
+                        {
+                            'type': 'header',
+                            'content': '-Versus-',
+                            'style': {'align': 'center', 'bold': True}
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {'prefix': '{opposite_party}', 'field': 'opposite_party', 'flex': 3},
+                                {'prefix': '.....Opp. Party', 'field': '', 'flex': 1}
+                            ],
+                            'style': {'bold': True}
+                        },
+                        {
+                            'type': 'spacer', 'height': 20
+                        },
+                        {
+                            'type': 'header',
+                            'content': 'I N D E X',
+                            'style': {'align': 'center', 'bold': True, 'size': 14, 'underline': True}
+                        },
+                        {
+                            'type': 'dynamic_table',
+                            'columns': [
+                                {'header': 'SL. NO.', 'field': 'sl_no', 'width': '10%'},
+                                {'header': 'DESCRIPTION OF DOCUMENTS', 'field': 'desc', 'width': '70%'},
+                                {'header': 'PAGE', 'field': 'page', 'width': '20%'}
+                            ],
+                            'rows': 8,
+                            'row_height': 50
+                        },
+                        {
+                            'type': 'spacer', 'height': 40
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {
+                                    'prefix': 'CUTTACK\nDATE: _____._____.2026', 
+                                    'field': 'place_date', 
+                                    'flex': 1
+                                },
+                                {
+                                    'prefix': '(AMULYA RATNA PANDA)\nEn.No.O-612/2008\nPh.No.9438173166\nADVOCATE\nFOR THE PETITIONER', 
+                                    'field': 'advocate_signature', 
+                                    'flex': 1, 
+                                    'align': 'center'
+                                }
+                            ],
+                            'style': {'bold': True, 'size': 11}
+                        }
+                    ]
+                },
+                'default_field_mappings': {
+                    'petitioner_name': 'client.full_name',
+                    'opposite_party': 'case.opposite_party'
+                }
+            },
+            {
                 'name': 'Form No 45 Bail Bond',
                 'description': 'Standard bail bond form as per Form No. 45',
-                'category': 'bail_bond',
+                'category': 'drafting',
+                'sequence': 7,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -126,7 +505,8 @@ class Command(BaseCommand):
             {
                 'name': 'Vakalatnama',
                 'description': 'Standard Power of Attorney (Vakalatnama) for Court Representation',
-                'category': 'vakalatnama',
+                'category': 'drafting',
+                'sequence': 11,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -265,6 +645,9 @@ class Command(BaseCommand):
                             'type': 'spacer', 'height': 50
                         },
                         {
+                            'type': 'page_break'
+                        },
+                        {
                             'type': 'grid_row',
                             'columns': [
                                 {'prefix': 'Advocate', 'field': 'advocate_signature', 'flex': 1},
@@ -283,7 +666,8 @@ class Command(BaseCommand):
             {
                 'name': 'Memorandum of Appearance',
                 'description': 'Standard Memorandum of Appearance for Advocates',
-                'category': 'other',
+                'category': 'drafting',
+                'sequence': 9,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 80, 'right': 60, 'bottom': 60, 'left': 60},
@@ -393,7 +777,8 @@ class Command(BaseCommand):
             {
                 'name': 'Address Form',
                 'description': 'Standard Address Form for Court Service',
-                'category': 'other',
+                'category': 'drafting',
+                'sequence': 6,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -491,7 +876,8 @@ class Command(BaseCommand):
             {
                 'name': 'Index Form',
                 'description': 'Index list for documents filed in court',
-                'category': 'other',
+                'category': 'drafting',
+                'sequence': 2,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -544,7 +930,8 @@ class Command(BaseCommand):
             {
                 'name': 'List of Documents',
                 'description': 'Standard List of Documents Produced by Plaintiff/Defendant',
-                'category': 'other',
+                'category': 'drafting',
+                'sequence': 40,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -643,7 +1030,8 @@ class Command(BaseCommand):
             {
                 'name': 'Process Fee',
                 'description': 'Standard Process Fee (P.F.) Form with Table and Acknowledgement',
-                'category': 'other',
+                'category': 'drafting',
+                'sequence': 70,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -763,7 +1151,8 @@ class Command(BaseCommand):
             {
                 'name': 'Surety Bond',
                 'description': 'Standard Surety Bond for Court Guarantee',
-                'category': 'surety_bond',
+                'category': 'drafting',
+                'sequence': 55,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -831,7 +1220,8 @@ class Command(BaseCommand):
             {
                 'name': 'Inspection Form',
                 'description': 'Standard Application for Inspection of Court File',
-                'category': 'application',
+                'category': 'drafting',
+                'sequence': 8,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -982,7 +1372,7 @@ class Command(BaseCommand):
             {
                 'name': 'Litigant Form',
                 'description': 'Mobile-Email Details Collection Form for Litigants',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -1124,7 +1514,7 @@ class Command(BaseCommand):
             {
                 'name': 'Filing Form',
                 'description': 'Standard Civil Case Filing Form for Court Registrations',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -1338,7 +1728,7 @@ class Command(BaseCommand):
             {
                 'name': 'Advocate Form',
                 'description': 'Advocate Registration and Information Form',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -1480,7 +1870,7 @@ class Command(BaseCommand):
             {
                 'name': 'Check-list',
                 'description': 'Court Case Filing Check-list',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -1578,7 +1968,7 @@ class Command(BaseCommand):
             {
                 'name': 'Bail Bond Form',
                 'description': 'Standard Bail Bond for Attendance before Police or Court',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -1666,7 +2056,7 @@ class Command(BaseCommand):
             {
                 'name': 'CA Form 7',
                 'description': 'FORM C.A.I. (RULE) Application for Certified Copy',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 40, 'right': 40, 'bottom': 40, 'left': 40},
@@ -1757,7 +2147,7 @@ class Command(BaseCommand):
             {
                 'name': 'NI Act Check List',
                 'description': 'Check List for Sec 138 NI Act Matters',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -1842,7 +2232,7 @@ class Command(BaseCommand):
             {
                 'name': 'E-Court Fee Form',
                 'description': 'SHCIL e-Court fee Receipt Application Form and Receipt',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 30, 'right': 30, 'bottom': 30, 'left': 30},
@@ -1980,7 +2370,7 @@ class Command(BaseCommand):
             {
                 'name': 'Personal Bail Bond',
                 'description': 'Bail Bond U/S 437-A Cr.P.C. with Affidavit (2 Pages)',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -2167,7 +2557,7 @@ class Command(BaseCommand):
             {
                 'name': 'Case Information Format',
                 'description': 'Main Case Information and Extra Party Information Form (2 Pages)',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 40, 'right': 40, 'bottom': 40, 'left': 40},
@@ -2237,6 +2627,9 @@ class Command(BaseCommand):
                                 {'cells': [{'text': '11.', 'flex': 0.1}, {'label': 'Police Station', 'field': 'ps_name_info', 'flex': 2}]},
                                 {'cells': [{'text': '12.', 'flex': 0.1}, {'label': 'F.I.R. NO. and Year', 'field': 'fir_no_year', 'flex': 2}]}
                             ]
+                        },
+                        {
+                            'type': 'page_break'
                         },
                         {
                             'type': 'header',
@@ -2313,6 +2706,9 @@ class Command(BaseCommand):
                         },
                         {
                             'type': 'spacer', 'height': 40
+                        },
+                        {
+                            'type': 'page_break'
                         },
                         {
                             'type': 'header',
@@ -2414,7 +2810,7 @@ class Command(BaseCommand):
             {
                 'name': 'Advocate Details Form',
                 'description': 'Mobile-Email Details Collection Form for Advocates',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -2527,7 +2923,7 @@ class Command(BaseCommand):
             {
                 'name': 'Commercial Court Mediation Forms',
                 'description': 'Schedule I Forms 1-6 for Pre-Institution Mediation (5 Pages)',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -2865,6 +3261,7 @@ class Command(BaseCommand):
                 defaults={
                     'description': template_data['description'],
                     'category': template_data['category'],
+                    'sequence': template_data.get('sequence', 0),
                     'content_structure': template_data['content_structure'],
                     'default_field_mappings': template_data['default_field_mappings'],
                     'is_active': True
