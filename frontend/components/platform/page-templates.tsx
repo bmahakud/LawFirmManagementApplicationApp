@@ -16,6 +16,7 @@ import {
   PenTool,
   ShieldCheck,
   Users,
+  UserCheck,
   Link2,
   Copy,
   X,
@@ -28,6 +29,8 @@ import {
   Save,
   ChevronDown,
   AlertCircle,
+  Eye,
+  Search,
 } from 'lucide-react';
 import {
   ActivityFeed,
@@ -1519,6 +1522,7 @@ export function TeamMemberFormPage({
     bar_council_state: '',
     is_active: true,
     branch: '',
+    existing_user_id: null,
   });
   const [firms, setFirms] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
@@ -1527,16 +1531,15 @@ export function TeamMemberFormPage({
   const [limitError, setLimitError] = useState<any>(null);
 
   useEffect(() => {
-    if (formData.user_type === 'super_admin' || formData.user_type === 'partner_manager') {
-      customFetch(API.FIRMS.LIST)
-        .then(res => res.json())
-        .then(data => {
-          if (data.results) setFirms(data.results);
-          else if (Array.isArray(data)) setFirms(data);
-        })
-        .catch(err => console.error('Failed to fetch firms:', err));
-    }
-  }, [formData.user_type]);
+    // Always fetch firms so the existing-user "Target Firm" dropdown is populated
+    customFetch(API.FIRMS.LIST)
+      .then(res => res.json())
+      .then(data => {
+        if (data.results) setFirms(data.results);
+        else if (Array.isArray(data)) setFirms(data);
+      })
+      .catch(err => console.error('Failed to fetch firms:', err));
+  }, []);
 
   useEffect(() => {
     // If we're creating/editing an admin, fetch branches
@@ -1587,6 +1590,64 @@ export function TeamMemberFormPage({
         .finally(() => setLoading(false));
     }
   }, [detail, userId]);
+
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [existingUserFound, setExistingUserFound] = useState<any>(null);
+
+  const handleLookup = async (type: 'email' | 'phone', value: string) => {
+    if (!value || value.length < 5) return;
+
+    // Simple validation before searching
+    if (type === 'email' && !value.includes('@')) return;
+    if (type === 'phone' && value.length < 10) return;
+
+    setIsLookingUp(true);
+    try {
+      const q = type === 'email' ? `email=${value}` : `phone=${value}`;
+      const res = await customFetch(`/api/users/lookup/?${q}`); // Final fix on URL
+      const data = await res.json();
+
+      if (data.found) {
+        setExistingUserFound(data);
+        // Force a full state update with the found user data
+        setFormData((prev: any) => ({
+          ...prev,
+          first_name: data.first_name || '',
+          last_name: data.last_name || '',
+          phone_number: data.phone_number || '',
+          user_type: data.user_type || prev.user_type,
+          existing_user_id: data.id
+        }));
+      } else {
+        setExistingUserFound(null);
+        setFormData((prev: any) => ({ ...prev, existing_user_id: null }));
+      }
+    } catch (err) {
+      console.error('Lookup failed:', err);
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
+  // Debounced lookup for email - faster response (400ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (formData.email && formData.email.includes('@')) {
+        handleLookup('email', formData.email);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [formData.email]);
+
+  // Debounced lookup for phone - faster response (400ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (formData.phone_number && formData.phone_number.length >= 10) {
+        handleLookup('phone', formData.phone_number);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [formData.phone_number]);
 
   const roles = [
     { label: 'Admin', value: 'admin' },
@@ -1672,6 +1733,49 @@ export function TeamMemberFormPage({
           </div>
         )}
 
+        {existingUserFound && (
+          <div className="mb-6 p-5 bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-5 animate-in fade-in zoom-in duration-500 shadow-sm">
+            <div className="p-3 bg-blue-600 text-white rounded-xl shadow-md">
+              <UserCheck className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-base font-bold text-blue-900">Professional Recognized</h4>
+              <p className="text-sm font-semibold text-blue-700/80 mb-3">
+                {existingUserFound.first_name} {existingUserFound.last_name} ({existingUserFound.user_type}) is already on AntLegal.
+              </p>
+
+              {/* Added Firm Selection for Multi-Firm Admins */}
+              <div className="max-w-xs transition-all animate-in fade-in slide-in-from-left-2 duration-700">
+                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-blue-600/60">Target Law Firm</label>
+                <div className="relative group">
+                  <select
+                    value={formData.firm}
+                    onChange={e => update('firm', e.target.value)}
+                    required
+                    className="h-9 w-full rounded-lg border border-blue-200 bg-white px-3 text-xs text-blue-900 font-bold outline-none appearance-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer"
+                  >
+                    <option value="">Select firm to add them to...</option>
+                    {firms.map((f: any) => (
+                      <option key={f.id} value={f.id}>{f.firm_name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-blue-400 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setExistingUserFound(null);
+                setFormData((p: any) => ({ ...p, existing_user_id: null, email: '', phone_number: '', first_name: '', last_name: '' }));
+              }}
+              className="px-4 py-2 bg-white text-blue-600 text-xs font-bold rounded-lg border border-blue-200 hover:bg-blue-50 transition-all shadow-sm"
+            >
+              Cancel & New
+            </button>
+          </div>
+        )}
+
         {limitError && (
           <div className="mb-6 p-5 bg-amber-50 border border-amber-200 rounded-xl">
             <div className="flex items-start gap-3">
@@ -1706,15 +1810,22 @@ export function TeamMemberFormPage({
                 <div className="grid gap-5 md:grid-cols-2">
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">First Name</label>
-                    <input value={formData.first_name} onChange={e => update('first_name', e.target.value)} required placeholder="John" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                    <input disabled={!!existingUserFound} value={formData.first_name} onChange={e => update('first_name', e.target.value)} required placeholder="John" className={`h-11 w-full rounded-xl border border-gray-200 px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all ${!!existingUserFound ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-[#f7f8fa]'}`} />
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Last Name</label>
-                    <input value={formData.last_name} onChange={e => update('last_name', e.target.value)} required placeholder="Doe" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                    <input disabled={!!existingUserFound} value={formData.last_name} onChange={e => update('last_name', e.target.value)} required placeholder="Doe" className={`h-11 w-full rounded-xl border border-gray-200 px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all ${!!existingUserFound ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-[#f7f8fa]'}`} />
                   </div>
-                  <div>
+                  <div className="relative">
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Email Address</label>
-                    <input type="email" value={formData.email} onChange={e => update('email', e.target.value)} required placeholder="john@example.com" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                    <div className="relative group">
+                      <input type="email" value={formData.email} onChange={e => update('email', e.target.value)} required placeholder="john@example.com" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all pr-12" />
+                      {isLookingUp && (
+                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center">
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Phone Number</label>
@@ -1726,7 +1837,7 @@ export function TeamMemberFormPage({
                   {!fixedRole && (
                     <div>
                       <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">User Role</label>
-                      <select value={formData.user_type} onChange={e => update('user_type', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none">
+                      <select disabled={!!existingUserFound} value={formData.user_type} onChange={e => update('user_type', e.target.value)} className={`h-11 w-full rounded-xl border border-gray-200 px-3.5 text-sm text-black font-semibold outline-none appearance-none ${!!existingUserFound ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-[#f7f8fa]'}`}>
                         {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                       </select>
                     </div>
@@ -1756,39 +1867,79 @@ export function TeamMemberFormPage({
                 <div className="grid gap-5 md:grid-cols-2">
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Gender</label>
-                    <select value={formData.gender} onChange={e => update('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none">
+                    <select disabled={!!existingUserFound} value={formData.gender} onChange={e => update('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none disabled:opacity-70 disabled:cursor-not-allowed">
                       <option value="">Select Gender</option>
-                      <option value="M">Male</option>
-                      <option value="F">Female</option>
-                      <option value="O">Other</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
                     </select>
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Date of Birth</label>
-                    <input
-                      type="date"
-                      value={formData.date_of_birth}
-                      onChange={e => update('date_of_birth', e.target.value)}
-                      max={new Date().toISOString().split('T')[0]}
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none"
-                    />
+                    <input disabled={!!existingUserFound} type="date" value={formData.date_of_birth} onChange={e => update('date_of_birth', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none disabled:opacity-70 disabled:cursor-not-allowed" />
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Aadhar Number</label>
-                    <AadharInput
-                      value={formData.aadhar_number}
-                      onChange={v => update('aadhar_number', v)}
-                    />
+                    <AadharInput disabled={!!existingUserFound} value={formData.aadhar_number} onChange={v => update('aadhar_number', v)} />
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">PAN Number</label>
-                    <PANInput
-                      value={formData.pan_number}
-                      onChange={v => update('pan_number', v)}
-                    />
+                    <input disabled={!!existingUserFound} value={formData.pan_number} onChange={e => update('pan_number', e.target.value)} placeholder="ABCDE1234F" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all disabled:opacity-70 disabled:cursor-not-allowed uppercase" />
                   </div>
                 </div>
               </Panel>
+
+              {!existingUserFound && (
+                <Panel title="Location & Firm" subtitle="Service region and firm alignment.">
+                  <div className="space-y-5">
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Address Line 1</label>
+                        <input value={formData.address_line_1} onChange={e => update('address_line_1', e.target.value)} placeholder="Street name, building" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Address Line 2</label>
+                        <input value={formData.address_line_2} onChange={e => update('address_line_2', e.target.value)} placeholder="Locality, landmark" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                      </div>
+                    </div>
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">State</label>
+                        <input value={formData.state} onChange={e => update('state', e.target.value)} placeholder="State" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">City</label>
+                        <input value={formData.city} onChange={e => update('city', e.target.value)} placeholder="City" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Postal Code</label>
+                      <input value={formData.postal_code} onChange={e => update('postal_code', e.target.value)} placeholder="e.g. 400001" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                    </div>
+                    {formData.user_type === 'super_admin' && (
+                      <div className="pt-2 border-t border-gray-100">
+                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
+                          Associated Law Firm <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative group">
+                          <select
+                            value={formData.firm}
+                            onChange={e => update('firm', e.target.value)}
+                            required
+                            className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none focus:border-[#0e2340] transition-colors hover:border-gray-200"
+                          >
+                            <option value="">Select a firm...</option>
+                            {firms.map((f: any) => (
+                              <option key={f.id} value={f.id}>{f.firm_name}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Panel>
+              )}
 
               <Panel title="Professional Credentials" subtitle="Legal registration details.">
                 <div className="grid gap-5 md:grid-cols-2">
@@ -1806,138 +1957,44 @@ export function TeamMemberFormPage({
           }
           right={
             <div className="space-y-6">
-              <Panel title="Account Security" subtitle={detail ? "Update credentials" : "Onboarding credentials."}>
-                <div className="space-y-4">
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
-                    {detail ? "Change Password (Optional)" : "Temporary Password"}
-                  </label>
-                  <PasswordInput
-                    value={formData.password}
-                    onChange={v => update('password', v)}
-                    required={!detail}
-                  />
-                </div>
-                {detail && (
-                  <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-100">
-                    <span className="text-sm font-semibold text-gray-700">Account Active</span>
-                    <button
-                      type="button"
-                      onClick={() => update('is_active', !formData.is_active)}
-                      className={classNames(
-                        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out outline-none",
-                        formData.is_active ? "bg-[#0e2340]" : "bg-gray-200"
-                      )}
-                    >
-                      <span className={classNames(
-                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                        formData.is_active ? "translate-x-5" : "translate-x-0"
-                      )} />
-                    </button>
+              {!existingUserFound && (
+                <Panel title="Account Security" subtitle={detail ? "Update credentials" : "Onboarding credentials."}>
+                  <div className="space-y-4">
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
+                      {detail ? "Change Password (Optional)" : "Temporary Password"}
+                    </label>
+                    <PasswordInput
+                      value={formData.password}
+                      onChange={v => update('password', v)}
+                      required={!detail && !existingUserFound}
+                    />
                   </div>
-                )}
-              </Panel>
-
-              <Panel title="Location & Firm" subtitle="Service region and firm alignment.">
-                <div className="space-y-5">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Address Line 1</label>
-                      <input value={formData.address_line_1} onChange={e => update('address_line_1', e.target.value)} placeholder="Street name, building" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]" />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Address Line 2</label>
-                      <input value={formData.address_line_2} onChange={e => update('address_line_2', e.target.value)} placeholder="Locality, landmark" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]" />
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Country</label>
-                      <select
-                        value={formData.country}
-                        onChange={e => {
-                          update('country', e.target.value);
-                          update('state', '');
-                          update('city', '');
-                        }}
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none focus:border-[#0e2340] transition-colors"
+                  {detail && (
+                    <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-100">
+                      <span className="text-sm font-semibold text-gray-700">Account Active</span>
+                      <button
+                        type="button"
+                        onClick={() => update('is_active', !formData.is_active)}
+                        className={classNames(
+                          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out outline-none",
+                          formData.is_active ? "bg-[#0e2340]" : "bg-gray-200"
+                        )}
                       >
-                        <option value="">Select Country</option>
-                        {Country.getAllCountries().map(c => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">State</label>
-                      <select
-                        value={formData.state}
-                        disabled={!formData.country}
-                        onChange={e => {
-                          update('state', e.target.value);
-                          update('city', '');
-                        }}
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none disabled:opacity-50 focus:border-[#0e2340] transition-colors"
-                      >
-                        <option value="">Select State</option>
-                        {formData.country && State.getStatesOfCountry(formData.country).map(s => <option key={s.isoCode} value={s.isoCode}>{s.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">City</label>
-                      {formData.country && formData.state && City.getCitiesOfState(formData.country, formData.state).length > 0 ? (
-                        <select
-                          value={formData.city}
-                          onChange={e => update('city', e.target.value)}
-                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none focus:border-[#0e2340] transition-colors"
-                        >
-                          <option value="">Select City</option>
-                          {City.getCitiesOfState(formData.country, formData.state).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                          <option value="Other">Other</option>
-                        </select>
-                      ) : (
-                        <input
-                          value={formData.city}
-                          onChange={e => update('city', e.target.value)}
-                          placeholder="Type city..."
-                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]"
-                        />
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-1">
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Postal Code</label>
-                      <input value={formData.postal_code} onChange={e => update('postal_code', e.target.value.replace(/\D/g, ''))} placeholder="e.g. 400001" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors shadow-sm shadow-[#0e2340]/[0.02]" />
-                    </div>
-                  </div>
-
-                  {formData.user_type === 'super_admin' && (
-                    <div className="pt-2 border-t border-gray-100">
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
-                        Associated Law Firm <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative group">
-                        <select
-                          value={formData.firm}
-                          onChange={e => update('firm', e.target.value)}
-                          required
-                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none focus:border-[#0e2340] transition-colors hover:border-gray-200"
-                        >
-                          <option value="">Select a firm...</option>
-                          {firms.map((f: any) => (
-                            <option key={f.id} value={f.id}>{f.firm_name}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
-                      </div>
+                        <span className={classNames(
+                          "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                          formData.is_active ? "translate-x-5" : "translate-x-0"
+                        )} />
+                      </button>
                     </div>
                   )}
-                </div>
-              </Panel>
+                </Panel>
+              )}
 
               <Panel title="Actions" subtitle="Finalize onboarding">
                 <div className="flex flex-col gap-3">
                   <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-[#0e2340] px-4 py-3 text-sm font-bold text-white hover:bg-[#1a3a5c] shadow-lg shadow-[#0e2340]/10 transition-all active:scale-[0.98] disabled:opacity-50">
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Save Team Member
+                    {existingUserFound ? 'Add to Firm' : 'Save Team Member'}
                   </button>
                   <button type="button" onClick={() => router.back()} className="w-full flex items-center justify-center gap-2.5 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-500 hover:bg-gray-50 hover:text-gray-700 hover:border-gray-300 transition-all active:scale-[0.98]">
                     <X className="h-4 w-4" /> Cancel
@@ -2398,23 +2455,46 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
 
 export function DraftsPage({ accent, roleTitle, approvalMode, viewBase }: AccentProps & { roleTitle: string; approvalMode?: boolean; viewBase?: string }) {
   const [drafts, setDrafts] = useState<any[]>([]);
+  const [allCases, setAllCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [previewCaseId, setPreviewCaseId] = useState<string | null>(null);
+  const [previewForms, setPreviewForms] = useState<any[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [caseSearchQuery, setCaseSearchQuery] = useState('');
+
+  const fetchData = async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      // Fetch drafts
+      const [draftsRes, casesRes] = await Promise.all([
+        customFetch(API.DOCUMENTS.FILLED_COURT_FORMS.LIST),
+        customFetch(`${API.CASES.LIST}?assigned_to_me=true`)
+      ]);
+
+      const draftsData = await draftsRes.json();
+      const draftsList = Array.isArray(draftsData) ? draftsData : (draftsData.results || []);
+      setDrafts(draftsList);
+
+      const casesData = await casesRes.json();
+      const casesList = Array.isArray(casesData) ? casesData : (casesData.results || []);
+      setAllCases(casesList);
+
+      // Auto-select ONLY if nothing is selected yet
+      if (casesList.length > 0 && !selectedCaseId) {
+        const caseWithDrafts = casesList.find((c: any) => draftsList.some((d: any) => d.case === c.id));
+        setSelectedCaseId(String(caseWithDrafts ? caseWithDrafts.id : casesList[0].id));
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load workspace');
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchDrafts = async () => {
-      try {
-        setLoading(true);
-        const response = await customFetch(API.DOCUMENTS.FILLED_COURT_FORMS.LIST);
-        const data = await response.json();
-        setDrafts(Array.isArray(data) ? data : (data.results || []));
-      } catch (err: any) {
-        setError(err.message || 'Failed to load drafts');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDrafts();
+    fetchData();
   }, []);
 
   const draftRows = drafts.map((d) => ({
@@ -2447,9 +2527,17 @@ export function DraftsPage({ accent, roleTitle, approvalMode, viewBase }: Accent
     // Sort items within each case by priority/sequence
     Object.keys(groups).forEach(key => {
       groups[key].sort((a, b) => {
-        const seqA = a.custom_sequence > 0 ? a.custom_sequence : (a.template_sequence || 0);
-        const seqB = b.custom_sequence > 0 ? b.custom_sequence : (b.template_sequence || 0);
-        return seqA - seqB;
+        const seqA = (a.custom_sequence !== null && a.custom_sequence !== undefined && a.custom_sequence !== 0) ? a.custom_sequence : (a.template_sequence || 0);
+        const seqB = (b.custom_sequence !== null && b.custom_sequence !== undefined && b.custom_sequence !== 0) ? b.custom_sequence : (b.template_sequence || 0);
+
+        if (seqA !== seqB) {
+          return seqA - seqB;
+        }
+
+        // If tied, use updated_at as tie-breaker (newer first)
+        const dateA = new Date(a.updated_at || 0).getTime();
+        const dateB = new Date(b.updated_at || 0).getTime();
+        return dateB - dateA;
       });
     });
     return groups;
@@ -2458,11 +2546,7 @@ export function DraftsPage({ accent, roleTitle, approvalMode, viewBase }: Accent
   const handleDownloadMasterPDF = async (caseId: string) => {
     toast.loading('Generating Master PDF filing pack...', { id: 'pdf-gen' });
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/documents/filled-court-forms/download_master_pdf/?case_id=${caseId}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        }
-      });
+      const response = await customFetch(`/api/documents/filled-court-forms/download_master_pdf/?case_id=${caseId}`);
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
@@ -2484,23 +2568,155 @@ export function DraftsPage({ accent, roleTitle, approvalMode, viewBase }: Accent
   const handleUpdatePriority = async (formId: string, priority: string) => {
     if (!priority) return;
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/documents/filled-court-forms/${formId}/update_priority/`, {
+      const response = await customFetch(`/api/documents/filled-court-forms/${formId}/update_priority/`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        },
         body: JSON.stringify({ priority })
       });
       if (response.ok) {
-        toast.success('Priority updated');
-        // Refresh drafts list
-        if (typeof window !== 'undefined') {
-          window.location.reload(); // Simple refresh to show new order
-        }
+        toast.success('Sequence updated');
+        // Silent refresh of data to show new order without page reload
+        fetchData(false);
       }
     } catch (error) {
       toast.error('Failed to update priority');
+    }
+  };
+
+  const handlePreviewAll = async (caseId: string) => {
+    setPreviewLoading(true);
+    setPreviewCaseId(caseId);
+    setPreviewForms([]);
+
+    try {
+      // 1. Fetch source of truth metadata and FULL content from backend
+      const response = await customFetch(API.DOCUMENTS.FILLED_COURT_FORMS.PREVIEW_FILING_PACK(caseId));
+      if (!response.ok) throw new Error('Failed to fetch preview metadata');
+      const meta = await response.json();
+
+      // meta contains: forms (full objects), index_data, form_pages { id: { page_label, num_pages } }
+
+      // 2. Resolve final sheet list
+      let finalSheets: any[] = [];
+      const { forms, index_data, form_pages } = meta;
+
+      // Identify if an explicit Index Form exists in the forms list
+      const hasRealIndex = forms.some((f: any) => f.template_name?.toUpperCase().includes('INDEX'));
+
+      // If no real index exists, prepend a virtual one using the same logic as the backend
+      if (!hasRealIndex) {
+        const virtualIndexID = 'virtual-index';
+        const virtualIndex = {
+          id: virtualIndexID,
+          template_name: 'INDEX OF DOCUMENTS',
+          field_values: { index_data },
+          filled_content: {
+            sections: [
+              { type: 'header', content: 'INDEX OF DOCUMENTS', style: { align: 'center', bold: true, size: 16, underline: true } },
+              { type: 'spacer', height: 20 },
+              { type: 'auto_index_table' }
+            ]
+          }
+        };
+        // Process virtual index
+        finalSheets.push({
+          ...virtualIndex,
+          id: `${virtualIndexID}-pg1`,
+          calculatedPage: '1',
+          filled_content: { ...virtualIndex.filled_content, sections: virtualIndex.filled_content.sections }
+        });
+      }
+
+      for (const formEntry of forms) {
+        const pageMeta = form_pages[formEntry.id] || { page_label: "?", num_pages: 1 };
+        const isIndex = formEntry.template_name?.toUpperCase().includes('INDEX');
+
+        if (isIndex) {
+          formEntry.field_values = { ...formEntry.field_values, index_data };
+        }
+
+        const sections = formEntry.filled_content?.sections || [];
+        const targetNumPages = pageMeta.num_pages || 1;
+        const pageLabel = pageMeta.page_label || "";
+
+        // Intelligent Section Splitting based on height estimation
+        let chunks: any[] = [];
+        let currentChunk: any[] = [];
+        let currentHeight = 0;
+        const MAX_A4_HEIGHT = 880; // Estimated usable pixels per A4 page
+
+        sections.forEach((s: any) => {
+          // Estimate height of the section
+          let estimatedHeight = 30; // Base padding/margin
+          if (s.type === 'header') estimatedHeight = 45;
+          if (s.type === 'spacer') estimatedHeight = (s.height || 20) * 1.5;
+          if (s.type === 'paragraph') {
+            const lines = Math.ceil((s.content?.length || 0) / 85) || 1;
+            estimatedHeight = lines * 22 + 20;
+          }
+          if (s.type === 'form_grid') estimatedHeight = (s.rows?.length || 0) * 48 + 20;
+          if (s.type === 'grid_row') estimatedHeight = 80;
+          if (s.type === 'table' || s.type === 'dynamic_table') {
+            const rows = (s.rows?.length || (typeof s.rows === 'number' ? s.rows : 0));
+            estimatedHeight = rows * 40 + 60;
+          }
+          if (s.type === 'signature_block') estimatedHeight = 110;
+          if (s.type === 'auto_index_table') estimatedHeight = (formEntry.field_values?.index_data?.length || 0) * 45 + 60;
+
+          // Split if manual page_break OR height overflow
+          if (s.type === 'page_break' || (currentHeight + estimatedHeight > MAX_A4_HEIGHT && currentChunk.length > 0)) {
+            chunks.push(currentChunk);
+            currentChunk = [];
+            currentHeight = 0;
+            if (s.type === 'page_break') return;
+          }
+
+          currentChunk.push(s);
+          currentHeight += estimatedHeight;
+        });
+
+        if (currentChunk.length > 0) chunks.push(currentChunk);
+
+        // Ensure we respect the backend's page count by padding or merging
+        if (chunks.length < targetNumPages) {
+          // If we have fewer chunks than the backend says, we pad with empty pages
+          while (chunks.length < targetNumPages) chunks.push([]);
+        } else if (chunks.length > targetNumPages && targetNumPages > 0) {
+          // If we have too many chunks, merge the tail to maintain numbering sync
+          const extra = chunks.splice(targetNumPages - 1);
+          const flattened = extra.reduce((acc, val) => acc.concat(val), []);
+          chunks.push(flattened);
+        }
+
+        // Add each chunk as a separate physical sheet
+        chunks.forEach((chunk, i) => {
+          let sheetNumber = "";
+          if (pageLabel.includes('TO')) {
+            const parts = pageLabel.split(' '); // "2 TO 4"
+            const start = parts[0];
+            if (!isNaN(parseInt(start))) {
+              sheetNumber = String(parseInt(start) + i);
+            } else {
+              sheetNumber = String.fromCharCode(start.charCodeAt(0) + i);
+            }
+          } else {
+            sheetNumber = pageLabel;
+          }
+
+          finalSheets.push({
+            ...formEntry,
+            id: `${formEntry.id || 'idx'}-pg${i + 1}`,
+            calculatedPage: sheetNumber,
+            filled_content: { ...formEntry.filled_content, sections: chunk }
+          });
+        });
+      }
+
+      setPreviewForms(finalSheets);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate preview');
+      setPreviewCaseId(null);
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -2530,99 +2746,614 @@ export function DraftsPage({ accent, roleTitle, approvalMode, viewBase }: Accent
         </div>
       ) : (
         <div className="space-y-8">
-          {Object.entries(groupedByCase).map(([caseNumber, entries]) => (
-            <Panel
-              key={caseNumber}
-              title={`Case Filing Pack: ${caseNumber}`}
-              subtitle={`${entries.length} documents arranged for filing`}
-              actions={
-                <div className="flex gap-2">
-                  <Link
-                    href={viewBase?.includes('paralegal')
-                      ? `/paralegal/cases/${entries[0].case}?tab=Drafting&newBlank=true`
-                      : `/advocate/cases/${entries[0].case}?tab=Drafting&newBlank=true`
-                    }
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 border border-emerald-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    New Blank Draft
-                  </Link>
-                  <button
-                    onClick={() => handleDownloadMasterPDF(entries[0].case)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-purple-900 border border-purple-800 px-3 py-1.5 text-xs font-bold text-white hover:bg-purple-800 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Download Master PDF
-                  </button>
-                  <Link
-                    href={viewBase?.includes('paralegal') ? `/paralegal/cases/${entries[0].case}` : `/advocate/cases/${entries[0].case}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
-                  >
-                    Go to Case
-                  </Link>
-                </div>
-              }
-            >
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/50">
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Sl. No</th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Priority</th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Document Type</th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Owner</th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Status</th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Last Update</th>
-                      <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 text-right">Draft Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {entries.map((d, index) => (
-                      <tr key={d.id} className="hover:bg-gray-50/30 transition-colors">
-                        <td className="px-4 py-4 text-sm font-bold text-gray-500">{String(index + 1).padStart(2, '0')}.</td>
-                        <td className="px-4 py-4">
-                          <input
-                            type="number"
-                            defaultValue={d.custom_sequence || d.template_sequence || 0}
-                            className="w-12 p-1 text-xs border rounded text-center focus:ring-1 focus:ring-purple-500 outline-none"
-                            onBlur={(e) => handleUpdatePriority(d.id, e.target.value)}
-                            title="Enter number to change order (Press Tab or Click away to save)"
-                          />
-                        </td>
-                        <td className="px-4 py-4">
-                          <p className="text-sm font-bold text-gray-900">{d.template_name}</p>
-                          <p className="text-[10px] text-gray-400 uppercase font-semibold">Base Seq: {d.template_sequence}</p>
-                        </td>
-                        <td className="px-4 py-4 text-sm text-gray-600 font-medium">{d.created_by_name}</td>
-                        <td className="px-4 py-4">
-                          <Badge
-                            label={d.status_display || d.status}
-                            tone={
-                              d.status === 'draft' ? 'default' :
-                                d.status === 'signed' ? 'success' :
-                                  d.status === 'completed' ? 'info' : 'warning'
-                            }
-                          />
-                        </td>
-                        <td className="px-4 py-4 text-sm text-gray-500">{new Date(d.updated_at).toLocaleDateString()}</td>
-                        <td className="px-4 py-4 text-right">
-                          <Link
-                            href={viewBase?.includes('paralegal') ? `/paralegal/cases/${d.case}?tab=Drafting&formId=${d.id}` : `/advocate/cases/${d.case}?tab=Drafting&formId=${d.id}`}
-                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-purple-900 hover:bg-purple-50 transition-colors"
-                          >
-                            Edit Draft
-                            <ArrowRight className="h-3.5 w-3.5" />
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-purple-900" />
+                Select Case Workspace
+              </h3>
+              <div className="relative group max-w-xs w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 group-focus-within:text-purple-600 transition-colors" />
+                <input
+                  type="text"
+                  placeholder="Search by Case No. or Title..."
+                  value={caseSearchQuery}
+                  onChange={(e) => setCaseSearchQuery(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg py-1.5 pl-9 pr-3 text-xs font-semibold outline-none focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-500/5 transition-all placeholder:text-gray-400 text-gray-900"
+                />
               </div>
-            </Panel>
-          ))}
+            </div>
+            <div className="px-6 py-2 overflow-x-auto max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
+              <SimpleTabs
+                tabs={allCases
+                  .filter(c => {
+                    if (!caseSearchQuery) return true;
+                    const q = caseSearchQuery.toLowerCase();
+                    return (c.case_number || '').toLowerCase().includes(q) ||
+                      (c.case_title || '').toLowerCase().includes(q);
+                  })
+                  .map(c => ({
+                    label: c.case_number || c.case_title || 'Untitled',
+                    active: String(c.id) === selectedCaseId
+                  }))}
+                onClick={(label) => {
+                  const c = allCases.find(cas => (cas.case_number || cas.case_title) === label);
+                  if (c) setSelectedCaseId(String(c.id));
+                }}
+              />
+            </div>
+          </div>
+
+          {allCases
+            .filter((c) => String(c.id) === selectedCaseId)
+            .map((currentCase) => {
+              const caseEntries = groupedByCase[currentCase.case_number || 'Unknown Case'] || [];
+              return (
+                <Panel
+                  key={currentCase.id}
+                  title={`Case Filing Pack: ${currentCase.case_number || currentCase.case_title}`}
+                  subtitle={`${caseEntries.length} documents arranged for filing`}
+                  className="relative"
+                  actions={
+                    <div className="flex gap-2">
+                      <div className="hidden lg:flex items-center mr-4 px-3 py-1.5 bg-purple-50 rounded-lg border border-purple-100 gap-2">
+                        <AlertCircle className="w-3.5 h-3.5 text-purple-600" />
+                        <span className="text-[10px] text-purple-700 font-bold uppercase tracking-tight">
+                          Reorder Filing Pack: Lower numbers (1, 2, 3) appear first.
+                        </span>
+                      </div>
+                      <Link
+                        href={viewBase?.includes('paralegal')
+                          ? `/paralegal/cases/${currentCase.id}?tab=Drafting&newBlank=true`
+                          : `/advocate/cases/${currentCase.id}?tab=Drafting&newBlank=true`
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 border border-emerald-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        New Blank Draft
+                      </Link>
+                      {caseEntries.length > 0 && (
+                        <>
+                          <button
+                            onClick={() => handlePreviewAll(currentCase.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 border border-indigo-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            Preview All
+                          </button>
+                          <button
+                            onClick={() => handleDownloadMasterPDF(currentCase.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-purple-900 border border-purple-800 px-3 py-1.5 text-xs font-bold text-white hover:bg-purple-800 transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Download Master PDF
+                          </button>
+                        </>
+                      )}
+                      <Link
+                        href={viewBase?.includes('paralegal') ? `/paralegal/cases/${currentCase.id}` : `/advocate/cases/${currentCase.id}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                      >
+                        Go to Case
+                      </Link>
+                    </div>
+                  }
+                >
+                  {caseEntries.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center text-gray-400">
+                      <PenTool className="w-12 h-12 text-gray-200 mb-3" />
+                      <p className="text-sm font-medium">No documents drafted for this case yet.</p>
+                      <p className="text-xs mt-1">Click 'New Blank Draft' to start drafting court forms.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-gray-100 bg-gray-50/50">
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Sl. No</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Priority</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Document Type</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Owner</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Status</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Last Update</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 text-right">Draft Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {caseEntries.map((d, index) => (
+                            <tr key={d.id} className="hover:bg-gray-50/30 transition-colors">
+                              <td className="px-4 py-4 text-sm font-bold text-gray-500">{String(index + 1).padStart(2, '0')}.</td>
+                              <td className="px-4 py-4">
+                                <input
+                                  type="number"
+                                  defaultValue={index + 1}
+                                  className={classNames(
+                                    "w-16 h-10 text-base border rounded-xl text-center focus:ring-2 focus:ring-purple-500 outline-none font-bold transition-all shadow-sm",
+                                    d.custom_sequence
+                                      ? "bg-purple-600 border-purple-700 text-white"
+                                      : "bg-gray-50 border-gray-200 text-gray-900"
+                                  )}
+                                  onBlur={(e) => {
+                                    const newVal = parseInt(e.target.value);
+                                    if (newVal !== (index + 1)) {
+                                      handleUpdatePriority(d.id, e.target.value);
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      const newVal = parseInt((e.target as HTMLInputElement).value);
+                                      if (newVal !== (index + 1)) {
+                                        handleUpdatePriority(d.id, (e.target as HTMLInputElement).value);
+                                      }
+                                    }
+                                  }}
+                                  title="Change number to reorder. 1 is first, 2 is second, etc. Press Enter to save."
+                                />
+                              </td>
+                              <td className="px-4 py-4">
+                                <p className="text-sm font-bold text-gray-900">{d.template_name}</p>
+                                <p className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1.5 mt-0.5">
+                                  <span className={d.custom_sequence ? "text-purple-600" : "text-gray-400"}>
+                                    Sequence: {index + 1}
+                                  </span>
+                                </p>
+                              </td>
+                              <td className="px-4 py-4 text-sm text-gray-600 font-medium">{d.created_by_name}</td>
+                              <td className="px-4 py-4">
+                                <Badge
+                                  label={d.status_display || d.status}
+                                  tone={
+                                    d.status === 'draft' ? 'default' :
+                                      d.status === 'signed' ? 'success' :
+                                        d.status === 'completed' ? 'info' : 'warning'
+                                  }
+                                />
+                              </td>
+                              <td className="px-4 py-4 text-sm text-gray-500">{new Date(d.updated_at).toLocaleDateString()}</td>
+                              <td className="px-4 py-4 text-right">
+                                <Link
+                                  href={viewBase?.includes('paralegal') ? `/paralegal/cases/${d.case}?tab=Drafting&formId=${d.id}` : `/advocate/cases/${d.case}?tab=Drafting&formId=${d.id}`}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-purple-900 hover:bg-purple-50 transition-colors"
+                                >
+                                  Edit Draft
+                                  <ArrowRight className="h-3.5 w-3.5" />
+                                </Link>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Panel>
+              );
+            })}
         </div>
       )}
+
+      {/* Filing Pack Preview Modal */}
+      {
+        previewCaseId && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex flex-col">
+            <div className="bg-white border-b px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-lg">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Filing Pack Preview</h2>
+                <p className="text-xs text-gray-500">{previewForms.length} documents in order</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={() => handleDownloadMasterPDF(previewCaseId)}
+                  className="inline-flex items-center gap-1.5 bg-purple-900 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-purple-800">
+                  <Download className="w-4 h-4" /> Download Master PDF
+                </button>
+                <button onClick={() => { setPreviewCaseId(null); setPreviewForms([]); }}
+                  className="p-2 rounded-full hover:bg-gray-100">
+                  <X className="w-5 h-5 text-gray-600" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto bg-gray-300 px-8 py-10">
+              {previewLoading ? (
+                <div className="flex items-center justify-center h-64">
+                  <Loader2 className="w-8 h-8 animate-spin text-white" />
+                  <span className="ml-3 text-white font-medium">Loading documents...</span>
+                </div>
+              ) : (
+                <div className="space-y-10" style={{ maxWidth: '794px', margin: '0 auto' }}>
+                  {previewForms.map((form, pageIdx) => (
+                    <div key={form.id} className="relative">
+                      <div className="absolute -top-6 left-0 text-xs text-gray-500 font-bold uppercase tracking-widest">
+                        {String(pageIdx + 1).padStart(2, '0')}. {form.template_name}
+                      </div>
+                      <div className="bg-white shadow-2xl relative overflow-hidden" style={{ width: '794px', height: '1123px', padding: '72px' }}>
+                        <div className="absolute top-10 right-10 flex flex-col items-end">
+                          <div className="border border-black bg-white px-2.5 py-1.5 flex flex-col items-center min-w-[50px] shadow-sm">
+                            <span className="text-[10px] font-black text-gray-500 leading-none mb-1">PAGE</span>
+                            <span className="text-xl font-black text-black leading-none uppercase">{form.calculatedPage || pageIdx + 1}</span>
+                          </div>
+                        </div>
+                        <FilingPackFormPreview form={form} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      }
+    </div>
+  );
+}
+
+function FilingPackFormPreview({ form }: { form: any }) {
+  const sections: any[] = form.filled_content?.sections || [];
+  const values: Record<string, any> = form.field_values || {};
+  const margins = form.filled_content?.margins || { top: 72, right: 72, bottom: 72, left: 72 };
+
+  const formatSignatureUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    const baseUrl = API_BASE_URL || 'https://antlegal.anthemgt.com';
+    return `${baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl}${url.startsWith('/') ? url : '/' + url}`;
+  };
+
+  const resolve = (s: string) => {
+    if (!s) return null;
+
+    // First handle field replacements
+    const parts = s.split(/(\{([^}]+)\})/g);
+    // filter out the capture groups from split
+    const actualParts = [];
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 3 === 0) actualParts.push({ type: 'text', val: parts[i] });
+      else if (i % 3 === 1) {
+        const fieldName = parts[i].slice(1, -1);
+        actualParts.push({ type: 'field', val: values[fieldName] || '' });
+        i++; // skip next group
+      }
+    }
+
+    return actualParts.map((part, i) => {
+      if (part.type === 'field') {
+        return (
+          <span key={i} className="inline-block border-b border-gray-900 px-1 font-bold text-center min-w-[120px]">
+            {part.val || '\u00A0'}
+          </span>
+        );
+      }
+
+      // Handle simple markdown bold **text** and underline __text__
+      const val = part.val || '';
+      const subParts = val.split(/(\*\*[^*]+\*\*|__[^*]+__)/g);
+      return subParts.map((sub, j) => {
+        if (sub.startsWith('**') && sub.endsWith('**')) {
+          return <strong key={`${i}-${j}`}>{sub.slice(2, -2)}</strong>;
+        }
+        if (sub.startsWith('__') && sub.endsWith('__')) {
+          return <u key={`${i}-${j}`}>{sub.slice(2, -2)}</u>;
+        }
+        return <span key={`${i}-${j}`}>{sub}</span>;
+      });
+    });
+  };
+
+  return (
+    <div className="text-black text-[13px] leading-[1.6]">
+      {sections.map((section: any, i: number) => {
+        const st = section.style || {};
+        const alignment = st.align === 'center' ? 'text-center' : st.align === 'right' ? 'text-right' : 'text-left';
+
+        if (section.type === 'header') return (
+          <div key={i} className={`mb-4 uppercase tracking-tight py-1 px-2 ${alignment} ${st.bold !== false ? 'font-bold' : ''} ${st.underline ? 'underline' : ''} ${st.background ? 'bg-gray-100 border-y border-gray-200' : ''}`}
+            style={{ fontSize: `${st.size || 16}px` }}>
+            {resolve(section.content)}
+          </div>
+        );
+
+        if (section.type === 'editable_line') return (
+          <div key={i} className={`flex items-baseline mb-4 gap-1 ${alignment} ${st.bold ? 'font-bold' : ''}`}
+            style={{ fontSize: `${st.size || 13}px` }}>
+            {section.prefix && <span className="whitespace-nowrap">{section.prefix}</span>}
+            <div className="flex-1 border-b border-gray-900 px-1 font-bold min-w-[50px] min-h-[18px]">
+              {resolve(section.content) || values[section.field] || ''}
+            </div>
+            {section.suffix && <span className="whitespace-nowrap">{section.suffix}</span>}
+          </div>
+        );
+
+        if (section.type === 'stamp_box') return (
+          <div key={i} className="flex justify-center my-4">
+            <div className="w-[250px] h-[100px] border-2 border-gray-800 flex items-center justify-center text-gray-300 font-bold uppercase tracking-widest text-xs">
+              Affix Stamp Here
+            </div>
+          </div>
+        );
+
+        if (section.type === 'paragraph') {
+          const pLower = (section.content || '').toLowerCase();
+          const isPSign = pLower.includes('signature') || pLower.includes('hand of') || pLower.includes('yours faithfully');
+          const pAdvSign = isPSign && (pLower.includes('advocate') || pLower.includes('counsel'));
+          const pCliSign = isPSign && (pLower.includes('client') || pLower.includes('deponent') || pLower.includes('party'));
+          const pSigImg = pAdvSign ? form.advocate_signature_image : pCliSign ? form.client_signature_image : null;
+
+          return (
+            <div key={i} className="mb-4">
+              {pSigImg && (
+                <div className={`flex ${st.align === 'center' ? 'justify-center' : st.align === 'right' ? 'justify-end' : 'justify-start'}`}>
+                  <img src={formatSignatureUrl(pSigImg)} alt="Signature" className="h-14 object-contain mb-[-10px] relative z-10" />
+                </div>
+              )}
+              <p className={`${alignment} ${st.bold ? 'font-bold' : ''} ${st.italic ? 'italic' : ''} ${st.underline ? 'underline' : ''}`}
+                style={{ lineHeight: st.line_height || 1.4, fontSize: `${st.size || 12}px` }}>
+                {resolve(section.content)}
+              </p>
+            </div>
+          );
+        }
+
+        if (section.type === 'textarea') {
+          const fn = section.field || 'document_content';
+          return (
+            <div key={i} className={`mb-4 ${alignment}`} style={{
+              lineHeight: st.line_height || 1.8,
+              fontSize: `${st.size || 14}px`
+            }}
+              dangerouslySetInnerHTML={{ __html: values[fn] || '' }} />
+          );
+        }
+
+        if (section.type === 'spacer') return <div key={i} style={{ height: `${section.height || 20}px` }} />;
+
+        if (section.type === 'grid_row') {
+          return (
+            <div key={i} className="flex gap-4 mb-4 py-1" style={st.border ? { border: '1px solid black', padding: '8px' } : {}}>
+              {section.columns.map((col: any, ci: number) => {
+                const colPrefixLower = (col.prefix || '').toLowerCase();
+                const isColSign = colPrefixLower.includes('signature') || colPrefixLower.includes('advocate') || colPrefixLower.includes('client');
+                const colAdvSign = isColSign && (colPrefixLower.includes('advocate') || colPrefixLower.includes('counsel'));
+                const colCliSign = isColSign && (colPrefixLower.includes('client') || colPrefixLower.includes('party') || colPrefixLower.includes('deponent'));
+                const colSigImg = colAdvSign ? form.advocate_signature_image : colCliSign ? form.client_signature_image : null;
+
+                return (
+                  <div key={ci} className="flex-1 flex flex-col pt-4" style={{
+                    flex: col.flex || 1,
+                    alignItems: col.align === 'center' ? 'center' : col.align === 'right' ? 'flex-end' : 'flex-start'
+                  }}>
+                    {colSigImg && (
+                      <img src={formatSignatureUrl(colSigImg)} alt="Signature" className="h-12 object-contain mb-[-8px] relative z-10" />
+                    )}
+                    <div className="w-full flex items-center">
+                      {col.prefix && <span className="text-black font-medium mr-1 text-[11px] whitespace-nowrap">{col.prefix}</span>}
+                      <div className="flex-1 border-b border-dotted border-black min-h-[20px] font-bold text-center">
+                        {resolve(col.content) || values[col.field] || ''}
+                      </div>
+                      {col.suffix && <span className="text-black font-medium ml-1 text-[11px] whitespace-nowrap">{col.suffix}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }
+
+        if (section.type === 'form_grid') {
+          return (
+            <div key={i} className="mb-6">
+              <table className="w-full border-collapse border border-black text-[12px]">
+                <tbody>
+                  {(section.rows || []).map((row: any, ri: number) => (
+                    <tr key={ri}>
+                      {(row.cells || []).map((cell: any, ci: number) => (
+                        <td key={ci} className="border border-black px-3 py-2 bg-white" style={{ width: cell.flex ? `${(cell.flex / 2) * 100}%` : 'auto' }}>
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex justify-between items-start gap-2">
+                              {cell.text && <span className="font-bold text-[10px] text-gray-400 flex-shrink-0">{cell.text}</span>}
+                              {cell.label && <span className="font-bold text-[11px] uppercase text-gray-900">{cell.label}</span>}
+                            </div>
+                            <div className="font-bold text-[13px] text-black min-h-[18px] pl-4">
+                              {values[cell.field] || (cell.placeholder ? <span className="text-gray-300 font-normal">{cell.placeholder}</span> : '')}
+                            </div>
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        if (section.type === 'form_grid') {
+          return (
+            <div key={i} className="border border-black w-full my-4">
+              {section.rows.map((row: any, rowIndex: number) => (
+                <div key={rowIndex} className="flex border-b border-black last:border-b-0 min-h-[35px]">
+                  {row.cells.map((cell: any, cellIndex: number) => (
+                    <div key={cellIndex}
+                      className="p-1 px-2 border-r border-black last:border-r-0 flex items-center bg-white"
+                      style={{ flex: cell.flex || 1, background: cell.background ? '#f3f4f6' : 'white' }}
+                    >
+                      {cell.label && (
+                        <span className={`text-[10px] text-black font-bold mr-2 flex-shrink-0 ${cell.field ? 'w-[120px]' : ''}`}>
+                          {cell.label}
+                        </span>
+                      )}
+                      {cell.field ? (
+                        <div className="flex-1 text-[11px] text-black font-bold">
+                          {values[cell.field] || ''}
+                        </div>
+                      ) : (
+                        cell.text && <span className="text-[10px] text-black flex-1 text-center font-bold uppercase">{cell.text}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        if (section.type === 'table_inline') {
+          return (
+            <div key={i} className="flex justify-center my-4">
+              <table className="border-collapse">
+                <tbody>
+                  {(section.rows || []).map((row: any[], ri: number) => (
+                    <tr key={ri}>
+                      {row.map((cell: any, ci: number) => {
+                        const content = cell.field ? (values[cell.content.replace(/[{}]/g, '')] || '') : cell.content;
+                        return (
+                          <td key={ci} className={`px-4 py-1 ${cell.align === 'right' ? 'text-right' : cell.align === 'center' ? 'text-center' : 'text-left'} ${cell.bold ? 'font-bold' : ''}`}
+                            style={{ width: cell.width || 'auto', borderBottom: cell.field ? '1px solid black' : 'none' }}>
+                            {content}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        if (section.type === 'table' || section.type === 'dynamic_table') {
+          const cols = section.columns || [];
+          const rowCount = typeof section.rows === 'number' ? section.rows : 3;
+          return (
+            <div key={i} className="w-full overflow-hidden border border-black my-4">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    {cols.map((col: any, j: number) => (
+                      <th
+                        key={j}
+                        className="border border-black p-2 text-[10px] font-bold text-black uppercase text-center align-middle bg-gray-100"
+                        style={{ width: col.width, height: '60px' }}
+                      >
+                        {typeof col === 'string' ? col : col.header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: rowCount }, (_, ri) => (
+                    <tr key={ri}>
+                      {cols.map((col: any, ci: number) => {
+                        const fieldName = typeof col === 'string' ? `${section.field}_${ri}` : `${col.field}_${ri}`;
+                        const cellVal = values[`cell_${ri}_${ci}`] || values[fieldName] || '';
+                        const rH = section.row_height ? `${section.row_height}px` : (ri === 0 && cols.length > 5 ? '400px' : '40px');
+                        return (
+                          <td key={ci} className="border border-black p-2 text-sm text-black font-bold align-top" style={{ height: rH }}>
+                            {cellVal}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        if (section.type === 'signature_block') {
+          const sigLower = (section.content || '').toLowerCase();
+          const isAdvocateSig = sigLower.includes('advocate') || sigLower.includes('mediator') || sigLower.includes('counsel');
+          const isClientSig = sigLower.includes('client') || sigLower.includes('applicant') || sigLower.includes('party') || sigLower.includes('deponent');
+          const sigImg = isAdvocateSig ? form.advocate_signature_image : isClientSig ? form.client_signature_image : null;
+
+          return (
+            <div key={i} className="my-4 flex flex-col items-center">
+              {sigImg ? (
+                <img src={formatSignatureUrl(sigImg)} alt="Signature" className="h-16 object-contain mb-1" />
+              ) : (
+                <div className="h-16" />
+              )}
+              <div className="border-t-2 border-black pt-2 min-w-[200px] text-center font-semibold text-base">
+                {section.content}
+              </div>
+            </div>
+          );
+        }
+
+        if (section.type === 'two_column_table') {
+          return (
+            <div key={i} className="flex justify-center my-4">
+              <table className="border-collapse">
+                <tbody>
+                  {(section.left_column || []).map((leftText: string, idx: number) => {
+                    const rightValue = section.right_column?.[idx] || '';
+                    const isField = rightValue.startsWith('{') && rightValue.endsWith('}');
+                    const fieldName = isField ? rightValue.slice(1, -1) : '';
+                    const displayVal = isField ? (values[fieldName] || '') : rightValue;
+
+                    return (
+                      <tr key={idx}>
+                        <td className="text-right pr-12 py-1 min-w-[150px]" style={{ fontSize: `${st.size || 14}px` }}>
+                          {leftText}
+                        </td>
+                        <td className="text-left pl-12 py-1 font-bold min-w-[200px]" style={{ fontSize: `${st.size || 14}px` }}>
+                          <span className="inline-block border-b border-black pb-0.5 min-w-[200px]">
+                            {displayVal || '\u00A0'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        if (section.type === 'character_boxes') {
+          return (
+            <div key={i} className="flex border border-black w-full mb-[-1px]">
+              <div className="w-[180px] p-2 border-r border-black text-[10px] font-bold flex flex-col justify-center bg-gray-50 flex-shrink-0 leading-tight">
+                {section.label}
+                {section.sublabel && <span className="font-normal text-[8px] italic mt-1">{section.sublabel}</span>}
+              </div>
+              <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${section.cols || 25}, minmax(0, 1fr))` }}>
+                {Array.from({ length: (section.cols || 25) * (section.rows || 1) }).map((_, bi) => (
+                  <div key={bi} className="aspect-square border-r border-b border-black last:border-r-0 flex items-center justify-center font-bold text-xs uppercase">
+                    {values[`${section.field}_${bi}`] || ''}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        if (section.type === 'auto_index_table') {
+          // This is a special type for the auto-generated index
+          return (
+            <div key={i} className="my-4">
+              <table className="w-full border-collapse border border-black text-[12px]">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-black px-2 py-2 font-bold text-center w-[10%]">SL. NO.</th>
+                    <th className="border border-black px-4 py-2 font-bold text-left w-[70%]">DESCRIPTION OF DOCUMENTS</th>
+                    <th className="border border-black px-2 py-2 font-bold text-center w-[20%]">PAGE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(values.index_data || []).map((row: any, ri: number) => (
+                    <tr key={ri} className="min-h-[40px]">
+                      <td className="border border-black px-2 py-3 text-center font-medium">{row.sl_no}</td>
+                      <td className="border border-black px-4 py-3 font-bold uppercase tracking-tight">{row.desc}</td>
+                      <td className="border border-black px-2 py-3 text-center font-bold">{row.page}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        return null;
+      })}
     </div>
   );
 }

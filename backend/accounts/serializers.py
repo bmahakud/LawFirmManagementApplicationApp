@@ -80,8 +80,36 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         # Auto-generate username from email or phone if not provided
+        email = data.get('email')
+        phone_number = data.get('phone_number')
+        request = self.context.get('request')
+        current_user = request.user if request else None
+        
         if not data.get('username'):
-            data['username'] = data.get('email') or data.get('phone_number') or ''
+            data['username'] = email or phone_number or ''
+            
+        username = data.get('username')
+        
+        # Check if user already exists
+        existing_user = None
+        if email:
+            existing_user = CustomUser.objects.filter(email=email).first()
+        elif username:
+            existing_user = CustomUser.objects.filter(username=username).first()
+            
+        if existing_user:
+            # If the user is a client, we allow "re-adding" them if they aren't in THIS firm yet
+            if existing_user.user_type == 'client' and current_user and current_user.firm:
+                from .models import UserFirmRole
+                if UserFirmRole.objects.filter(user=existing_user, firm=current_user.firm).exists():
+                    raise serializers.ValidationError({'email': 'This client is already registered in your firm.'})
+                # Otherwise, allow validation to pass so perform_create can link them
+            else:
+                raise serializers.ValidationError({'email': 'A user with this email already exists.'})
+                
+        if phone_number and not existing_user and CustomUser.objects.filter(phone_number=phone_number).exists():
+             raise serializers.ValidationError({'phone_number': 'A user with this phone number already exists.'})
+            
         return data
 
 

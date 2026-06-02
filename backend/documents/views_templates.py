@@ -210,7 +210,7 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
                 default=models.F('template__sequence'),
                 output_field=models.IntegerField()
             )
-        ).order_by('effective_sequence', 'template__name')
+        ).order_by('effective_sequence', '-updated_at')
         
         field_values = filled_form.field_values or {}
         
@@ -219,54 +219,31 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
             if k.startswith(('sl_no_', 'desc_', 'page_')):
                 del field_values[k]
         
-        current_page = 1
-        has_petition_started = False
+        current_page = 2  # Index is page 1, so the next document starts at page 2
         
         for i, form in enumerate(other_forms):
             idx = i + 1
             field_values[f"sl_no_{i}"] = f"{idx:02d}."
             
             name = form.template.name.upper()
-            page_val = ""
             desc = name
             
+            # Special formatting for certain types
             if "SYNOPSIS" in name:
                 desc = "APPENDIX-I\nSYNOPSIS"
-                page_val = "A"
             elif "LIST OF DATES" in name:
                 desc = "APPENDIX-II\nLIST OF DATES & EVENTS"
-                page_val = "B"
             elif "PETITION" in name:
                 desc = name.split('(')[0].strip()
-                # Petition always starts at page 1 as per image 1
-                page_val = "1 to 7" # Default range, can be manual edit later
-                current_page = 8
-                has_petition_started = True
             elif "VAKALATNAMA" in name:
                 desc = "VAKALATNAMA"
-                page_val = "" # Vakalatnama is usually at the end without a page number listed
-            elif "LIST OF DOCUMENTS" in name:
-                desc = "LIST OF DOCUMENTS"
-                # If petition hasn't started yet, these shouldn't show numbers or show A, B?
-                # Usually List of Docs follows the Petition
-                if has_petition_started:
-                    page_val = str(current_page)
-                    current_page += 1
-                else:
-                    page_val = ""
-            else:
-                # Other documents (like Annexures)
-                if has_petition_started:
-                    # Annexures typically have ranges like 8-13, 14-15
-                    # For now we use incremental numbering as a proxy
-                    next_page = current_page + 2 # Assume average 2-3 pages for annexures
-                    page_val = f"{current_page}-{next_page}"
-                    current_page = next_page + 1
-                else:
-                    page_val = ""
-
+            
+            # Direct page mapping based on sequence
             field_values[f"desc_{i}"] = desc
-            field_values[f"page_{i}"] = page_val
+            field_values[f"page_{i}"] = str(current_page)
+            
+            # Simple assumption: 1 document = 1 page for now in the filing pack preview
+            current_page += 1
             
         filled_form.field_values = field_values
         filled_form.save()
@@ -313,6 +290,28 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="Case_{case.case_number}_Filing_Pack.pdf"'
         return response
+
+    @action(detail=False, methods=['get'])
+    def preview_filing_pack(self, request):
+        """
+        Returns the sorted form order and index data for the filing pack preview.
+        This uses the SAME sorting and page counting logic as download_master_pdf,
+        so the preview will always match the downloaded PDF.
+        """
+        case_id = request.query_params.get('case_id')
+        if not case_id:
+            return Response({'error': 'case_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        from cases.models import Case
+        case = get_object_or_404(Case, id=case_id)
+        
+        from .utils_pdf import PDFService
+        preview_data = PDFService.get_preview_data(case)
+        
+        if not preview_data:
+            return Response({'error': 'No documents found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        return Response(preview_data)
     
     @action(detail=True, methods=['post'])
     def share_with_client(self, request, pk=None):

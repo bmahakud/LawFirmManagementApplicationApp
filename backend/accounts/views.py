@@ -112,27 +112,83 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     filterset_fields = ['user_type', 'is_active', 'firm']
     ordering_fields = ['created_at', 'id']
     
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated], url_name='lookup')
+    def lookup(self, request):
+        """Lookup an existing user by email or phone number (for auto-filling)"""
+        email = request.query_params.get('email')
+        phone = request.query_params.get('phone')
+        
+        if not email and not phone:
+            return Response({'error': 'Email or phone is required'}, status=400)
+            
+        filters = Q()
+        if email:
+            filters |= Q(email=email) | Q(username=email)
+        if phone:
+            filters |= Q(phone_number=phone)
+            
+        user = CustomUser.objects.filter(filters).first()
+        
+        if user:
+            return Response({
+                'found': True,
+                'id': str(user.id),
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'user_type': user.user_type,
+                'email': user.email,
+                'phone_number': user.phone_number
+            })
+            
+        return Response({'found': False})
+    
     def get_queryset(self):
         user = self.request.user
         if user.user_type == 'platform_owner':
             return CustomUser.objects.all()
-        elif user.user_type in ['super_admin', 'admin', 'advocate', 'paralegal']:
-            return CustomUser.objects.filter(firm=user.firm)
+        elif user.user_type in ['super_admin', 'admin']:
+            # Collect all firms this admin is a member of
+            managed_firm_ids = user.firm_memberships.values_list('firm_id', flat=True)
+            # Show users who belong via direct firm field OR via a UserFirmRole record
+            return CustomUser.objects.filter(
+                Q(firm__in=managed_firm_ids) | Q(firm_memberships__firm_id__in=managed_firm_ids)
+            ).distinct()
+        elif user.user_type in ['advocate', 'paralegal']:
+            return CustomUser.objects.filter(
+                Q(firm=user.firm) | Q(firm_memberships__firm=user.firm)
+            ).distinct()
         return CustomUser.objects.filter(id=user.id)
 
     def perform_create(self, serializer):
         user = self.request.user
+        email = self.request.data.get('email')
         user_type = self.request.data.get('user_type', 'client')
-        instance = serializer.save(user_type=user_type, firm=user.firm if user.firm else None)
+        
+        # Check if user already exists
+        existing_user = CustomUser.objects.filter(email=email).first()
+        
+        if existing_user and user_type == 'client':
+            # Link existing client to this firm
+            instance = existing_user
+            if user.firm:
+                from .models import UserFirmRole
+                UserFirmRole.objects.get_or_create(
+                    user=instance,
+                    firm=user.firm,
+                    defaults={'user_type': 'client', 'is_last_active': True}
+                )
+        else:
+            # Create new user
+            instance = serializer.save(user_type=user_type, firm=user.firm if user.firm else None)
 
-        # Auto-create Client record when a client user is created
+        # Auto-create Client record when a client user is created/linked
         if user_type == 'client':
             from clients.models import Client as ClientRecord
             advocate = user if user.user_type == 'advocate' else None
             ClientRecord.objects.get_or_create(
                 user_account=instance,
+                firm=user.firm,
                 defaults={
-                    'firm': user.firm,
                     'first_name': instance.first_name,
                     'last_name': instance.last_name,
                     'email': instance.email,
@@ -153,6 +209,30 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         if not self.get_queryset().filter(pk=pk).exists():
             raise DRFPermDenied("You do not have permission to access this resource.")
         return obj
+
+    @action(detail=False, methods=['get', 'patch'], permission_classes=[permissions.IsAuthenticated], url_path='me', url_name='me')
+    def me(self, request):
+        """
+        GET  /api/users/me/  - Return currently authenticated user's profile
+        PATCH /api/users/me/  - Partially update currently authenticated user's profile
+        """
+        user = request.user
+        if request.method == 'GET':
+            serializer = CustomUserSerializer(user, context={'request': request})
+            return Response(serializer.data)
+        elif request.method == 'PATCH':
+            # Restrict which fields are patchable via this endpoint
+            allowed_fields = {
+                'first_name', 'last_name', 'date_of_birth', 'gender',
+                'address_line_1', 'address_line_2', 'city', 'state',
+                'country', 'postal_code', 'profile_image',
+                'hourly_rate', 'consultation_fee', 'case_fee', 'fee_currency',
+            }
+            data = {k: v for k, v in request.data.items() if k in allowed_fields}
+            serializer = CustomUserSerializer(user, data=data, partial=True, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny], url_name='register')
     def register(self, request):
@@ -415,10 +495,15 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            firm = user.firm
+            firm_id = data.get('firm')
+            if firm_id:
+                firm = Firm.objects.filter(id=firm_id).first()
+            else:
+                firm = user.firm
+
             if not firm:
                 return Response(
-                    {'error': 'You must be associated with a firm'},
+                    {'error': 'A firm must be selected or associated with your account.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
@@ -629,39 +714,51 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         email = data.get('email')
         phone_number = data.get('phone_number')
         
-        # Check if user already exists - reject duplicate
-        if CustomUser.objects.filter(email=email).exists():
-            return Response(
-                {'error': 'A user with this email already exists'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Check if user already exists
+        existing_user = CustomUser.objects.filter(Q(email=email) | Q(username=email)).first()
         
-        # Generate a temporary password if not provided
-        temp_password = data.get('password') or ''.join(random.choices(string.ascii_letters + string.digits, k=12))
-        
-        try:
-            new_user = CustomUser.objects.create_user(
-                username=email,
-                email=email,
-                phone_number=phone_number,
-                first_name=data.get('first_name', ''),
-                last_name=data.get('last_name', ''),
-                user_type=user_type_to_add,
-                firm=firm,
-                password=temp_password,
-                password_set=True if data.get('password') else False
-            )
+        if existing_user:
+            # If we are adding a client, allow linking them to this firm even if they exist elsewhere
+            if user_type_to_add == 'client':
+                new_user = existing_user
+                membership, created = UserFirmRole.objects.get_or_create(
+                    user=new_user,
+                    firm=firm,
+                    defaults={'user_type': 'client'}
+                )
+                # Success, continue to client record creation
+            else:
+                return Response(
+                    {'error': 'A user with this email already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            # Generate a temporary password if not provided
+            temp_password = data.get('password') or ''.join(random.choices(string.ascii_letters + string.digits, k=12))
             
-            # Create login credential
-            LoginCredential.objects.create(
-                user=new_user,
-                username=email
-            )
-        except Exception as e:
-            return Response(
-                {'error': f'Error creating user: {str(e)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            try:
+                new_user = CustomUser.objects.create_user(
+                    username=email,
+                    email=email,
+                    phone_number=phone_number,
+                    first_name=data.get('first_name', ''),
+                    last_name=data.get('last_name', ''),
+                    user_type=user_type_to_add,
+                    firm=firm,
+                    password=temp_password,
+                    password_set=True if data.get('password') else False
+                )
+                
+                # Create login credential
+                LoginCredential.objects.create(
+                    user=new_user,
+                    username=email
+                )
+            except Exception as e:
+                return Response(
+                    {'error': f'Error creating user: {str(e)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         
         # Create UserFirmRole mapping (or update if exists) — skip for solo advocates
         branch_id = data.get('branch_id')
@@ -700,16 +797,24 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             if assigned_advocate_id:
                 advocate_obj = CustomUser.objects.filter(id=assigned_advocate_id, user_type='advocate').first()
             
-            ClientRecord.objects.create(
+            # Use get_or_create so re-adding an existing client to a new firm
+            # doesn't raise an IntegrityError on the user_account unique constraint.
+            client_record, _ = ClientRecord.objects.get_or_create(
+                user_account=new_user,
                 firm=firm,
-                first_name=new_user.first_name,
-                last_name=new_user.last_name,
-                email=new_user.email,
-                phone_number=new_user.phone_number or '',
-                brief_summary=data.get('brief_summary', ''),
-                assigned_advocate=advocate_obj,
-                user_account=new_user
+                defaults={
+                    'first_name': new_user.first_name,
+                    'last_name': new_user.last_name,
+                    'email': new_user.email,
+                    'phone_number': new_user.phone_number or '',
+                    'brief_summary': data.get('brief_summary', ''),
+                    'assigned_advocate': advocate_obj,
+                }
             )
+            # Update advocate assignment if provided and the record already existed
+            if advocate_obj and client_record.assigned_advocate != advocate_obj:
+                client_record.assigned_advocate = advocate_obj
+                client_record.save()
         
         # ============================================================================
         # AUTO-ASSIGN PARALEGAL TO ADVOCATE (when advocate adds a paralegal)
@@ -770,7 +875,17 @@ class CustomUserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_name='switch_firm')
     def switch_firm(self, request):
-        """Switch active firm and branch context"""
+        """
+        Switch the authenticated user's active firm context.
+        
+        POST /api/users/switch_firm/
+        Body: { "firm_id": "<uuid>", "branch_id": "<uuid>" (optional) }
+        
+        - Works even if the membership was previously set to is_active=False
+          (re-activates it so the user can resume working in that firm).
+        - An advocate/client can belong to multiple firms; this call updates
+          the 'last active' pointer and syncs CustomUser.firm for backward compat.
+        """
         firm_id = request.data.get('firm_id')
         branch_id = request.data.get('branch_id')
         
@@ -778,40 +893,51 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             return Response({'error': 'firm_id is required'}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            membership = UserFirmRole.objects.get(user=request.user, firm_id=firm_id, is_active=True)
-            
-            # Deactivate all other last_active flags
-            request.user.firm_memberships.update(is_last_active=False)
-            
-            # Activate this one
-            membership.is_last_active = True
-            
-            # Update branch if provided
-            if branch_id:
-
-                try:
-                    branch = Branch.objects.get(id=branch_id, firm_id=firm_id)
-                    membership.branch = branch
-                except Branch.DoesNotExist:
-                    return Response({'error': 'Branch not found in this firm'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            membership.save()
-            
-            # Sync to CustomUser for backward compatibility
-            request.user.firm = membership.firm
-            request.user.user_type = membership.user_type
-            request.user.save()
-            
-            branch_info = f" (Branch: {membership.branch.branch_name})" if membership.branch else ""
-            log_audit(request.user, 'switch_firm', f'Switched active firm to {membership.firm.firm_name}{branch_info}')
-            
-            return Response({
-                'message': f'Switched to {membership.firm.firm_name}{branch_info}',
-                'user': CustomUserSerializer(request.user).data
-            })
-            
+            # Fetch membership regardless of is_active status so the user can
+            # re-activate a previously deactivated membership by switching to it.
+            membership = UserFirmRole.objects.get(user=request.user, firm_id=firm_id)
         except UserFirmRole.DoesNotExist:
-            return Response({'error': 'You are not an active member of this firm'}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {'error': 'You are not a member of this firm. Ask the firm admin to add you first.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Re-activate the membership if it was deactivated
+        if not membership.is_active:
+            membership.is_active = True
+        
+        # Deactivate all other last_active flags
+        request.user.firm_memberships.update(is_last_active=False)
+        
+        # Mark this one as last active
+        membership.is_last_active = True
+        
+        # Update branch if provided
+        if branch_id:
+            try:
+                branch = Branch.objects.get(id=branch_id, firm_id=firm_id)
+                membership.branch = branch
+            except Branch.DoesNotExist:
+                return Response({'error': 'Branch not found in this firm'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        membership.save()
+        
+        # Sync to CustomUser for backward compatibility
+        request.user.firm = membership.firm
+        request.user.user_type = membership.user_type
+        request.user.save()
+        
+        branch_info = f" (Branch: {membership.branch.branch_name})" if membership.branch else ""
+        log_audit(request.user, 'switch_firm', f'Switched active firm to {membership.firm.firm_name}{branch_info}')
+        
+        # Return enriched membership list so the frontend can update the firm switcher
+        all_memberships = UserFirmRoleSerializer(request.user.firm_memberships.all(), many=True).data
+        
+        return Response({
+            'message': f'Switched to {membership.firm.firm_name}{branch_info}',
+            'user': CustomUserSerializer(request.user).data,
+            'available_firms': all_memberships,
+        })
     
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_name='change_password')
     def change_password(self, request):

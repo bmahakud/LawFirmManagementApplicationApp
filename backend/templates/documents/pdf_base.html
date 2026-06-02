@@ -7,30 +7,34 @@
         @page {
             size: a4;
             margin: 1in;
+
+            @frame footer {
+                -pdf-frame-content: footer_content;
+                bottom: 1cm;
+                margin-left: 1in;
+                margin-right: 1in;
+                height: 1cm;
+            }
         }
 
         body {
             font-family: 'Helvetica', 'Arial', sans-serif;
-            font-size: 12pt;
+            font-size: 9pt;
             color: black;
-            line-height: 1.5;
+            line-height: 1.4;
         }
 
-        .doc-header {
+        .header-section {
             text-align: center;
             font-weight: bold;
             text-transform: uppercase;
             font-size: 14pt;
-            margin-bottom: 20px;
+            margin-bottom: 15pt;
         }
 
-        .doc-paragraph {
+        .paragraph-section {
+            margin-bottom: 10pt;
             text-align: justify;
-            margin-bottom: 12pt;
-        }
-
-        .doc-spacer {
-            display: block;
         }
 
         .bold {
@@ -45,82 +49,266 @@
             text-align: center;
         }
 
-        .rich-text p {
-            margin: 0;
-            padding: 0;
+        .right {
+            text-align: right;
         }
 
-        table {
+        /* Table Layouts for Columns (xhtml2pdf doesn't support Flexbox) */
+        .layout-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
+            margin-bottom: 10pt;
+            border: none;
         }
 
-        table,
-        th,
-        td {
-            border: 1px solid black;
-        }
-
-        th,
-        td {
-            padding: 8px;
-            text-align: left;
+        .layout-table td {
+            border: none;
+            padding: 2pt;
             vertical-align: top;
         }
 
-        .signature-section {
-            margin-top: 50px;
-            float: right;
-            width: 250px;
+        /* Grid Tables */
+        .grid-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15pt;
+        }
+
+        .grid-table td {
+            border: 1px solid black;
+            padding: 5pt;
+        }
+
+        .cell-label {
+            font-size: 7pt;
+            font-weight: bold;
+            color: #666;
+            display: block;
+            text-transform: uppercase;
+        }
+
+        .cell-value {
+            font-size: 10pt;
+            font-weight: bold;
+            display: block;
+            padding-left: 5pt;
+        }
+
+        /* Character Boxes */
+        .char-box-container {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .char-box {
+            border: 1px solid black;
+            width: 18pt;
+            height: 18pt;
             text-align: center;
+            font-weight: bold;
+            font-size: 10pt;
+        }
+
+        .char-label-cell {
+            background-color: #f0f0f0;
+            padding: 5pt;
+            width: 120pt;
+            font-size: 8pt;
+            font-weight: bold;
+        }
+
+        /* Two Column Table */
+        .two-col-table {
+            margin: 0 auto;
+            border-collapse: collapse;
+        }
+
+        .two-col-table td {
+            padding: 3pt 10pt;
+            border: none;
+        }
+
+        .bottom-border {
+            border-bottom: 1px solid black !important;
+        }
+
+        /* Signatures */
+        .signature-img {
+            height: 40pt;
+        }
+
+        .signature-line {
+            border-top: 1.5pt solid black;
+            padding-top: 3pt;
+            width: 180pt;
+            text-align: center;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 9pt;
+        }
+
+        .stamp-box {
+            border: 1.5pt solid black;
+            width: 200pt;
+            height: 80pt;
+            text-align: center;
+            vertical-align: middle;
+            color: #ccc;
+            font-weight: bold;
+            font-size: 10pt;
+            margin: 0 auto 15pt auto;
+        }
+
+        .field-span {
+            border-bottom: 1px solid black;
+            font-weight: bold;
+            padding: 0 5pt;
+            display: inline-block;
+            min-width: 50pt;
+        }
+
+        #footer_content {
+            text-align: right;
+            font-size: 9pt;
+            color: #666;
         }
     </style>
 </head>
 
 <body>
-
     {% for section in sections %}
-
     {% if section.type == "header" %}
-    <div class="doc-header">
-        {{ section.content|default:"" }}
+    <div class="header-section"
+        style="{% if section.style.size %}font-size: {{ section.style.size }}pt;{% endif %} {% if section.style.align %}text-align: {{ section.style.align }};{% endif %}">
+        {% resolve_pdf_content section.content values %}
     </div>
 
     {% elif section.type == "paragraph" %}
-    <div class="doc-paragraph">
-        {{ section.content|default:"" }}
+    <div class="paragraph-section"
+        style="{% if section.style.align %}text-align: {{ section.style.align }};{% endif %} {% if section.style.bold %}font-weight: bold;{% endif %} {% if section.style.size %}font-size: {{ section.style.size }}pt;{% endif %}">
+        {% check_pdf_signature section values form as sig_url %}
+        {% if sig_url %}
+        <div style="text-align: {{ section.style.align|default:'left' }}">
+            <img src="{{ sig_url }}" class="signature-img">
+        </div>
+        {% endif %}
+        {% resolve_pdf_content section.content values %}
     </div>
 
     {% elif section.type == "textarea" %}
-    {% with field_name=section.field|default:"document_content" %}
-    <div class="rich-text">
-        {{ values|get_item:field_name|default:""|safe }}
+    <div class="paragraph-section rich-text">
+        {{ values|get_item:section.field|default:""|safe }}
     </div>
-    {% endwith %}
 
     {% elif section.type == "spacer" %}
-    <div style="height: 20px;"></div>
+    <div style="height: {{ section.height|default:20 }}px;"></div>
+
+    {% elif section.type == "form_grid" %}
+    <table class="grid-table">
+        {% for row in section.rows %}
+        <tr>
+            {% for cell in row.cells %}
+            <td
+                style="{% if cell.flex %}width: {{ cell.flex|multiply:33 }}%;{% endif %} {% if cell.background %}background-color: #f9f9f9;{% endif %}">
+                {% if cell.label %}<span class="cell-label">{{ cell.label }}</span>{% endif %}
+                <span class="cell-value">
+                    {% if cell.field %}
+                    {{ values|get_item:cell.field|default:"" }}
+                    {% elif cell.text %}
+                    {{ cell.text }}
+                    {% endif %}
+                </span>
+            </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+
+    {% elif section.type == "grid_row" %}
+    <table class="layout-table">
+        <tr>
+            {% for col in section.columns %}
+            <td style="width: {{ col.flex|default:1|multiply:25 }}%; text-align: {{ col.align|default:'left' }};">
+                {% check_pdf_signature col.prefix values form as col_sig_url %}
+                {% if col_sig_url %}
+                <img src="{{ col_sig_url }}" class="signature-img"><br>
+                {% endif %}
+
+                {% if col.prefix %}<span class="bold">{{ col.prefix }}</span>{% endif %}
+                <span class="field-span">
+                    {% resolve_pdf_content col.content values %}
+                    {% if col.field %}{{ values|get_item:col.field }}{% endif %}
+                </span>
+                {% if col.suffix %}<span class="bold">{{ col.suffix }}</span>{% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+    </table>
+
+    {% elif section.type == "character_boxes" %}
+    <table class="char-box-container">
+        <tr>
+            <td class="char-label-cell">{{ section.label }}</td>
+            {% for i in section.cols|get_range %}
+            <td class="char-box">{{ values|get_char_field:section.field|get_item_at:i|default:"" }}</td>
+            {% endfor %}
+        </tr>
+    </table>
+    <div style="height: 5pt;"></div>
+
+    {% elif section.type == "two_column_table" %}
+    <table class="two-col-table">
+        {% for left in section.left_column %}
+        {% with i=forloop.counter0 %}
+        <tr>
+            <td class="right">{{ left }}</td>
+            <td class="bold bottom-border" style="width: 200pt;">
+                {% resolve_pdf_content section.right_column|get_at:i values|safe %}
+            </td>
+        </tr>
+        {% endwith %}
+        {% endfor %}
+    </table>
+
+    {% elif section.type == "signature_block" %}
+    <div style="margin-top: 20pt; text-align: center;">
+        {% detect_sig_type section.content as sig_type %}
+        {% if sig_type == 'advocate' and form.advocate_signature_image %}
+        <img src="{{ form.advocate_signature_image.path }}" class="signature-img"><br>
+        {% elif sig_type == 'client' and form.client_signature_image %}
+        <img src="{{ form.client_signature_image.path }}" class="signature-img"><br>
+        {% else %}
+        <div style="height: 40pt;"></div>
+        {% endif %}
+        <center>
+            <div class="signature-line">
+                {{ section.content }}
+            </div>
+        </center>
+    </div>
+
+    {% elif section.type == "stamp_box" %}
+    <div class="stamp-box">
+        <br><br>AFFIX STAMP HERE
+    </div>
 
     {% elif section.type == "table" or section.type == "dynamic_table" %}
-    <table>
+    <table class="grid-table">
         <thead>
-            <tr>
+            <tr style="background-color: #eee;">
                 {% for col in section.columns %}
-                <th>{{ col }}</th>
+                <th class="bold center">{% if col.header %}{{ col.header }}{% else %}{{ col }}{% endif %}</th>
                 {% endfor %}
             </tr>
         </thead>
         <tbody>
-            {% for row_idx in section.rows|get_range %}
+            {% for r in section.rows|get_range %}
             <tr>
                 {% for col in section.columns %}
                 <td>
-                    {% with col_idx=forloop.counter0 %}
-                    {% with cell_key="cell_"|add_str:row_idx|add_str:"_"|add_str:col_idx %}
-                    {{ values|get_item:cell_key|default:"" }}
-                    {% endwith %}
-                    {% endwith %}
+                    {% if col.field %}
+                    {% get_dynamic_cell_val values col.field r %}
+                    {% endif %}
                 </td>
                 {% endfor %}
             </tr>
@@ -128,16 +316,28 @@
         </tbody>
     </table>
 
-    {% endif %}
+    {% elif section.type == "auto_index_table" %}
+    <table class="grid-table">
+        <thead>
+            <tr style="background-color: #eee;">
+                <th style="width: 10%;">SL. NO.</th>
+                <th style="width: 70%;">DESCRIPTION OF DOCUMENTS</th>
+                <th style="width: 20%;">PAGE</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in values.index_data %}
+            <tr>
+                <td class="center">{{ row.sl_no }}</td>
+                <td class="bold uppercase">{{ row.desc }}</td>
+                <td class="center bold">{{ row.page }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 
+    {% endif %}
     {% endfor %}
-
-    {% if form.advocate_signed %}
-    <div class="signature-section">
-        <p>Advocate's Signature</p>
-        <p>{{ form.advocate_signature_date|date:"d/m/Y" }}</p>
-    </div>
-    {% endif %}
 
 </body>
 

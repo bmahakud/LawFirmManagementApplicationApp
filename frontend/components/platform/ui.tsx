@@ -309,12 +309,13 @@ export function DocumentHistory({
   );
 }
 
-export function SimpleTabs({ tabs }: { tabs: { label: string; active?: boolean }[] }) {
+export function SimpleTabs({ tabs, onClick }: { tabs: { label: string; active?: boolean }[]; onClick?: (label: string) => void }) {
   return (
     <div className="flex gap-4 border-b border-gray-100 pb-2">
       {tabs.map((tab) => (
         <button
           key={tab.label}
+          onClick={() => onClick?.(tab.label)}
           className={classNames(
             'px-1 py-2 text-sm font-semibold transition-colors',
             tab.active
@@ -498,7 +499,7 @@ export function PhoneInput({
         <span className="text-base">🇮🇳</span>
         <span className="text-xs font-bold text-gray-400">+91</span>
       </div>
-      
+
       <input
         type="text"
         value={value}

@@ -16,7 +16,7 @@ class Command(BaseCommand):
                 'name': 'BLANK A4 DRAFTING PAPER',
                 'description': 'A blank A4 sheet for custom drafting from scratch',
                 'category': 'drafting',
-                'sequence': 0,
+                'sequence': 10,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -46,7 +46,7 @@ class Command(BaseCommand):
                 'name': 'SYNOPSIS (Orissa High Court)',
                 'description': 'Appendix-I Synopsis for Criminal Miscellaneous documents',
                 'category': 'drafting',
-                'sequence': 5,
+                'sequence': 2,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -114,7 +114,7 @@ class Command(BaseCommand):
                 'name': 'LIST OF DATES & EVENTS (Orissa High Court)',
                 'description': 'Appendix-II List of Dates and Events',
                 'category': 'drafting',
-                'sequence': 10,
+                'sequence': 3,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -156,7 +156,7 @@ class Command(BaseCommand):
                 'name': 'ABLAPL PETITION (Orissa High Court)',
                 'description': 'Anticipatory Bail Application (ABLAPL) Petition',
                 'category': 'drafting',
-                'sequence': 20,
+                'sequence': 4,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -240,7 +240,7 @@ class Command(BaseCommand):
                 'name': 'ANNEXURE (Generic Cover Page)',
                 'description': 'Generic cover page for an annexure (FIR, Orders, Evidence, etc.)',
                 'category': 'drafting',
-                'sequence': 30,
+                'sequence': 5,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -393,7 +393,8 @@ class Command(BaseCommand):
             {
                 'name': 'Form No 45 Bail Bond',
                 'description': 'Standard bail bond form as per Form No. 45',
-                'category': 'bail_bond',
+                'category': 'drafting',
+                'sequence': 7,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -505,7 +506,7 @@ class Command(BaseCommand):
                 'name': 'Vakalatnama',
                 'description': 'Standard Power of Attorney (Vakalatnama) for Court Representation',
                 'category': 'drafting',
-                'sequence': 100,
+                'sequence': 11,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -644,6 +645,9 @@ class Command(BaseCommand):
                             'type': 'spacer', 'height': 50
                         },
                         {
+                            'type': 'page_break'
+                        },
+                        {
                             'type': 'grid_row',
                             'columns': [
                                 {'prefix': 'Advocate', 'field': 'advocate_signature', 'flex': 1},
@@ -662,7 +666,8 @@ class Command(BaseCommand):
             {
                 'name': 'Memorandum of Appearance',
                 'description': 'Standard Memorandum of Appearance for Advocates',
-                'category': 'other',
+                'category': 'drafting',
+                'sequence': 9,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 80, 'right': 60, 'bottom': 60, 'left': 60},
@@ -772,7 +777,8 @@ class Command(BaseCommand):
             {
                 'name': 'Address Form',
                 'description': 'Standard Address Form for Court Service',
-                'category': 'other',
+                'category': 'drafting',
+                'sequence': 6,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -870,7 +876,8 @@ class Command(BaseCommand):
             {
                 'name': 'Index Form',
                 'description': 'Index list for documents filed in court',
-                'category': 'other',
+                'category': 'drafting',
+                'sequence': 2,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -1023,7 +1030,8 @@ class Command(BaseCommand):
             {
                 'name': 'Process Fee',
                 'description': 'Standard Process Fee (P.F.) Form with Table and Acknowledgement',
-                'category': 'other',
+                'category': 'drafting',
+                'sequence': 70,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -1143,7 +1151,8 @@ class Command(BaseCommand):
             {
                 'name': 'Surety Bond',
                 'description': 'Standard Surety Bond for Court Guarantee',
-                'category': 'surety_bond',
+                'category': 'drafting',
+                'sequence': 55,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -1211,7 +1220,8 @@ class Command(BaseCommand):
             {
                 'name': 'Inspection Form',
                 'description': 'Standard Application for Inspection of Court File',
-                'category': 'application',
+                'category': 'drafting',
+                'sequence': 8,
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -1362,7 +1372,7 @@ class Command(BaseCommand):
             {
                 'name': 'Litigant Form',
                 'description': 'Mobile-Email Details Collection Form for Litigants',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -1504,7 +1514,7 @@ class Command(BaseCommand):
             {
                 'name': 'Filing Form',
                 'description': 'Standard Civil Case Filing Form for Court Registrations',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -1718,7 +1728,7 @@ class Command(BaseCommand):
             {
                 'name': 'Advocate Form',
                 'description': 'Advocate Registration and Information Form',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -1860,7 +1870,7 @@ class Command(BaseCommand):
             {
                 'name': 'Check-list',
                 'description': 'Court Case Filing Check-list',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -1958,7 +1968,7 @@ class Command(BaseCommand):
             {
                 'name': 'Bail Bond Form',
                 'description': 'Standard Bail Bond for Attendance before Police or Court',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 72, 'right': 72, 'bottom': 72, 'left': 72},
@@ -2046,7 +2056,7 @@ class Command(BaseCommand):
             {
                 'name': 'CA Form 7',
                 'description': 'FORM C.A.I. (RULE) Application for Certified Copy',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 40, 'right': 40, 'bottom': 40, 'left': 40},
@@ -2137,7 +2147,7 @@ class Command(BaseCommand):
             {
                 'name': 'NI Act Check List',
                 'description': 'Check List for Sec 138 NI Act Matters',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -2222,7 +2232,7 @@ class Command(BaseCommand):
             {
                 'name': 'E-Court Fee Form',
                 'description': 'SHCIL e-Court fee Receipt Application Form and Receipt',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 30, 'right': 30, 'bottom': 30, 'left': 30},
@@ -2360,7 +2370,7 @@ class Command(BaseCommand):
             {
                 'name': 'Personal Bail Bond',
                 'description': 'Bail Bond U/S 437-A Cr.P.C. with Affidavit (2 Pages)',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -2547,7 +2557,7 @@ class Command(BaseCommand):
             {
                 'name': 'Case Information Format',
                 'description': 'Main Case Information and Extra Party Information Form (2 Pages)',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 40, 'right': 40, 'bottom': 40, 'left': 40},
@@ -2617,6 +2627,9 @@ class Command(BaseCommand):
                                 {'cells': [{'text': '11.', 'flex': 0.1}, {'label': 'Police Station', 'field': 'ps_name_info', 'flex': 2}]},
                                 {'cells': [{'text': '12.', 'flex': 0.1}, {'label': 'F.I.R. NO. and Year', 'field': 'fir_no_year', 'flex': 2}]}
                             ]
+                        },
+                        {
+                            'type': 'page_break'
                         },
                         {
                             'type': 'header',
@@ -2693,6 +2706,9 @@ class Command(BaseCommand):
                         },
                         {
                             'type': 'spacer', 'height': 40
+                        },
+                        {
+                            'type': 'page_break'
                         },
                         {
                             'type': 'header',
@@ -2794,7 +2810,7 @@ class Command(BaseCommand):
             {
                 'name': 'Advocate Details Form',
                 'description': 'Mobile-Email Details Collection Form for Advocates',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
@@ -2907,7 +2923,7 @@ class Command(BaseCommand):
             {
                 'name': 'Commercial Court Mediation Forms',
                 'description': 'Schedule I Forms 1-6 for Pre-Institution Mediation (5 Pages)',
-                'category': 'other',
+                'category': 'drafting',
                 'content_structure': {
                     'page_size': 'A4',
                     'margins': {'top': 50, 'right': 50, 'bottom': 50, 'left': 50},
