@@ -1,0 +1,131 @@
+        # Prepare Index Data
+        index_data = []
+        front_letters = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        front_idx = 0
+        
+        # Determine index form
+        index_form = next((f for f in all_forms if 'INDEX' in f.template.name.upper()), None)
+        
+        # Prepare for merging
+        rendered_docs = []
+        page_labels = [] 
+        sl_no = 2
+        body_page = 2
+        
+        # 1. Handle Index
+        index_data.append({
+            'sl_no': '01',
+            'desc': 'INDEX OF DOCUMENTS',
+            'page': '1'
+        })
+        page_labels.append("1")
+        
+        # 2. Process all other forms
+        for form in all_forms:
+            if index_form and form.id == index_form.id:
+                continue
+                
+            name = form.template.name.upper()
+            is_front = any(kw in name for kw in ['INDEX', 'SYNOPSIS', 'LIST OF DATES'])
+            
+            pdf_bytes = PDFService.render_to_pdf(form)
+            if not pdf_bytes:
+                continue
+                
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            num_pages = len(reader.pages)
+            
+            # Label for Index
+            page_label = ""
+            if is_front:
+                page_label = front_letters[front_idx]
+                if num_pages > 1:
+                    page_label = f"{front_letters[front_idx]} TO {front_letters[front_idx + num_pages - 1]}"
+            else:
+                page_label = str(body_page)
+                if num_pages > 1:
+                    page_label = f"{body_page} TO {body_page + num_pages - 1}"
+            
+            # Record individual page labels for the overlay
+            for p_idx in range(num_pages):
+                if is_front:
+                    page_labels.append(front_letters[front_idx + p_idx])
+                else:
+                    page_labels.append(str(body_page + p_idx))
+            
+            if is_front:
+                front_idx += num_pages
+            else:
+                body_page += num_pages
+                
+            index_data.append({
+                'sl_no': f"{sl_no:02d}",
+                'desc': form.template.name.upper(),
+                'page': page_label
+            })
+            sl_no += 1
+            rendered_docs.append(pdf_bytes)
+
+        # GENERATE FINAL INDEX PDF
+        index_form_obj = index_form if index_form else all_forms[0]
+        from documents.models_templates import CourtFormTemplate
+        index_template = CourtFormTemplate.objects.filter(name__icontains='INDEX').first()
+        
+        index_pdf_bytes = PDFService.render_to_pdf(index_form_obj, override_values={
+            'index_data': index_data
+        }, override_template=index_template)
+
+        # FINAL MERGE
+        final_writer = PdfWriter()
+        if index_pdf_bytes:
+            idx_reader = PdfReader(io.BytesIO(index_pdf_bytes))
+            for p in idx_reader.pages:
+                final_writer.add_page(p)
+        
+        for doc_bytes in rendered_docs:
+            reader = PdfReader(io.BytesIO(doc_bytes))
+            for p in reader.pages:
+                final_writer.add_page(p)
+                 
+        output_intermediate = io.BytesIO()
+        final_writer.write(output_intermediate)
+        output_intermediate.seek(0)
+        
+        final_reader = PdfReader(output_intermediate)
+        numbered_writer = PdfWriter()
+        
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import A4
+        
+        for i, page in enumerate(final_reader.pages):
+            packet = io.BytesIO()
+            can = canvas.Canvas(packet, pagesize=A4)
+            
+            # Match frontend style: Bordered box at top right
+            box_w, box_h = 45, 35
+            x, y = A4[0] - 72 - box_w, A4[1] - 35 - box_h
+            
+            # Draw box border
+            can.setStrokeColorRGB(0, 0, 0)
+            can.setLineWidth(1)
+            can.rect(x, y, box_w, box_h, stroke=1, fill=0)
+            
+            # "PAGE" text
+            can.setFont("Helvetica-Bold", 7)
+            can.drawCentredString(x + box_w/2, y + box_h - 10, "PAGE")
+            
+            # Page label (Letter or Number)
+            label = page_labels[i] if i < len(page_labels) else str(i + 1)
+            can.setFont("Helvetica-Bold", 14)
+            can.drawCentredString(x + box_w/2, y + 8, str(label).upper())
+            
+            can.save()
+            packet.seek(0)
+            
+            overlay = PdfReader(packet).pages[0]
+            page.merge_page(overlay)
+            numbered_writer.add_page(page)
+
+        final_output = io.BytesIO()
+        numbered_writer.write(final_output)
+        return final_output.getvalue()

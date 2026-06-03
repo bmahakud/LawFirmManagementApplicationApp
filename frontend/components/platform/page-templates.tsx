@@ -2964,7 +2964,7 @@ export function DraftsPage({ accent, roleTitle, approvalMode, viewBase }: Accent
                       <div className="absolute -top-6 left-0 text-xs text-gray-500 font-bold uppercase tracking-widest">
                         {String(pageIdx + 1).padStart(2, '0')}. {form.template_name}
                       </div>
-                      <div className="bg-white shadow-2xl relative overflow-hidden" style={{ width: '794px', height: '1123px', padding: '72px' }}>
+                      <div className="bg-white shadow-2xl relative" style={{ width: '794px', minHeight: '1123px', padding: '72px' }}>
                         <div className="absolute top-10 right-10 flex flex-col items-end">
                           <div className="border border-black bg-white px-2.5 py-1.5 flex flex-col items-center min-w-[50px] shadow-sm">
                             <span className="text-[10px] font-black text-gray-500 leading-none mb-1">PAGE</span>
@@ -3025,7 +3025,7 @@ function FilingPackFormPreview({ form }: { form: any }) {
       // Handle simple markdown bold **text** and underline __text__
       const val = part.val || '';
       const subParts = val.split(/(\*\*[^*]+\*\*|__[^*]+__)/g);
-      return subParts.map((sub, j) => {
+      return subParts.map((sub: string, j: number) => {
         if (sub.startsWith('**') && sub.endsWith('**')) {
           return <strong key={`${i}-${j}`}>{sub.slice(2, -2)}</strong>;
         }
@@ -3072,8 +3072,8 @@ function FilingPackFormPreview({ form }: { form: any }) {
         if (section.type === 'paragraph') {
           const pLower = (section.content || '').toLowerCase();
           const isPSign = pLower.includes('signature') || pLower.includes('hand of') || pLower.includes('yours faithfully');
-          const pAdvSign = isPSign && (pLower.includes('advocate') || pLower.includes('counsel'));
-          const pCliSign = isPSign && (pLower.includes('client') || pLower.includes('deponent') || pLower.includes('party'));
+          const pAdvSign = isPSign && (pLower.includes('advocate') || pLower.includes('counsel') || pLower.includes('mediator') || pLower.includes('authority'));
+          const pCliSign = isPSign && (pLower.includes('client') || pLower.includes('deponent') || pLower.includes('party') || pLower.includes('applicant') || pLower.includes('accused'));
           const pSigImg = pAdvSign ? form.advocate_signature_image : pCliSign ? form.client_signature_image : null;
 
           return (
@@ -3109,9 +3109,9 @@ function FilingPackFormPreview({ form }: { form: any }) {
             <div key={i} className="flex gap-4 mb-4 py-1" style={st.border ? { border: '1px solid black', padding: '8px' } : {}}>
               {section.columns.map((col: any, ci: number) => {
                 const colPrefixLower = (col.prefix || '').toLowerCase();
-                const isColSign = colPrefixLower.includes('signature') || colPrefixLower.includes('advocate') || colPrefixLower.includes('client');
-                const colAdvSign = isColSign && (colPrefixLower.includes('advocate') || colPrefixLower.includes('counsel'));
-                const colCliSign = isColSign && (colPrefixLower.includes('client') || colPrefixLower.includes('party') || colPrefixLower.includes('deponent'));
+                const isColSign = colPrefixLower.includes('signature') || colPrefixLower.includes('advocate') || colPrefixLower.includes('client') || colPrefixLower.includes('applicant');
+                const colAdvSign = isColSign && (colPrefixLower.includes('advocate') || colPrefixLower.includes('counsel') || colPrefixLower.includes('mediator') || colPrefixLower.includes('authority'));
+                const colCliSign = isColSign && (colPrefixLower.includes('client') || colPrefixLower.includes('party') || colPrefixLower.includes('deponent') || colPrefixLower.includes('applicant') || colPrefixLower.includes('accused'));
                 const colSigImg = colAdvSign ? form.advocate_signature_image : colCliSign ? form.client_signature_image : null;
 
                 return (
@@ -3260,8 +3260,8 @@ function FilingPackFormPreview({ form }: { form: any }) {
 
         if (section.type === 'signature_block') {
           const sigLower = (section.content || '').toLowerCase();
-          const isAdvocateSig = sigLower.includes('advocate') || sigLower.includes('mediator') || sigLower.includes('counsel');
-          const isClientSig = sigLower.includes('client') || sigLower.includes('applicant') || sigLower.includes('party') || sigLower.includes('deponent');
+          const isAdvocateSig = sigLower.includes('advocate') || sigLower.includes('mediator') || sigLower.includes('counsel') || sigLower.includes('authority');
+          const isClientSig = sigLower.includes('client') || sigLower.includes('applicant') || sigLower.includes('party') || sigLower.includes('deponent') || sigLower.includes('accused');
           const sigImg = isAdvocateSig ? form.advocate_signature_image : isClientSig ? form.client_signature_image : null;
 
           return (

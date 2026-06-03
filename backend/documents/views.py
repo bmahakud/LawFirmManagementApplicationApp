@@ -93,9 +93,10 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         if user.user_type in ['super_admin', 'admin', 'advocate', 'paralegal']:
             firm = user.firm  # Can be None for solo advocates
         elif user.user_type == 'client':
-            # Try to get firm from client profile
-            if hasattr(user, 'client_profile') and user.client_profile:
-                firm = user.client_profile.firm  # Can be None if client's advocate is solo
+            # Try to get firm from client profiles
+            client_profile = user.client_profiles.first()
+            if client_profile:
+                firm = client_profile.firm  # Can be None if client's advocate is solo
             # Fallback: try to get from user's firm field
             elif user.firm:
                 firm = user.firm
@@ -105,8 +106,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         # Auto-assign client if user is a client
         client = None
         if user.user_type == 'client':
-            if hasattr(user, 'client_profile') and user.client_profile:
-                client = user.client_profile
+            client = user.client_profiles.first()
         
         # Determine verification status
         # Documents uploaded by advocates/admins are auto-verified
@@ -263,8 +263,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 has_permission = case.solo_advocate == user
         elif user.user_type == 'client':
             # Clients can see their own cases
-            if hasattr(user, 'client_profile') and user.client_profile:
-                has_permission = case.client == user.client_profile
+            # Use filter().exists() to check if the case's client matches any of the user's profiles
+            has_permission = user.client_profiles.filter(id=case.client_id).exists()
         
         if not has_permission:
             raise PermissionDenied("You do not have permission to access this case.")
@@ -357,17 +357,17 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             # Advocate can only see client documents if client is assigned to them
             if target_user.user_type == 'client':
                 # Check if this client is assigned to the advocate
-                if hasattr(target_user, 'client_profile'):
-                    client = target_user.client_profile
-                    # Check if advocate has any cases with this client OR client is directly assigned
+                client_profiles = target_user.client_profiles.all()
+                if client_profiles.exists():
+                    # Check if advocate has any cases with these client profiles OR any profile is directly assigned
                     from cases.models import Case
                     has_case = Case.objects.filter(
-                        client=client,
+                        client__in=client_profiles,
                         assigned_advocate=user
                     ).exists()
                     
-                    # Also check if client is directly assigned to this advocate
-                    is_assigned = client.assigned_advocate == user
+                    # Also check if any client profile is directly assigned to this advocate
+                    is_assigned = client_profiles.filter(assigned_advocate=user).exists()
                     
                     if not (has_case or is_assigned):
                         raise PermissionDenied("You can only view documents of clients assigned to you.")

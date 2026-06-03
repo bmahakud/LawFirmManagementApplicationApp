@@ -94,8 +94,9 @@ class CaseDocumentChecklistItemViewSet(viewsets.ModelViewSet):
             elif user.user_type == 'advocate':
                 queryset = queryset.filter(case__solo_advocate=user)
             elif user.user_type == 'client':
-                if hasattr(user, 'client_profile'):
-                    queryset = queryset.filter(case__client=user.client_profile)
+                client_profiles = user.client_profiles.all()
+                if client_profiles.exists():
+                    queryset = queryset.filter(case__client__in=client_profiles)
                 else:
                     queryset = queryset.none()
             else:
@@ -345,8 +346,9 @@ class LegalNoticeViewSet(viewsets.ModelViewSet):
             elif user.user_type == 'advocate':
                 queryset = queryset.filter(case__solo_advocate=user)
             elif user.user_type == 'client':
-                if hasattr(user, 'client_profile'):
-                    queryset = queryset.filter(case__client=user.client_profile)
+                client_profiles = user.client_profiles.all()
+                if client_profiles.exists():
+                    queryset = queryset.filter(case__client__in=client_profiles)
                 else:
                     queryset = queryset.none()
             else:

@@ -530,10 +530,12 @@ export function AadharInput({
   value,
   onChange,
   className,
+  disabled,
 }: {
   value: string;
   onChange: (val: string) => void;
   className?: string;
+  disabled?: boolean;
 }) {
   const handleFormat = (val: string) => {
     // Keep only digits
@@ -551,9 +553,11 @@ export function AadharInput({
         value={value}
         onChange={(e) => handleFormat(e.target.value)}
         placeholder="XXXX XXXX XXXX"
+        disabled={disabled}
         maxLength={14} // 12 digits + 2 spaces
         className={classNames(
           "h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm text-gray-800 font-semibold outline-none focus:bg-white focus:border-[#0e2340] focus:ring-4 focus:ring-[#0e2340]/5 transition-all shadow-sm shadow-[#0e2340]/[0.02] text-black",
+          disabled ? "opacity-70 cursor-not-allowed bg-gray-100" : "",
           className
         )}
       />
@@ -565,10 +569,12 @@ export function PANInput({
   value,
   onChange,
   className,
+  disabled,
 }: {
   value: string;
   onChange: (val: string) => void;
   className?: string;
+  disabled?: boolean;
 }) {
   const handleFormat = (val: string) => {
     const uppercase = val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
@@ -583,9 +589,11 @@ export function PANInput({
         value={value}
         onChange={(e) => handleFormat(e.target.value)}
         placeholder="ABCDE1234F"
+        disabled={disabled}
         maxLength={10}
         className={classNames(
           "h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm text-gray-800 font-semibold outline-none focus:bg-white focus:border-[#0e2340] focus:ring-4 focus:ring-[#0e2340]/5 transition-all shadow-sm shadow-[#0e2340]/[0.02] text-black",
+          disabled ? "opacity-70 cursor-not-allowed bg-gray-100" : "",
           className
         )}
       />

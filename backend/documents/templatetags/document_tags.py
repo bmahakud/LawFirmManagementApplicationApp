@@ -94,16 +94,16 @@ def resolve_pdf_content(content, values):
 def check_pdf_signature(section_or_content, values, form):
     content = ""
     if isinstance(section_or_content, dict):
-        content = section_or_content.get('content', '').lower()
+        content = section_or_content.get('content', '').lower() or section_or_content.get('prefix', '').lower()
     else:
         content = str(section_or_content).lower()
         
-    is_sig = any(kw in content for kw in ['signature', 'hand of', 'yours faithfully'])
+    is_sig = any(kw in content for kw in ['signature', 'hand of', 'yours faithfully', 'advocate', 'client', 'applicant', 'counsel', 'mediator', 'authority', 'deponent', 'party'])
     if not is_sig:
         return None
         
-    is_adv = any(kw in content for kw in ['advocate', 'counsel', 'mediator'])
-    is_cli = any(kw in content for kw in ['client', 'deponent', 'party', 'applicant'])
+    is_adv = any(kw in content for kw in ['advocate', 'counsel', 'mediator', 'authority'])
+    is_cli = any(kw in content for kw in ['client', 'deponent', 'party', 'applicant', 'accused'])
     
     if is_adv and form.advocate_signature_image:
         return form.advocate_signature_image.path
