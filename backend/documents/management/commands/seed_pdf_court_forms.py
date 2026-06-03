@@ -81,24 +81,86 @@ class Command(BaseCommand):
                             'style': {'align': 'justify', 'line_height': 1.8, 'size': 13}
                         },
                         {
-                            'type': 'spacer', 'height': 100
+                            'type': 'spacer', 'height': 60
                         },
                         {
                             'type': 'grid_row',
                             'columns': [
                                 {
-                                    'prefix': 'CUTTACK\nDATE: _____._____.2026', 
-                                    'field': 'place_date', 
+                                    'prefix': 'PLACE:', 
+                                    'field': 'place',
                                     'flex': 1
                                 },
                                 {
-                                    'prefix': '(AMULYA RATNA PANDA)\nEn.No.O-612/2008\nPh.No.9438173166\nADVOCATE\nFOR THE PETITIONER', 
-                                    'field': 'advocate_signature', 
-                                    'flex': 1, 
+                                    'prefix': 'DATE:', 
+                                    'field': 'date',
+                                    'flex': 1
+                                }
+                            ],
+                            'style': {'bold': False, 'size': 10}
+                        },
+                        {
+                            'type': 'spacer', 'height': 30
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {
+                                    'flex': 1
+                                },
+                                {
+                                    'prefix': 'Advocate Name:', 
+                                    'field': 'advocate_name',
+                                    'flex': 2,
                                     'align': 'center'
                                 }
                             ],
-                            'style': {'bold': True, 'size': 11}
+                            'style': {'bold': False, 'size': 10}
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {
+                                    'flex': 1
+                                },
+                                {
+                                    'prefix': 'En. No.:', 
+                                    'field': 'enrollment_number',
+                                    'flex': 2,
+                                    'align': 'center'
+                                }
+                            ],
+                            'style': {'bold': False, 'size': 10}
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {
+                                    'flex': 1
+                                },
+                                {
+                                    'prefix': 'Ph. No.:', 
+                                    'field': 'phone_number',
+                                    'flex': 2,
+                                    'align': 'center'
+                                }
+                            ],
+                            'style': {'bold': False, 'size': 10}
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {
+                                    'flex': 1
+                                },
+                                {
+                                    'prefix': 'Designation:', 
+                                    'field': 'advocate_designation',
+                                    'flex': 2,
+                                    'align': 'center'
+                                }
+                            ],
+                            'style': {'bold': False, 'size': 10}
                         }
                     ]
                 },
@@ -370,14 +432,57 @@ class Command(BaseCommand):
                             'type': 'grid_row',
                             'columns': [
                                 {
-                                    'prefix': 'CUTTACK\nDATE: _____._____.2026', 
-                                    'field': 'place_date', 
+                                    'prefix': 'PLACE:',
+                                    'field': 'place',
                                     'flex': 1
                                 },
                                 {
-                                    'prefix': '(AMULYA RATNA PANDA)\nEn.No.O-612/2008\nPh.No.9438173166\nADVOCATE\nFOR THE PETITIONER', 
-                                    'field': 'advocate_signature', 
-                                    'flex': 1, 
+                                    'prefix': 'Advocate Name:',
+                                    'field': 'advocate_name',
+                                    'flex': 1,
+                                    'align': 'center'
+                                }
+                            ],
+                            'style': {'bold': True, 'size': 11}
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {
+                                    'prefix': 'DATE:',
+                                    'field': 'date',
+                                    'flex': 1
+                                },
+                                {
+                                    'prefix': 'En.No.:',
+                                    'field': 'enrollment_number',
+                                    'flex': 1,
+                                    'align': 'center'
+                                }
+                            ],
+                            'style': {'bold': True, 'size': 11}
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {'flex': 1},
+                                {
+                                    'prefix': 'Ph.No.:',
+                                    'field': 'phone_number',
+                                    'flex': 1,
+                                    'align': 'center'
+                                }
+                            ],
+                            'style': {'bold': True, 'size': 11}
+                        },
+                        {
+                            'type': 'grid_row',
+                            'columns': [
+                                {'flex': 1},
+                                {
+                                    'prefix': 'Designation:',
+                                    'field': 'advocate_designation',
+                                    'flex': 1,
                                     'align': 'center'
                                 }
                             ],

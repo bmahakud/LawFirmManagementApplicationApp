@@ -34,9 +34,10 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
         
         if user.user_type == 'client':
             # Clients see requests for their cases
-            if hasattr(user, 'client_profile') and user.client_profile:
+            client_profiles = user.client_profiles.all()
+            if client_profiles.exists():
                 return CaseDocumentRequest.objects.filter(
-                    case__client=user.client_profile
+                    case__client__in=client_profiles
                 )
             return CaseDocumentRequest.objects.none()
         
@@ -145,14 +146,15 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        if not hasattr(user, 'client_profile') or not user.client_profile:
+        client_profiles = user.client_profiles.all()
+        if not client_profiles.exists():
             return Response(
                 {'error': 'Client profile not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
         
         queryset = CaseDocumentRequest.objects.filter(
-            case__client=user.client_profile
+            case__client__in=client_profiles
         )
         
         # Apply status filter
@@ -326,9 +328,10 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
         user = request.user
         
         if user.user_type == 'client':
-            if hasattr(user, 'client_profile') and user.client_profile:
+            client_profiles = user.client_profiles.all()
+            if client_profiles.exists():
                 count = CaseDocumentRequest.objects.filter(
-                    case__client=user.client_profile,
+                    case__client__in=client_profiles,
                     status='pending'
                 ).count()
             else:

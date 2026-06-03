@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { customFetch } from '@/lib/fetch';
 import { API, API_BASE_URL } from '@/lib/api';
 import {
@@ -58,6 +58,161 @@ type Props = {
   initialFormId?: string | null;
   newBlank?: boolean;
 };
+
+// Internal component for the rich text drafting area
+function DraftingArea({
+  fieldName,
+  initialValue,
+  isEditing,
+  style,
+  onSync
+}: {
+  fieldName: string;
+  initialValue: string;
+  isEditing: boolean;
+  style: any;
+  onSync: (value: string) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [activeStyles, setActiveStyles] = useState({
+    bold: false,
+    underline: false,
+    justifyLeft: true,
+    justifyCenter: false,
+    justifyRight: false
+  });
+
+  // Set initial content only once when component mounts or when template changes
+  useEffect(() => {
+    if (editorRef.current && initialValue !== undefined) {
+      // Only update if current content is significantly different (to avoid clearing cursor)
+      // or if it's the very first load
+      if (editorRef.current.innerHTML !== initialValue) {
+        editorRef.current.innerHTML = initialValue || (isEditing ? '<div><br></div>' : '');
+      }
+    }
+  }, [fieldName]); // Re-run if we switch to a different field, but not on every initialValue change
+
+  const updateActiveStyles = () => {
+    if (!isEditing) return;
+    setActiveStyles({
+      bold: document.queryCommandState('bold'),
+      underline: document.queryCommandState('underline'),
+      justifyLeft: document.queryCommandState('justifyLeft'),
+      justifyCenter: document.queryCommandState('justifyCenter'),
+      justifyRight: document.queryCommandState('justifyRight')
+    });
+  };
+
+  const handleExecCommand = (command: string, value: string | undefined = undefined) => {
+    if (!isEditing || !editorRef.current) return;
+
+    editorRef.current.focus();
+    document.execCommand(command, false, value);
+    updateActiveStyles();
+
+    // Sync with parent state
+    onSync(editorRef.current.innerHTML);
+  };
+
+  const buttonClass = (isActive: boolean, color: string = 'purple') => `
+    w-10 h-10 flex items-center justify-center rounded transition-all duration-200
+    ${isActive
+      ? `bg-${color}-100 border-2 border-${color}-500 text-${color}-700 shadow-sm scale-105`
+      : 'bg-white border border-gray-200 text-gray-900 hover:bg-gray-50 hover:border-gray-300'}
+    font-bold
+  `;
+
+  return (
+    <div className="w-full my-4 group">
+      {isEditing && (
+        <div className="flex gap-2 mb-2 p-2 bg-gray-50 border border-gray-200 rounded-xl flex-wrap items-center shadow-sm sticky top-0 z-20">
+          <button
+            onMouseDown={(e) => { e.preventDefault(); handleExecCommand('bold'); }}
+            className={buttonClass(activeStyles.bold)}
+            title="Bold (Ctrl+B)"
+          >
+            B
+          </button>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); handleExecCommand('underline'); }}
+            className={buttonClass(activeStyles.underline)}
+            title="Underline (Ctrl+U)"
+          >
+            U
+          </button>
+
+          <div className="w-px h-6 bg-gray-300 mx-1" />
+
+          <button
+            onMouseDown={(e) => { e.preventDefault(); handleExecCommand('justifyLeft'); }}
+            className={buttonClass(activeStyles.justifyLeft, 'blue')}
+            title="Align Left"
+          >
+            L
+          </button>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); handleExecCommand('justifyCenter'); }}
+            className={buttonClass(activeStyles.justifyCenter, 'blue')}
+            title="Align Center"
+          >
+            C
+          </button>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); handleExecCommand('justifyRight'); }}
+            className={buttonClass(activeStyles.justifyRight, 'blue')}
+            title="Align Right"
+          >
+            R
+          </button>
+
+          <div className="w-px h-6 bg-gray-300 mx-1" />
+
+          <button
+            onMouseDown={(e) => { e.preventDefault(); handleExecCommand('removeFormat'); }}
+            className="px-3 h-10 flex items-center justify-center rounded text-xs text-gray-600 border border-gray-200 bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all font-bold"
+            title="Clear Formatting"
+          >
+            Clear
+          </button>
+
+          <span className="text-[10px] text-gray-400 ml-auto uppercase font-bold tracking-widest hidden sm:inline-block">Format</span>
+        </div>
+      )}
+
+      <div
+        ref={editorRef}
+        id={`editor_${fieldName}`}
+        contentEditable={isEditing}
+        onInput={() => {
+          if (isEditing && editorRef.current) {
+            onSync(editorRef.current.innerHTML);
+          }
+        }}
+        onKeyUp={(e) => {
+          if (isEditing && editorRef.current) {
+            onSync(editorRef.current.innerHTML);
+            updateActiveStyles();
+          }
+        }}
+        onMouseUp={() => isEditing && updateActiveStyles()}
+        onBlur={() => {
+          if (isEditing && editorRef.current) {
+            onSync(editorRef.current.innerHTML);
+          }
+        }}
+        onSelect={() => isEditing && updateActiveStyles()}
+        className={`w-full p-10 outline-none bg-white text-gray-900 ${isEditing ? 'border border-gray-200 shadow-inner' : 'border-none'} rounded-lg mt-2 font-normal whitespace-normal overflow-auto`}
+        style={{
+          fontSize: style.size ? `${style.size + 2}px` : '18px',
+          lineHeight: style.line_height || 1.8,
+          textAlign: style.align || 'justify' as any,
+          minHeight: '842px',
+        }}
+      />
+    </div>
+  );
+}
 
 export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#4a1c40', categoryFilter, initialFormId, newBlank }: Props) {
   const [view, setView] = useState<'list' | 'templates' | 'edit' | 'preview'>('list');
@@ -675,71 +830,17 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
         const taFieldName = section.field || 'document_content';
         const isEditing = view === 'edit';
 
-        const handleExecCommand = (command: string) => {
-          if (!isEditing) return;
-          document.execCommand(command, false, undefined);
-          // Sync with state after command
-          const editor = document.getElementById(`editor_${taFieldName}`);
-          if (editor) {
-            setFieldValues({ ...fieldValues, [taFieldName]: editor.innerHTML });
-          }
-        };
-
         return (
-          <div key={index} className="w-full my-4 group">
-            {/* Rich Text Toolbar - Only visible during editing */}
-            {isEditing && (
-              <div className="flex gap-2 mb-2 p-1 bg-white border border-gray-300 rounded-lg flex-wrap items-center shadow-sm">
-                <button
-                  onMouseDown={(e) => { e.preventDefault(); handleExecCommand('bold'); }}
-                  className="w-10 h-10 flex items-center justify-center rounded font-bold text-gray-900 border border-gray-200 hover:bg-gray-100 transition-colors"
-                  title="Bold (Ctrl+B)"
-                >
-                  B
-                </button>
-                <button
-                  onMouseDown={(e) => { e.preventDefault(); handleExecCommand('underline'); }}
-                  className="w-10 h-10 flex items-center justify-center rounded underline text-gray-900 border border-gray-200 hover:bg-gray-100 transition-colors"
-                  title="Underline (Ctrl+U)"
-                >
-                  U
-                </button>
-                <div className="w-px h-6 bg-gray-300 mx-2" />
-                <button
-                  onMouseDown={(e) => { e.preventDefault(); handleExecCommand('justifyLeft'); }}
-                  className="w-10 h-10 flex items-center justify-center rounded text-gray-900 border border-gray-200 hover:bg-gray-100 transition-colors font-bold"
-                >
-                  L
-                </button>
-                <button
-                  onMouseDown={(e) => { e.preventDefault(); handleExecCommand('justifyCenter'); }}
-                  className="w-10 h-10 flex items-center justify-center rounded text-gray-900 border border-gray-200 hover:bg-gray-100 transition-colors font-bold"
-                >
-                  C
-                </button>
-                <span className="text-xs text-gray-500 ml-3 uppercase font-bold tracking-wider">Formatting Tools</span>
-              </div>
-            )}
-
-            {/* Visual Editor */}
-            <div
-              id={`editor_${taFieldName}`}
-              contentEditable={isEditing}
-              onBlur={(e) => {
-                if (isEditing) {
-                  setFieldValues({ ...fieldValues, [taFieldName]: e.currentTarget.innerHTML });
-                }
-              }}
-              className={`w-full min-h-[500px] p-6 outline-none bg-white text-gray-900 ${isEditing ? 'border border-gray-200 shadow-inner' : 'border-none'} rounded-lg mt-2 font-normal`}
-              style={{
-                fontSize: style.size ? `${style.size + 2}px` : '16px',
-                lineHeight: style.line_height || 1.8,
-                textAlign: style.align || 'justify' as any,
-                fontWeight: 'normal'
-              }}
-              dangerouslySetInnerHTML={{ __html: fieldValues[taFieldName] || (isEditing ? '<p>Start typing your document here...</p>' : '') }}
-            />
-          </div>
+          <DraftingArea
+            key={index}
+            fieldName={taFieldName}
+            initialValue={fieldValues[taFieldName]}
+            isEditing={isEditing}
+            style={style}
+            onSync={(value: string) => {
+              setFieldValues(prev => ({ ...prev, [taFieldName]: value }));
+            }}
+          />
         );
 
       case 'dotted_line':

@@ -27,6 +27,7 @@ class CourtFormTemplateViewSet(viewsets.ModelViewSet):
     queryset = CourtFormTemplate.objects.filter(is_active=True)
     serializer_class = CourtFormTemplateSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None  # Return ALL templates — never truncate by page size
     
     def get_queryset(self):
         queryset = super().get_queryset()

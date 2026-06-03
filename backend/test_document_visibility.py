@@ -27,11 +27,11 @@ def test_document_visibility():
     print(f"\n✓ Testing with client: {client_user.username}")
     
     # Get client profile
-    if not hasattr(client_user, 'client_profile') or not client_user.client_profile:
+    client_profile = client_user.client_profiles.first()
+    if not client_profile:
         print("❌ Client has no profile")
         return
     
-    client_profile = client_user.client_profile
     print(f"  Client Profile ID: {client_profile.id}")
     
     # Get cases for this client

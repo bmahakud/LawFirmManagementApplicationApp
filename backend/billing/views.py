@@ -60,9 +60,9 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
             ).distinct()
         elif user.user_type == 'client':
             # Clients see time entries for their cases
-            client_profile = getattr(user, 'client_profile', None)
-            if client_profile:
-                return TimeEntry.objects.filter(case__client=client_profile)
+            client_profiles = user.client_profiles.all()
+            if client_profiles.exists():
+                return TimeEntry.objects.filter(case__client__in=client_profiles)
         
         return TimeEntry.objects.none()
     
@@ -139,9 +139,9 @@ class ExpenseViewSet(viewsets.ModelViewSet):
                 )
             ).distinct()
         elif user.user_type == 'client':
-            client_profile = getattr(user, 'client_profile', None)
-            if client_profile:
-                return Expense.objects.filter(case__client=client_profile)
+            client_profiles = user.client_profiles.all()
+            if client_profiles.exists():
+                return Expense.objects.filter(case__client__in=client_profiles)
         
         return Expense.objects.none()
     
@@ -204,9 +204,9 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 )
             ).distinct()
         elif user.user_type == 'client':
-            client_profile = getattr(user, 'client_profile', None)
-            if client_profile:
-                queryset = Invoice.objects.filter(client=client_profile)
+            client_profiles = user.client_profiles.all()
+            if client_profiles.exists():
+                queryset = Invoice.objects.filter(client__in=client_profiles)
             else:
                 queryset = Invoice.objects.none()
         else:
@@ -631,9 +631,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
         elif user.user_type in ['advocate', 'paralegal']:
             return Payment.objects.filter(firm=user.firm)
         elif user.user_type == 'client':
-            client_profile = getattr(user, 'client_profile', None)
-            if client_profile:
-                return Payment.objects.filter(client=client_profile)
+            client_profiles = user.client_profiles.all()
+            if client_profiles.exists():
+                return Payment.objects.filter(client__in=client_profiles)
         
         return Payment.objects.none()
     
@@ -661,9 +661,9 @@ class TrustAccountViewSet(viewsets.ModelViewSet):
         elif user.user_type in ['advocate', 'paralegal']:
             return TrustAccount.objects.filter(firm=user.firm)
         elif user.user_type == 'client':
-            client_profile = getattr(user, 'client_profile', None)
-            if client_profile:
-                return TrustAccount.objects.filter(client=client_profile)
+            client_profiles = user.client_profiles.all()
+            if client_profiles.exists():
+                return TrustAccount.objects.filter(client__in=client_profiles)
         
         return TrustAccount.objects.none()
     
@@ -1122,10 +1122,10 @@ class FinanceOverviewViewSet(viewsets.ViewSet):
             firm = user.firm
         elif user.user_type == 'client':
             # Clients see only their data
-            client_profile = getattr(user, 'client_profile', None)
-            if not client_profile:
+            client_profiles = user.client_profiles.all()
+            if not client_profiles.exists():
                 return Response({'error': 'Client profile not found'}, status=400)
-            invoices = Invoice.objects.filter(client=client_profile)
+            invoices = Invoice.objects.filter(client__in=client_profiles)
             expenses = Expense.objects.none()
             advocate_invoices = AdvocateInvoice.objects.none()
             firm = None

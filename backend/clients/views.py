@@ -376,7 +376,8 @@ class ClientViewSet(viewsets.ModelViewSet):
         # Permission checks
         if user.user_type == 'client':
             # Clients can only see their own cases
-            if not hasattr(user, 'client_profile') or user.client_profile != client:
+            # Use client_profiles check since it's a ForeignKey relationship
+            if not user.client_profiles.filter(id=client.id).exists():
                 return Response(
                     {'error': 'You can only view your own cases.'},
                     status=status.HTTP_403_FORBIDDEN

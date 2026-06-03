@@ -61,8 +61,9 @@ class ServiceAttemptViewSet(viewsets.ModelViewSet):
         
         # Client - see only their case's service attempts
         elif user.user_type == 'client':
-            if hasattr(user, 'client_profile') and user.client_profile:
-                queryset = queryset.filter(case__client=user.client_profile)
+            client_profiles = user.client_profiles.all()
+            if client_profiles.exists():
+                queryset = queryset.filter(case__client__in=client_profiles)
             else:
                 queryset = queryset.none()
         
@@ -130,7 +131,7 @@ class ServiceAttemptViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_403_FORBIDDEN
                     )
             elif user.user_type == 'client':
-                if not (hasattr(user, 'client_profile') and case.client == user.client_profile):
+                if not user.client_profiles.filter(id=case.client_id).exists():
                     return Response(
                         {'error': 'You do not have permission to view this case'},
                         status=status.HTTP_403_FORBIDDEN

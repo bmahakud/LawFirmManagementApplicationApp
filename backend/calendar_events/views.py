@@ -59,12 +59,11 @@ class CalendarEventViewSet(viewsets.ModelViewSet):
             ).distinct()
 
         elif user.user_type == 'client':
-            client_profile = getattr(user, 'client_profile', None)
-            if client_profile:
-                # Client sees events assigned to them OR linked to their client profile
-                # They cannot create events
+            client_profiles = user.client_profiles.all()
+            if client_profiles.exists():
+                # Client sees events assigned to them OR linked to their client profiles
                 return CalendarEvent.objects.filter(
-                    Q(assigned_to=user) | Q(client=client_profile)
+                    Q(assigned_to=user) | Q(client__in=client_profiles)
                 ).distinct()
             return CalendarEvent.objects.none()
 
