@@ -115,6 +115,15 @@ function DraftingArea({
     onSync(editorRef.current.innerHTML);
   };
 
+  const handleClearAll = () => {
+    if (!isEditing || !editorRef.current) return;
+    if (window.confirm('Are you sure you want to clear all content? This cannot be undone.')) {
+      editorRef.current.innerHTML = '<div><br></div>';
+      onSync(editorRef.current.innerHTML);
+      editorRef.current.focus();
+    }
+  };
+
   const buttonClass = (isActive: boolean, color: string = 'purple') => `
     w-10 h-10 flex items-center justify-center rounded transition-all duration-200
     ${isActive
@@ -169,9 +178,9 @@ function DraftingArea({
           <div className="w-px h-6 bg-gray-300 mx-1" />
 
           <button
-            onMouseDown={(e) => { e.preventDefault(); handleExecCommand('removeFormat'); }}
-            className="px-3 h-10 flex items-center justify-center rounded text-xs text-gray-600 border border-gray-200 bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all font-bold"
-            title="Clear Formatting"
+            onClick={handleClearAll}
+            className="px-3 h-10 flex items-center justify-center rounded text-xs text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 transition-all font-bold uppercase tracking-widest"
+            title="Clear all content"
           >
             Clear
           </button>
