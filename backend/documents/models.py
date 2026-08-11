@@ -189,6 +189,11 @@ class UserDocument(models.Model):
     verification_notes = models.TextField(blank=True)
     verified_at = models.DateTimeField(null=True, blank=True)
     
+    # Section placement flags (All Documents vs Other Documents)
+    is_in_all_documents = models.BooleanField(default=True, help_text="Visible in All Documents tab")
+    is_in_other_documents = models.BooleanField(default=False, help_text="Visible in Other Documents tab")
+    is_copied = models.BooleanField(default=False, help_text="Flag indicating if this document was created via Copy")
+    
     # Soft delete - documents are never actually deleted
     is_deleted = models.BooleanField(default=False, help_text="Soft delete flag")
     deleted_at = models.DateTimeField(null=True, blank=True)

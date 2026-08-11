@@ -19,6 +19,7 @@ class UserDocumentSerializer(serializers.ModelSerializer):
             'document_category', 'document_title', 'document_number', 'document_file',
             'file_url', 'description', 'verification_status', 'verified_by', 
             'verified_by_name', 'verification_notes', 'verified_at',
+            'is_in_all_documents', 'is_in_other_documents', 'is_copied',
             'is_deleted', 'deleted_at', 'deleted_by', 'deleted_by_name',
             'version', 'parent_document', 'uploaded_at', 'updated_at'
         ]
@@ -51,7 +52,8 @@ class UserDocumentListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'document_title', 'document_type', 'document_type_display',
             'document_category', 'uploaded_by_name', 'client_name', 'case_title',
-            'verification_status', 'uploaded_at', 'is_deleted', 'version', 'file_url'
+            'verification_status', 'is_in_all_documents', 'is_in_other_documents', 'is_copied',
+            'uploaded_at', 'is_deleted', 'version', 'file_url'
         ]
     
     def get_file_url(self, obj):

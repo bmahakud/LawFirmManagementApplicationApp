@@ -30,38 +30,49 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         Filter documents based on user permissions.
         
         Document Visibility Rules:
-        1. Personal Documents (/documents page):
-           - Users see ONLY their own uploaded documents
-           - Advocates see ONLY their own documents (NOT client or case documents)
-           - Clients see ONLY their own documents (NOT case documents here)
+        1. Advocates:
+           - Documents uploaded by advocate
+           - Documents in advocate's firm
+           - Documents linked to cases assigned to advocate (assigned_advocate or solo_advocate)
+           - Documents linked to clients assigned to advocate
         
-        2. Case Documents (/cases/{id}/documents - via by_case endpoint):
-           - Shows documents where case field is set to that case
-           - Visible to: client, assigned advocate, admins
+        2. Clients:
+           - Documents uploaded by client
+           - Documents linked to client's profile or client's cases
         
-        3. Profile Documents (admin view):
-           - Admins can see all documents in their firm
+        3. Admins / Super Admins:
+           - All documents in their firm
+        
+        4. Platform Owners:
+           - All documents
         """
         user = self.request.user
         show_deleted = self.request.query_params.get('show_deleted', 'false').lower() == 'true'
         
-        # Base queryset - show ONLY user's own documents
-        queryset = UserDocument.objects.filter(uploaded_by=user)
-        
-        # Admins can see all documents in their firm
-        if user.user_type in ['admin', 'super_admin']:
+        if user.user_type == 'platform_owner':
+            queryset = UserDocument.objects.all()
+        elif user.user_type in ['admin', 'super_admin']:
             if user.firm:
                 queryset = UserDocument.objects.filter(firm=user.firm)
             else:
-                # Solo admin (shouldn't happen but handle it)
                 queryset = UserDocument.objects.filter(uploaded_by=user)
-        
-        # Platform owners see everything
-        elif user.user_type == 'platform_owner':
-            queryset = UserDocument.objects.all()
-        
-        # For advocates and clients: show ONLY their own documents
-        # Case documents are accessed via the by_case() action endpoint
+        elif user.user_type == 'advocate':
+            q = Q(uploaded_by=user)
+            if user.firm:
+                q |= Q(firm=user.firm)
+            q |= Q(case__assigned_advocate=user) | Q(case__solo_advocate=user)
+            q |= Q(client__assigned_advocate=user)
+            queryset = UserDocument.objects.filter(q)
+        elif user.user_type == 'client':
+            client_profiles = user.client_profiles.all()
+            if client_profiles.exists():
+                queryset = UserDocument.objects.filter(
+                    Q(uploaded_by=user) | Q(client__in=client_profiles) | Q(case__client__in=client_profiles)
+                )
+            else:
+                queryset = UserDocument.objects.filter(uploaded_by=user)
+        else:
+            queryset = UserDocument.objects.filter(uploaded_by=user)
         
         # Filter by deletion status
         if not show_deleted:
@@ -103,10 +114,16 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         
         # Note: firm can be None for solo advocates and their clients - this is valid
         
-        # Auto-assign client if user is a client
+        # Determine client
         client = None
         if user.user_type == 'client':
             client = user.client_profiles.first()
+        else:
+            client = serializer.validated_data.get('client')
+            if not client and serializer.validated_data.get('case'):
+                case_obj = serializer.validated_data.get('case')
+                if getattr(case_obj, 'client', None):
+                    client = case_obj.client
         
         # Determine verification status
         # Documents uploaded by advocates/admins are auto-verified
@@ -123,7 +140,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         serializer.save(
             uploaded_by=user,
             firm=firm,  # Can be None for solo advocates
-            client=client or serializer.validated_data.get('client'),
+            client=client,
             verification_status=verification_status,
             verified_by=verified_by,
             verified_at=verified_at
@@ -152,14 +169,27 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """
         Soft delete instead of hard delete.
-        Only super_admin can delete documents.
+        Allowed for:
+        - Platform owners, Admins, Super admins
+        - Advocates (for documents in their firm, assigned cases, or uploaded by them)
+        - Clients (for documents uploaded by them)
         """
         user = request.user
-        
-        if user.user_type not in ['platform_owner', 'super_admin', 'admin']:
-            raise PermissionDenied("Only super admins can delete documents.")
-        
         document = self.get_object()
+        
+        if user.user_type == 'advocate':
+            can_delete = (
+                document.uploaded_by == user or
+                (user.firm and document.firm == user.firm) or
+                (document.case and (document.case.assigned_advocate == user or document.case.solo_advocate == user))
+            )
+            if not can_delete:
+                raise PermissionDenied("You do not have permission to delete this document.")
+        elif user.user_type == 'client':
+            if document.uploaded_by != user:
+                raise PermissionDenied("You can only delete your own uploaded documents.")
+        elif user.user_type not in ['platform_owner', 'super_admin', 'admin']:
+            raise PermissionDenied("You do not have permission to delete documents.")
         
         if document.is_deleted:
             return Response(
@@ -269,10 +299,63 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         if not has_permission:
             raise PermissionDenied("You do not have permission to access this case.")
         
-        # Return ALL documents for this case
-        queryset = UserDocument.objects.filter(case_id=case_id, is_deleted=False)
+        # Return documents for this case:
+        # If section == 'other', return documents in Other Documents tab.
+        # Otherwise return documents in All Documents tab (excluding active unverified document requests).
+        section = request.query_params.get('section', 'all')
+        if section == 'other':
+            queryset = UserDocument.objects.filter(case_id=case_id, is_deleted=False, is_in_other_documents=True)
+        else:
+            queryset = UserDocument.objects.filter(case_id=case_id, is_deleted=False, is_in_all_documents=True).exclude(
+                fulfills_request__status__in=['pending', 'uploaded', 'rejected']
+            )
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='move-to-other')
+    def move_to_other(self, request, pk=None):
+        """Move document from All Documents to Other Documents"""
+        document = self.get_object()
+        document.is_in_all_documents = False
+        document.is_in_other_documents = True
+        document.is_copied = False
+        document.save()
+        return Response({"detail": "Document moved to Other Documents successfully."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='copy-to-other')
+    def copy_to_other(self, request, pk=None):
+        """Copy document from All Documents to Other Documents"""
+        document = self.get_object()
+        copy_doc = UserDocument.objects.create(
+            uploaded_by=request.user,
+            firm=document.firm,
+            client=document.client,
+            case=document.case,
+            document_type=document.document_type,
+            document_category=document.document_category,
+            document_title=f"{document.document_title or 'Document'} (Copy)",
+            document_number=document.document_number,
+            document_file=document.document_file,
+            description=document.description,
+            verification_status=document.verification_status,
+            verified_by=document.verified_by,
+            verified_at=document.verified_at,
+            is_in_all_documents=False,
+            is_in_other_documents=True,
+            is_copied=True
+        )
+        serializer = self.get_serializer(copy_doc)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='move-to-all')
+    def move_to_all(self, request, pk=None):
+        """Move document from Other Documents back to All Documents"""
+        document = self.get_object()
+        document.is_in_all_documents = True
+        document.is_in_other_documents = False
+        document.is_copied = False
+        document.save()
+        return Response({"detail": "Document moved back to All Documents successfully."}, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['get'])
     def by_type(self, request):

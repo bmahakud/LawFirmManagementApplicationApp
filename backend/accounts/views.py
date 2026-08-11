@@ -22,6 +22,8 @@ from .serializers import (
     UserRegistrationSerializer, UsernamePasswordLoginSerializer,
     PhoneOTPLoginSerializer, EmailOTPLoginSerializer,
     OTPVerifySerializer, SetPasswordSerializer, ChangePasswordSerializer,
+    ForgotPasswordLookupSerializer, ForgotPasswordRequestOTPSerializer,
+    ForgotPasswordVerifyOTPSerializer, ForgotPasswordResetSerializer,
     UserFirmRoleSerializer, GlobalConfigurationSerializer,
     FirmJoinLinkSerializer, PublicJoinSerializer
 )
@@ -1704,6 +1706,199 @@ class AuthenticationViewSet(viewsets.ViewSet):
             
             return Response({'message': 'Password set successfully'})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny], url_name='forgot_password_lookup')
+    def forgot_password_lookup(self, request):
+        """Lookup user by email or phone number for password recovery"""
+        serializer = ForgotPasswordLookupSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        raw_id = serializer.validated_data['identifier'].strip()
+        import re
+        clean_phone = re.sub(r'\D', '', raw_id)
+        
+        user = CustomUser.objects.filter(
+            Q(email__iexact=raw_id) | Q(username__iexact=raw_id)
+        ).first()
+        
+        if not user and clean_phone:
+            user = CustomUser.objects.filter(phone_number__endswith=clean_phone[-10:]).first()
+            
+        if not user:
+            return Response(
+                {'error': 'No active account found matching this email or phone number.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
+        masked_email = None
+        if user.email:
+            parts = user.email.split('@')
+            name = parts[0]
+            masked_name = name[0] + '***' + (name[-1] if len(name) > 1 else '')
+            masked_email = f"{masked_name}@{parts[1]}"
+            
+        masked_phone = None
+        if user.phone_number:
+            p = user.phone_number
+            masked_phone = p[:3] + '*****' + p[-4:] if len(p) >= 7 else p
+            
+        return Response({
+            'found': True,
+            'identifier': raw_id,
+            'has_email': bool(user.email),
+            'masked_email': masked_email,
+            'has_phone': bool(user.phone_number),
+            'masked_phone': masked_phone,
+        })
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny], url_name='forgot_password_request_otp')
+    def forgot_password_request_otp(self, request):
+        """Send password recovery OTP via selected channel (email or phone)"""
+        serializer = ForgotPasswordRequestOTPSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        raw_id = serializer.validated_data['identifier'].strip()
+        channel = serializer.validated_data['channel']
+        import re
+        clean_phone = re.sub(r'\D', '', raw_id)
+        
+        user = CustomUser.objects.filter(
+            Q(email__iexact=raw_id) | Q(username__iexact=raw_id)
+        ).first()
+        if not user and clean_phone:
+            user = CustomUser.objects.filter(phone_number__endswith=clean_phone[-10:]).first()
+            
+        if not user:
+            return Response(
+                {'error': 'No account found matching this email or phone number.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
+        if channel == 'email' and not user.email:
+            return Response({'error': 'This account does not have an associated email address.'}, status=status.HTTP_400_BAD_REQUEST)
+        if channel == 'phone' and not user.phone_number:
+            return Response({'error': 'This account does not have an associated phone number.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if getattr(settings, 'OTP_TEST_MODE', False):
+            otp_code = getattr(settings, 'OTP_TEST_CODE', '999999')
+        else:
+            otp_code = generate_otp()
+
+        otp_obj = OTPVerification.objects.create(
+            user=user,
+            otp_type=channel,
+            otp_code=otp_code,
+            expires_at=timezone.now() + timedelta(minutes=10)
+        )
+
+        if channel == 'phone':
+            send_otp_sms(user.phone_number, otp_code)
+            destination = user.phone_number
+        else:
+            send_otp_email(user.email, otp_code)
+            destination = user.email
+
+        log_audit(user, 'forgot_password_otp_sent', f'Recovery OTP sent via {channel} to {destination}')
+
+        return Response({
+            'success': True,
+            'message': f'Recovery verification code sent via {channel}.',
+            'channel': channel,
+            'destination': destination,
+            'otp_id': str(otp_obj.id)
+        })
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny], url_name='forgot_password_verify_otp')
+    def forgot_password_verify_otp(self, request):
+        """Verify recovery OTP code and return single-use password reset token"""
+        serializer = ForgotPasswordVerifyOTPSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        raw_id = serializer.validated_data['identifier'].strip()
+        channel = serializer.validated_data['channel']
+        otp_code = serializer.validated_data['otp_code'].strip()
+        import re
+        clean_phone = re.sub(r'\D', '', raw_id)
+
+        user = CustomUser.objects.filter(
+            Q(email__iexact=raw_id) | Q(username__iexact=raw_id)
+        ).first()
+        if not user and clean_phone:
+            user = CustomUser.objects.filter(phone_number__endswith=clean_phone[-10:]).first()
+
+        if not user:
+            return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            otp_obj = OTPVerification.objects.filter(
+                user=user,
+                otp_type=channel,
+                is_verified=False
+            ).latest('created_at')
+
+            if otp_obj.is_expired():
+                return Response({'error': 'Recovery code has expired. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if otp_obj.attempts >= otp_obj.max_attempts:
+                return Response({'error': 'Maximum verification attempts exceeded. Please request a new recovery code.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            is_test_otp = getattr(settings, 'OTP_TEST_MODE', False) and (otp_code == getattr(settings, 'OTP_TEST_CODE', '999999') or otp_code == '999999')
+            if not is_test_otp and otp_obj.otp_code != otp_code:
+                otp_obj.attempts += 1
+                otp_obj.save()
+                return Response({'error': 'Invalid verification code.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            otp_obj.is_verified = True
+            otp_obj.save()
+
+            import uuid
+            reset_token = f"reset-{uuid.uuid4()}"
+            from django.core.cache import cache
+            cache.set(f"pwd_reset_token_{reset_token}", str(user.id), timeout=900)
+
+            return Response({
+                'success': True,
+                'message': 'OTP verified successfully.',
+                'reset_token': reset_token
+            })
+        except OTPVerification.DoesNotExist:
+            return Response({'error': 'No recovery OTP request found. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny], url_name='forgot_password_reset')
+    def forgot_password_reset(self, request):
+        """Set new password using verified reset token"""
+        serializer = ForgotPasswordResetSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        reset_token = serializer.validated_data['reset_token']
+        new_password = serializer.validated_data['new_password']
+        
+        from django.core.cache import cache
+        user_id = cache.get(f"pwd_reset_token_{reset_token}")
+
+        if not user_id:
+            return Response({'error': 'Invalid or expired password reset session. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            user.set_password(new_password)
+            user.password_set = True
+            user.save()
+
+            cache.delete(f"pwd_reset_token_{reset_token}")
+
+            log_audit(user, 'forgot_password_reset_success', 'Password reset successfully via recovery OTP')
+
+            return Response({
+                'success': True,
+                'message': 'Password reset successfully! You can now log in with your new password.'
+            })
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
     
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated], url_name='logout')
     def logout(self, request):

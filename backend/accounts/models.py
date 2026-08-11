@@ -400,6 +400,8 @@ from django.dispatch import receiver
 @receiver(post_save, sender=CustomUser)
 def sync_user_firm_role(sender, instance, created, **kwargs):
     """Sync CustomUser.firm/user_type with UserFirmRole for backward compatibility"""
+    if kwargs.get('raw', False):
+        return
     # Simple check to prevent infinite recursion
     if getattr(instance, '_syncing_role', False):
         return

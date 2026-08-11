@@ -25,7 +25,11 @@ export const API = {
     LOGOUT: "/api/auth/logout/",
     REQUEST_PHONE_OTP: "/api/auth/send_otp/",
     REQUEST_EMAIL_OTP: "/api/auth/request_email_otp/",
-    VERIFY_OTP: "/api/auth/verify_otp/"
+    VERIFY_OTP: "/api/auth/verify_otp/",
+    FORGOT_PASSWORD_LOOKUP: "/api/auth/forgot_password_lookup/",
+    FORGOT_PASSWORD_REQUEST_OTP: "/api/auth/forgot_password_request_otp/",
+    FORGOT_PASSWORD_VERIFY_OTP: "/api/auth/forgot_password_verify_otp/",
+    FORGOT_PASSWORD_RESET: "/api/auth/forgot_password_reset/"
   },
   DASHBOARD: {
     GET: "/api/dashboard/"
@@ -71,7 +75,10 @@ export const API = {
     DETAIL: (uuid: string) => `/api/documents/${uuid}/`,
     USER_DOCUMENTS: "/api/documents/user_documents/",
     BY_CLIENT: (id: string) => `/api/documents/by_client/?client_id=${id}`,
-    BY_CASE: (id: string) => `/api/documents/by_case/?case_id=${id}`,
+    BY_CASE: (id: string, section: string = 'all') => `/api/documents/by_case/?case_id=${id}&section=${section}`,
+    MOVE_TO_OTHER: (id: string) => `/api/documents/${id}/move-to-other/`,
+    COPY_TO_OTHER: (id: string) => `/api/documents/${id}/copy-to-other/`,
+    MOVE_TO_ALL: (id: string) => `/api/documents/${id}/move-to-all/`,
     TEMPLATES: "/api/documents/templates/",
     FILLED_TEMPLATES: {
       LIST: "/api/documents/filled-templates/",

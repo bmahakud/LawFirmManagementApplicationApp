@@ -10,7 +10,7 @@ import {
   Plus, MoreVertical, Eye, Download, Edit2,
   Trash2, File, ChevronLeft, ChevronRight,
   Info, Users, Scale, FileOutput, CheckCircle2,
-  ArrowRight, Loader2
+  ArrowRight, Loader2, UserCheck, Folder
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { customFetch } from '@/lib/fetch';
@@ -131,20 +131,49 @@ export function CaseWorkspace({
 
   const searchParams = useSearchParams();
   const initialTabFromUrl = searchParams.get('tab');
+  const initialSubTabFromUrl = searchParams.get('subtab');
   const initialFormId = searchParams.get('formId');
   const newBlank = searchParams.get('newBlank') === 'true';
 
-  const [activeTab, setActiveTab] = useState(initialTabFromUrl || 'Overview');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (initialTabFromUrl === 'Court Forms') return 'Documents';
+    return initialTabFromUrl || (caseId && typeof window !== 'undefined' ? sessionStorage.getItem(`lastCaseTab_${caseId}`) : null) || 'Overview';
+  });
+  const [docSubTab, setDocSubTab] = useState<'client' | 'case' | 'other' | 'court_forms'>(() => {
+    const validSubTabs = ['client', 'case', 'other', 'court_forms'];
+    const fromUrl = initialSubTabFromUrl && validSubTabs.includes(initialSubTabFromUrl) ? (initialSubTabFromUrl as any) : null;
+    const fromSession = caseId && typeof window !== 'undefined' ? (sessionStorage.getItem(`lastCaseSubTab_${caseId}`) as any) : null;
+    if (initialFormId || newBlank || initialTabFromUrl === 'Court Forms') return 'court_forms';
+    return fromUrl || (fromSession && validSubTabs.includes(fromSession) ? fromSession : null) || 'case';
+  });
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
 
   useEffect(() => {
-    if (initialTabFromUrl) {
+    if (initialTabFromUrl === 'Court Forms') {
+      setActiveTab('Documents');
+      setDocSubTab('court_forms');
+    } else if (initialTabFromUrl) {
       setActiveTab(initialTabFromUrl);
     }
-  }, [initialTabFromUrl]);
+    if (initialSubTabFromUrl && ['client', 'case', 'other', 'court_forms'].includes(initialSubTabFromUrl)) {
+      setDocSubTab(initialSubTabFromUrl as any);
+    }
+  }, [initialTabFromUrl, initialSubTabFromUrl]);
+
+  useEffect(() => {
+    if (caseId && activeTab && typeof window !== 'undefined') {
+      sessionStorage.setItem(`lastCaseTab_${caseId}`, activeTab);
+    }
+  }, [caseId, activeTab]);
+
+  useEffect(() => {
+    if (caseId && docSubTab && typeof window !== 'undefined') {
+      sessionStorage.setItem(`lastCaseSubTab_${caseId}`, docSubTab);
+    }
+  }, [caseId, docSubTab]);
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -196,7 +225,6 @@ export function CaseWorkspace({
     { name: 'Overview', icon: Briefcase },
     { name: 'Hearings', icon: Calendar },
     { name: 'Documents', icon: FileText },
-    { name: 'Court Forms', icon: ClipboardList },
     { name: 'Drafting', icon: PenTool },
     { name: 'Billing', icon: CreditCard },
   ];
@@ -219,17 +247,10 @@ export function CaseWorkspace({
         <div className="flex flex-wrap items-center gap-2.5">
           {role !== 'client' && (
             <>
-              <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
-                <Plus className="w-4 h-4" /> Add Hearing
-              </button>
-              <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
-                <FileText className="w-4 h-4" /> Generate Form
-              </button>
+
             </>
           )}
-          <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
-            <Upload className="w-4 h-4" /> Upload Document
-          </button>
+
           {role !== 'client' && (
             <button
               onClick={() => router.push(`${viewBase}/${caseId}/edit`)}
@@ -504,57 +525,117 @@ export function CaseWorkspace({
         )}
 
         {activeTab === 'Documents' && (
-          <div className="space-y-8">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <DocumentVerificationSystem
-                caseId={caseId}
-                clientId={caseData.client || caseData.client_id}
-                role={role}
-                accent={accent}
-              />
+          <div className="space-y-6">
+            {/* Top Sub-Nav Tabs for Documents */}
+            <div className="flex overflow-x-auto border-b border-gray-100 no-scrollbar mb-6">
+              <button
+                type="button"
+                onClick={() => setDocSubTab('case')}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'case'
+                    ? 'text-gray-900 font-bold'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                style={docSubTab === 'case' ? { borderBottomColor: accent, color: accent } : {}}
+              >
+                <Folder className="w-4 h-4" />
+                All Documents
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDocSubTab('client')}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'client'
+                    ? 'text-gray-900 font-bold'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                style={docSubTab === 'client' ? { borderBottomColor: accent, color: accent } : {}}
+              >
+                <UserCheck className="w-4 h-4" />
+                Client Requested Documents
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDocSubTab('other')}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'other'
+                    ? 'text-gray-900 font-bold'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                style={docSubTab === 'other' ? { borderBottomColor: accent, color: accent } : {}}
+              >
+                <FileText className="w-4 h-4" />
+                Other Documents
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDocSubTab('court_forms')}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'court_forms'
+                    ? 'text-gray-900 font-bold'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                style={docSubTab === 'court_forms' ? { borderBottomColor: accent, color: accent } : {}}
+              >
+                <ClipboardList className="w-4 h-4" />
+                Court Forms
+              </button>
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-purple-700" />
-                Case Specific Documents
-              </h3>
-              <DocumentManager
-                accent={accent}
-                caseId={caseId}
-                clientId={caseData.client || caseData.client_id}
-                viewBase={viewBase.replace('/cases', '/documents')}
-                role={role}
-              />
-            </div>
-
-            {/* {(caseData.client || caseData.client_id) && (
+            {/* Toggle View Content */}
+            {docSubTab === 'case' ? (
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <Users className="w-5 h-5 text-purple-700" />
-                  General Client Documents
+                  <FileText className="w-5 h-5 text-purple-700" />
+                  All Documents
                 </h3>
-                <DocumentManager 
-                  accent={accent} 
-                  clientId={caseData.client || caseData.client_id} 
+                <DocumentManager
+                  key="all-docs-manager"
+                  accent={accent}
+                  caseId={caseId}
+                  clientId={caseData.client || caseData.client_id}
                   viewBase={viewBase.replace('/cases', '/documents')}
-                  showUpload={false} 
+                  role={role}
+                  section="all"
                 />
               </div>
-            )} */}
-          </div>
-        )}
-
-        {activeTab === 'Court Forms' && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <PDFCourtFormEditor
-              caseId={caseId}
-              clientId={caseData.client || caseData.client_id}
-              role={role}
-              accent={accent}
-              initialFormId={initialFormId}
-              newBlank={newBlank}
-            />
+            ) : docSubTab === 'other' ? (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-purple-700" />
+                  Other Documents
+                </h3>
+                <DocumentManager
+                  key="other-docs-manager"
+                  accent={accent}
+                  caseId={caseId}
+                  clientId={caseData.client || caseData.client_id}
+                  viewBase={viewBase.replace('/cases', '/documents')}
+                  role={role}
+                  section="other"
+                />
+              </div>
+            ) : docSubTab === 'court_forms' ? (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <PDFCourtFormEditor
+                  caseId={caseId}
+                  clientId={caseData.client || caseData.client_id}
+                  role={role}
+                  accent={accent}
+                  initialFormId={initialFormId}
+                  newBlank={newBlank}
+                />
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <DocumentVerificationSystem
+                  caseId={caseId}
+                  clientId={caseData.client || caseData.client_id}
+                  role={role}
+                  accent={accent}
+                  viewBase={viewBase.replace('/cases', '/documents')}
+                />
+              </div>
+            )}
           </div>
         )}
 

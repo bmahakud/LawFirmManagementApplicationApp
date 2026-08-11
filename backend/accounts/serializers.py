@@ -531,6 +531,37 @@ class ChangePasswordSerializer(serializers.Serializer):
         return data
 
 
+class ForgotPasswordLookupSerializer(serializers.Serializer):
+    """Lookup account by email or phone number for password recovery"""
+    identifier = serializers.CharField(required=True)
+
+
+class ForgotPasswordRequestOTPSerializer(serializers.Serializer):
+    """Request recovery OTP via selected channel (email or phone)"""
+    identifier = serializers.CharField(required=True)
+    channel = serializers.ChoiceField(choices=['email', 'phone'])
+
+
+class ForgotPasswordVerifyOTPSerializer(serializers.Serializer):
+    """Verify 6-digit recovery OTP code"""
+    identifier = serializers.CharField(required=True)
+    channel = serializers.ChoiceField(choices=['email', 'phone'])
+    otp_code = serializers.CharField(max_length=6, required=True)
+
+
+class ForgotPasswordResetSerializer(serializers.Serializer):
+    """Reset password with verified reset token"""
+    identifier = serializers.CharField(required=True)
+    reset_token = serializers.CharField(required=True)
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    new_password_confirm = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, data):
+        if data['new_password'] != data.get('new_password_confirm'):
+            raise serializers.ValidationError({'new_password_confirm': 'Passwords do not match'})
+        return data
+
+
 class GlobalConfigurationSerializer(serializers.ModelSerializer):
     """Serializer for global configuration settings"""
     

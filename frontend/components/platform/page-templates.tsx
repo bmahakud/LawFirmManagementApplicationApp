@@ -70,7 +70,7 @@ import { customFetch } from '@/lib/fetch';
 import DocumentManager from '@/components/platform/DocumentManager';
 import DocumentViewer from '@/components/platform/DocumentViewer';
 import { API, API_BASE_URL } from '@/lib/api';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { Country, State, City } from 'country-state-city';
 import { useTopbarTitle } from '@/components/platform/TopbarContext';
 import { toast } from 'react-hot-toast';
@@ -2346,10 +2346,32 @@ export function DocumentLibraryPage({ accent, roleTitle, viewBase }: AccentProps
 }
 
 export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProps & { roleTitle: string; documentId: string }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromCase = searchParams.get('fromCase');
+  const subtab = searchParams.get('subtab') || 'case';
+
   const [doc, setDoc] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
+
+  const handleBack = () => {
+    const caseId = fromCase || (doc?.case && (typeof doc.case === 'object' ? doc.case.id : doc.case));
+    if (caseId) {
+      let base = '/advocate';
+      if (typeof window !== 'undefined') {
+        const path = window.location.pathname;
+        if (path.startsWith('/client')) base = '/client';
+        else if (path.startsWith('/paralegal')) base = '/paralegal';
+        else if (path.startsWith('/super-admin')) base = '/super-admin';
+        else if (path.startsWith('/firm-admin')) base = '/firm-admin';
+      }
+      router.push(`${base}/cases/${caseId}?tab=Documents&subtab=${subtab}`);
+    } else {
+      window.history.back();
+    }
+  };
 
   useEffect(() => {
     const fetchDoc = async () => {
@@ -2384,8 +2406,8 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
     return (
       <div className="p-12 text-center text-red-500 bg-red-50 rounded-2xl border border-red-100">
         <p className="text-sm font-semibold">Alert: {error || 'Document record not found'}</p>
-        <button onClick={() => window.history.back()} className="mt-4 text-sm font-bold text-[#0e2340] hover:underline">
-          Return to Library
+        <button onClick={handleBack} className="mt-4 text-sm font-bold text-[#0e2340] hover:underline">
+          Return to Case Documents
         </button>
       </div>
     );
@@ -2419,7 +2441,7 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
         actions={
           <div className="flex gap-3">
             <button
-              onClick={() => window.history.back()}
+              onClick={handleBack}
               className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all active:scale-[0.98]"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -4125,32 +4147,34 @@ export function ProfileInformationPanel({ accent }: AccentProps) {
                   />
                 </div>
 
-                <div className="md:col-span-2 pt-4 border-t border-gray-100">
-                  <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Professional Registration</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council Reg</label>
-                      <input
-                        type="text"
-                        value={formData.bar_council_registration}
-                        onChange={e => updateField('bar_council_registration', e.target.value)}
-                        placeholder="e.g. MH/1234/2020"
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council State</label>
-                      <select
-                        value={formData.bar_council_state}
-                        onChange={e => updateField('bar_council_state', e.target.value)}
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
-                      >
-                        <option value="">Select State</option>
-                        {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                {systemData?.user_type !== 'client' && (
+                  <div className="md:col-span-2 pt-4 border-t border-gray-100">
+                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Professional Registration</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council Reg</label>
+                        <input
+                          type="text"
+                          value={formData.bar_council_registration}
+                          onChange={e => updateField('bar_council_registration', e.target.value)}
+                          placeholder="e.g. MH/1234/2020"
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">Bar Council State</label>
+                        <select
+                          value={formData.bar_council_state}
+                          onChange={e => updateField('bar_council_state', e.target.value)}
+                          className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-colors appearance-none"
+                        >
+                          <option value="">Select State</option>
+                          {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div className="md:col-span-2 pt-4 border-t border-gray-100">
                   <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#984c1f] mb-4">Address Information</h4>

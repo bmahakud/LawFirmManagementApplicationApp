@@ -93,13 +93,19 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
         serializer.save()
     
     def destroy(self, request, *args, **kwargs):
-        """Delete document request (only advocates and admins)"""
+        """Delete document request (advocates assigned to case and admins)"""
         user = request.user
         instance = self.get_object()
         
         if user.user_type == 'advocate':
-            if instance.requested_by != user:
-                raise PermissionDenied("You can only delete your own document requests.")
+            can_delete = (
+                instance.requested_by == user or
+                instance.case.assigned_advocate == user or
+                instance.case.solo_advocate == user or
+                (user.firm and instance.case.firm == user.firm)
+            )
+            if not can_delete:
+                raise PermissionDenied("You can only delete document requests for cases assigned to you.")
         elif user.user_type not in ['admin', 'super_admin', 'platform_owner']:
             raise PermissionDenied("You do not have permission to delete document requests.")
         
@@ -188,25 +194,21 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='fulfill')
     def fulfill_request(self, request, pk=None):
         """
-        Client fulfills a document request by uploading a document.
+        Fulfill a document request by uploading/attaching a document.
+        Supported for both Clients and Advocates/Admins.
         
         POST /api/case-document-requests/{id}/fulfill/
         {
             "document_id": "uuid-of-uploaded-document",
-            "client_notes": "Optional notes from client"
+            "client_notes": "Optional notes from client",
+            "advocate_notes": "Optional notes from advocate"
         }
         """
         user = request.user
-        
-        if user.user_type != 'client':
-            return Response(
-                {'error': 'Only clients can fulfill document requests'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
         document_request = self.get_object()
         document_id = request.data.get('document_id')
         client_notes = request.data.get('client_notes', '')
+        advocate_notes = request.data.get('advocate_notes', '')
         
         if not document_id:
             return Response(
@@ -214,17 +216,29 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Verify the document exists and belongs to the client
+        # Verify the document exists
         try:
             document = UserDocument.objects.get(
                 id=document_id,
-                uploaded_by=user,
                 is_deleted=False
             )
         except UserDocument.DoesNotExist:
             return Response(
-                {'error': 'Document not found or does not belong to you'},
+                {'error': 'Document not found'},
                 status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Permission check
+        if user.user_type == 'client':
+            if document.uploaded_by != user:
+                return Response(
+                    {'error': 'Document does not belong to you'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif user.user_type not in ['advocate', 'admin', 'super_admin', 'platform_owner']:
+            return Response(
+                {'error': 'You do not have permission to fulfill this request'},
+                status=status.HTTP_403_FORBIDDEN
             )
         
         # Associate document with the case if not already
@@ -234,9 +248,18 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
         
         # Update the request
         document_request.uploaded_document = document
-        document_request.status = 'uploaded'
         document_request.uploaded_at = timezone.now()
-        document_request.client_notes = client_notes
+        
+        if client_notes:
+            document_request.client_notes = client_notes
+        if advocate_notes:
+            document_request.advocate_notes = advocate_notes
+            
+        # Set status to 'uploaded' (Under Review) so advocate can review it
+        document_request.status = 'uploaded'
+        document.verification_status = 'pending'
+        document.save()
+            
         document_request.save()
         
         serializer = self.get_serializer(document_request)
@@ -280,15 +303,21 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
             )
         
         if action == 'verify':
-            document_request.status = 'verified'
-            document_request.rejection_reason = ''
-            
-            # Also update the document verification status
+            # Update document verification status to 'verified'
             document = document_request.uploaded_document
-            document.verification_status = 'verified'
-            document.verified_by = user
-            document.verified_at = timezone.now()
-            document.save()
+            if document:
+                document.verification_status = 'verified'
+                document.verified_by = user
+                document.verified_at = timezone.now()
+                document.save()
+            
+            # Automatically delete the document request so it leaves Client Specific Documents and transfers to Case Documents
+            document_request.delete()
+            
+            return Response({
+                'message': 'Document verified successfully. Request removed from pending list and transferred to Case Documents library.',
+                'verified': True
+            })
             
         else:  # reject
             rejection_reason = request.data.get('rejection_reason', '')
@@ -303,19 +332,19 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
             
             # Update document verification status
             document = document_request.uploaded_document
-            document.verification_status = 'rejected'
-            document.verification_notes = rejection_reason
-            document.verified_by = user
-            document.verified_at = timezone.now()
-            document.save()
-        
-        document_request.save()
-        
-        serializer = self.get_serializer(document_request)
-        return Response({
-            'message': f'Document {action}ed successfully',
-            'request': serializer.data
-        })
+            if document:
+                document.verification_status = 'rejected'
+                document.verification_notes = rejection_reason
+                document.verified_by = user
+                document.verified_at = timezone.now()
+                document.save()
+            
+            document_request.save()
+            serializer = self.get_serializer(document_request)
+            return Response({
+                'message': 'Document rejected successfully',
+                'request': serializer.data
+            })
     
     @action(detail=False, methods=['get'], url_path='pending-count')
     def pending_count(self, request):
