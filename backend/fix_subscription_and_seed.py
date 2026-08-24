@@ -27,26 +27,7 @@ for firm in firms:
         firm.save()
         print(f"  ✓ Activated firm")
     else:
-        print(f"  ✓ Already active")
-
-print("\n" + "=" * 60)
-print("SEEDING COURT FORM TEMPLATES")
-print("=" * 60)
-
-# Check existing templates
-existing_count = CourtFormTemplate.objects.count()
-print(f"\nExisting templates: {existing_count}")
-
-if existing_count > 0:
-    print("Templates already exist. Delete them first if you want to reseed.")
-else:
-    print("\nCreating templates...")
-    # Run the seed command
-    from django.core import management
-    management.call_command('seed_pdf_court_forms')
-    
-    new_count = CourtFormTemplate.objects.count()
-    print(f"\n✓ Created {new_count} templates")
+print("Done!")
 
 print("\n" + "=" * 60)
 print("DONE!")

@@ -10,6 +10,8 @@ class UserDocumentSerializer(serializers.ModelSerializer):
     case_title = serializers.CharField(source='case.case_title', read_only=True)
     document_type_display = serializers.CharField(source='get_document_type_display', read_only=True)
     file_url = serializers.SerializerMethodField()
+    is_in_all_documents = serializers.BooleanField(default=True, required=False)
+    is_in_other_documents = serializers.BooleanField(default=False, required=False)
     
     class Meta:
         model = UserDocument
@@ -21,7 +23,7 @@ class UserDocumentSerializer(serializers.ModelSerializer):
             'verified_by_name', 'verification_notes', 'verified_at',
             'is_in_all_documents', 'is_in_other_documents', 'is_copied',
             'is_deleted', 'deleted_at', 'deleted_by', 'deleted_by_name',
-            'version', 'parent_document', 'uploaded_at', 'updated_at'
+            'version', 'custom_sequence', 'parent_document', 'uploaded_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'uploaded_by', 'uploaded_by_name', 'firm', 'uploaded_at', 
@@ -53,7 +55,7 @@ class UserDocumentListSerializer(serializers.ModelSerializer):
             'id', 'document_title', 'document_type', 'document_type_display',
             'document_category', 'uploaded_by_name', 'client_name', 'case_title',
             'verification_status', 'is_in_all_documents', 'is_in_other_documents', 'is_copied',
-            'uploaded_at', 'is_deleted', 'version', 'file_url'
+            'uploaded_at', 'is_deleted', 'version', 'custom_sequence', 'file_url'
         ]
     
     def get_file_url(self, obj):

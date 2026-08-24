@@ -137,14 +137,25 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             verified_by = user
             verified_at = timezone.now()
         
-        serializer.save(
+        is_in_all_documents = serializer.validated_data.get('is_in_all_documents', True)
+        is_in_other_documents = serializer.validated_data.get('is_in_other_documents', False)
+
+        instance = serializer.save(
             uploaded_by=user,
             firm=firm,  # Can be None for solo advocates
             client=client,
             verification_status=verification_status,
             verified_by=verified_by,
-            verified_at=verified_at
+            verified_at=verified_at,
+            is_in_all_documents=is_in_all_documents,
+            is_in_other_documents=is_in_other_documents
         )
+
+        # Trigger background auto-recompilation of Master Filing Pack if this is a case document
+        case_id = instance.case_id or (getattr(instance, 'case', None) and instance.case.id)
+        if case_id and not (instance.document_title and 'Master Case Filing Pack' in instance.document_title):
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(case_id), user)
     
     def perform_update(self, serializer):
         """Update document with permission checks"""
@@ -162,9 +173,15 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     verified_by=user,
                     verified_at=timezone.now()
                 )
+                if obj.case_id and not (obj.document_title and 'Master Case Filing Pack' in obj.document_title):
+                    from .services.pdf_merger import trigger_auto_recompile_master_pack
+                    trigger_auto_recompile_master_pack(str(obj.case_id), user)
                 return
         
         serializer.save()
+        if obj.case_id and not (obj.document_title and 'Master Case Filing Pack' in obj.document_title):
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(obj.case_id), user)
     
     def destroy(self, request, *args, **kwargs):
         """
@@ -197,8 +214,14 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        case_id = document.case_id
+        is_master = bool(document.document_title and 'Master Case Filing Pack' in document.document_title)
         document.soft_delete(user)
         
+        if case_id and not is_master:
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(case_id), user)
+
         return Response(
             {"detail": "Document soft-deleted successfully."},
             status=status.HTTP_200_OK
@@ -222,41 +245,18 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         
         document.restore()
         
+        if document.case_id and not (document.document_title and 'Master Case Filing Pack' in document.document_title):
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(document.case_id), user)
+
         return Response(
             {"detail": "Document restored successfully."},
             status=status.HTTP_200_OK
         )
     
     @action(detail=False, methods=['get'])
-    def my_documents(self, request):
-        """Get documents uploaded by the current user"""
-        queryset = self.get_queryset().filter(uploaded_by=request.user)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def by_client(self, request):
-        """Get documents for a specific client"""
-        client_id = request.query_params.get('client_id')
-        
-        if not client_id:
-            return Response(
-                {"detail": "client_id parameter is required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        queryset = self.get_queryset().filter(client_id=client_id)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
     def by_case(self, request):
-        """
-        Get documents for a specific case.
-        
-        Returns ALL documents linked to the case (uploaded by anyone).
-        Permission check: User must have access to this case.
-        """
+        """Get documents for a specific case with permissions check"""
         case_id = request.query_params.get('case_id')
         
         if not case_id:
@@ -265,17 +265,14 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        user = request.user
-        
-        # Check if user has permission to access this case
+        # Get case to check permissions
         from cases.models import Case
         try:
             case = Case.objects.get(id=case_id)
         except Case.DoesNotExist:
-            return Response(
-                {"detail": "Case not found."},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            raise NotFound("Case not found.")
+        
+        user = request.user
         
         # Permission check
         has_permission = False
@@ -301,16 +298,110 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         
         # Return documents for this case:
         # If section == 'other', return documents in Other Documents tab.
-        # Otherwise return documents in All Documents tab (excluding active unverified document requests).
+        # Otherwise return documents in All Documents tab (with single Master PDF pinned at top).
         section = request.query_params.get('section', 'all')
         if section == 'other':
-            queryset = UserDocument.objects.filter(case_id=case_id, is_deleted=False, is_in_other_documents=True)
+            queryset = UserDocument.objects.filter(
+                case_id=case_id,
+                is_deleted=False,
+                is_in_other_documents=True
+            ).exclude(
+                document_title__icontains='.ltproj'
+            ).exclude(
+                document_file__icontains='.ltproj'
+            ).order_by('-uploaded_at')
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
         else:
-            queryset = UserDocument.objects.filter(case_id=case_id, is_deleted=False, is_in_all_documents=True).exclude(
+            from .models_templates import FilledCourtForm
+            
+            # 1. Fetch single canonical Master Case Filing Pack
+            master_docs = list(UserDocument.objects.filter(
+                case_id=case_id,
+                is_deleted=False,
+                is_in_all_documents=True,
+                document_title__icontains="Master Case Filing Pack"
+            ).order_by('-updated_at', '-uploaded_at'))
+
+            master_doc = None
+            if master_docs:
+                master_doc = master_docs[0]
+                # Clean up any duplicate master documents if multiple exist
+                if len(master_docs) > 1:
+                    for dup in master_docs[1:]:
+                        dup.delete()
+
+            master_doc_data = self.get_serializer(master_doc).data if master_doc else None
+
+            # 2. Fetch Filled Court Forms for this case
+            filled_forms = FilledCourtForm.objects.filter(case_id=case_id).select_related('template', 'created_by')
+            form_items = []
+            for f in filled_forms:
+                form_title = getattr(f.template, 'name', f"Court Form #{str(f.id)[:8]}") if getattr(f, 'template', None) else f"Court Form #{str(f.id)[:8]}"
+                pdf_url = None
+                if f.generated_pdf and f.generated_pdf.name:
+                    try:
+                        pdf_url = request.build_absolute_uri(f.generated_pdf.url)
+                    except Exception:
+                        pdf_url = f.generated_pdf.url
+
+                form_items.append({
+                    'id': str(f.id),
+                    'document_title': form_title,
+                    'document_type': 'court_form',
+                    'document_type_display': 'Court Form',
+                    'document_category': 'court_form',
+                    'is_court_form': True,
+                    'item_type': 'court_form',
+                    'document_file': f.generated_pdf.name if f.generated_pdf else None,
+                    'file_url': pdf_url,
+                    'verification_status': 'verified',
+                    'uploaded_by_name': f.created_by.get_full_name() if f.created_by else 'System / Form',
+                    'uploaded_at': f.created_at.isoformat() if hasattr(f, 'created_at') and f.created_at else timezone.now().isoformat(),
+                    'custom_sequence': getattr(f, 'custom_sequence', 0) or 0,
+                    'is_in_all_documents': True,
+                    'is_in_other_documents': False,
+                    'is_deleted': False,
+                    'version': 1,
+                })
+
+            # 3. Fetch other regular documents in All Documents (excluding master, .ltproj drafts, and unverified requests)
+            other_docs = list(UserDocument.objects.filter(
+                case_id=case_id,
+                is_deleted=False,
+                is_in_all_documents=True
+            ).exclude(
+                document_title__icontains="Master Case Filing Pack"
+            ).exclude(
+                document_title__icontains='.ltproj'
+            ).exclude(
+                document_file__icontains='.ltproj'
+            ).exclude(
                 fulfills_request__status__in=['pending', 'uploaded', 'rejected']
-            )
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+            ))
+
+            other_docs_data = self.get_serializer(other_docs, many=True).data
+            for d in other_docs_data:
+                d['is_court_form'] = False
+                d['item_type'] = 'document'
+
+            # 4. Sort non-master items by custom sequence if specified, else default order
+            all_non_master = form_items + other_docs_data
+            has_custom = any(item.get('custom_sequence', 0) > 0 for item in all_non_master)
+            if has_custom:
+                sorted_non_master = sorted(
+                    all_non_master,
+                    key=lambda x: (
+                        x.get('custom_sequence') if x.get('custom_sequence', 0) > 0 else 999990,
+                        x.get('uploaded_at', '')
+                    )
+                )
+            else:
+                sorted_non_master = form_items + other_docs_data
+
+            # 5. Master Case Filing Pack is ALWAYS pinned at the very top (index 0)
+            combined_docs = ([master_doc_data] if master_doc_data else []) + sorted_non_master
+            return Response(combined_docs)
 
     @action(detail=True, methods=['post'], url_path='move-to-other')
     def move_to_other(self, request, pk=None):
@@ -320,6 +411,9 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         document.is_in_other_documents = True
         document.is_copied = False
         document.save()
+        if document.case_id:
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(document.case_id), request.user)
         return Response({"detail": "Document moved to Other Documents successfully."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='copy-to-other')
@@ -355,6 +449,9 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         document.is_in_other_documents = False
         document.is_copied = False
         document.save()
+        if document.case_id:
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(document.case_id), request.user)
         return Response({"detail": "Document moved back to All Documents successfully."}, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['get'])
@@ -467,3 +564,155 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='generate-merged-pdf')
+    def generate_merged_pdf(self, request):
+        """
+        Generates a master compiled PDF filing pack containing all case documents, photos, and court forms.
+        """
+        case_id = request.data.get('case_id') or request.query_params.get('case_id')
+        if not case_id:
+            return Response({"detail": "case_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from .services.pdf_merger import generate_merged_case_filing_pdf
+            master_doc = generate_merged_case_filing_pdf(case_id, user=request.user)
+            serializer = UserDocumentSerializer(master_doc, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            print(f"Error generating merged PDF: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({"detail": f"Failed to generate merged PDF: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='filing-pack-items')
+    def filing_pack_items(self, request):
+        """
+        Returns all compilation items (Court Forms + Evidence Documents) for a case in their current sequence order.
+        """
+        case_id = request.query_params.get('case_id')
+        if not case_id:
+            return Response({"detail": "case_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .models_templates import FilledCourtForm
+        
+        # 1. Filled Court Forms
+        forms = FilledCourtForm.objects.filter(case_id=case_id).select_related('template')
+        form_list = []
+        for f in forms:
+            form_name = getattr(f.template, 'name', f"Court Form #{str(f.id)[:8]}") if getattr(f, 'template', None) else f"Court Form #{str(f.id)[:8]}"
+            form_list.append({
+                'id': str(f.id),
+                'type': 'court_form',
+                'title': form_name,
+                'type_display': 'Court Form',
+                'format': 'FORM',
+                'sequence': getattr(f, 'custom_sequence', 0) or 0,
+                'created_at': f.created_at.isoformat() if hasattr(f, 'created_at') and f.created_at else ''
+            })
+
+        # 2. Case Documents (PDFs & Photos)
+        docs = UserDocument.objects.filter(
+            case_id=case_id,
+            is_deleted=False,
+            is_in_all_documents=True
+        ).exclude(
+            document_title__icontains="Master Case Filing Pack"
+        ).exclude(
+            document_title__icontains=".ltproj"
+        ).exclude(
+            document_file__icontains=".ltproj"
+        )
+        
+        doc_list = []
+        for d in docs:
+            import os
+            file_ext = os.path.splitext(d.document_file.name)[1].lower() if d.document_file else ''
+            item_type = 'PDF'
+            if file_ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']:
+                item_type = 'PHOTO'
+            elif file_ext in ['.doc', '.docx', '.txt']:
+                item_type = 'DOC'
+            elif file_ext in ['.pdf']:
+                item_type = 'PDF'
+            elif file_ext:
+                item_type = file_ext.replace('.', '').upper()
+            else:
+                item_type = 'FILE'
+
+            doc_list.append({
+                'id': str(d.id),
+                'type': 'document',
+                'title': d.document_title or 'Untitled Document',
+                'type_display': d.get_document_type_display() if hasattr(d, 'get_document_type_display') else d.document_type,
+                'format': item_type,
+                'sequence': getattr(d, 'custom_sequence', 0) or 0,
+                'created_at': d.uploaded_at.isoformat() if d.uploaded_at else ''
+            })
+
+        all_items = form_list + doc_list
+        has_custom = any(item['sequence'] > 0 for item in all_items)
+        if has_custom:
+            sorted_items = sorted(
+                all_items,
+                key=lambda x: (
+                    x['sequence'] if x['sequence'] > 0 else 999990,
+                    x['created_at']
+                )
+            )
+        else:
+            sorted_items = form_list + doc_list
+
+        # Assign 1-indexed order numbers for clear display
+        for idx, itm in enumerate(sorted_items, 1):
+            itm['order_index'] = idx
+
+        return Response(sorted_items, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='reorder-filing-pack')
+    def reorder_filing_pack(self, request):
+        """
+        Saves custom display sequence for all items in the filing pack and recompiles the Master PDF.
+        """
+        case_id = request.data.get('case_id')
+        ordered_items = request.data.get('ordered_items', [])
+        if not case_id:
+            return Response({"detail": "case_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .models_templates import FilledCourtForm
+
+        for seq, item in enumerate(ordered_items, 1):
+            item_id = item.get('id') if isinstance(item, dict) else item
+            item_type = item.get('type') if isinstance(item, dict) else None
+            if not item_id:
+                continue
+
+            target_seq = item.get('sequence', seq) if isinstance(item, dict) else seq
+
+            if item_type == 'court_form':
+                FilledCourtForm.objects.filter(id=item_id, case_id=case_id).update(custom_sequence=target_seq)
+            elif item_type == 'document':
+                UserDocument.objects.filter(id=item_id, case_id=case_id).update(custom_sequence=target_seq)
+            else:
+                # Try updating both
+                c_cnt = FilledCourtForm.objects.filter(id=item_id, case_id=case_id).update(custom_sequence=target_seq)
+                if not c_cnt:
+                    UserDocument.objects.filter(id=item_id, case_id=case_id).update(custom_sequence=target_seq)
+
+        # Trigger immediate recompilation with updated order
+        try:
+            from .services.pdf_merger import generate_merged_case_filing_pdf
+            master_doc = generate_merged_case_filing_pdf(case_id, user=request.user)
+            serializer = UserDocumentSerializer(master_doc, context={'request': request})
+            return Response({
+                "detail": "Filing pack reordered and recompiled successfully.",
+                "master_document": serializer.data
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            print(f"Error recompiling merged PDF after reorder: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                "detail": f"Order saved, but PDF recompilation had an issue: {str(e)}"
+            }, status=status.HTTP_200_OK)
+

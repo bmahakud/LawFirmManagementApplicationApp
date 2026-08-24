@@ -5,11 +5,13 @@ import { customFetch } from '@/lib/fetch';
 import { API, API_BASE_URL } from '@/lib/api';
 import {
   FileText, Plus, Search, X, Save, Loader2, Eye,
-  Download, Share2, CheckCircle, Edit, ArrowLeft, RefreshCw
+  Download, Share2, CheckCircle, Edit, ArrowLeft, RefreshCw,
+  GripVertical, Upload, Trash2, PenTool
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import SignaturePad from './SignaturePad';
+import { DEFAULT_COURT_FORM_TEMPLATES } from '@/lib/courtFormTemplates';
 
 // A4 dimensions in pixels at 96 DPI
 const A4_WIDTH = 794; // 210mm
@@ -48,6 +50,17 @@ type FilledCourtForm = {
   advocate_signature_date?: string;
   client_signature_date?: string;
   created_at: string;
+};
+
+type PlacedSignature = {
+  id: string;
+  type: 'advocate' | 'client' | 'custom';
+  label: string;
+  image_url: string;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
 };
 
 type Props = {
@@ -219,7 +232,7 @@ function DraftingArea({
           }
         }}
         onSelect={() => isEditing && updateActiveStyles()}
-        className={`w-full p-10 outline-none bg-white text-gray-900 ${isEditing ? 'border border-gray-200 shadow-inner' : 'border-none'} rounded-lg mt-2 font-normal whitespace-normal overflow-auto`}
+        className={`w-full p-10 outline-none bg-white ${isEditing ? 'border border-red-200 shadow-inner text-red-600' : 'border-none text-gray-900'} rounded-lg mt-2 font-normal whitespace-normal overflow-auto transition-colors`}
         style={{
           fontSize: style.size ? `${style.size + 2}px` : '18px',
           lineHeight: style.line_height || 1.8,
@@ -241,26 +254,114 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSignaturePad, setShowSignaturePad] = useState(false);
-  const [signatureType, setSignatureType] = useState<'advocate' | 'client'>('advocate');
+  const [signatureType, setSignatureType] = useState<'advocate' | 'client' | 'custom'>('advocate');
+
+  // Additional signature modal
+  const [showAddSigModal, setShowAddSigModal] = useState(false);
+  const [addSigLabel, setAddSigLabel] = useState('Advocate Signature');
+  const [addSigType, setAddSigType] = useState<'advocate' | 'client' | 'custom'>('advocate');
+  const [customSigDrawing, setCustomSigDrawing] = useState(false);
 
   // Field values for the form
   const [fieldValues, setFieldValues] = useState<Record<string, any>>({});
 
+  // Computed placed signatures list
+  const placedSignatures: PlacedSignature[] = (() => {
+    const list: PlacedSignature[] = (fieldValues.placed_signatures || []).map((s: any) => ({ ...s }));
+    const result = [...list];
+
+    // If form has advocate_signature_image and not yet in list
+    if (selectedForm?.advocate_signature_image && !result.some(s => s.type === 'advocate' || s.id === 'advocate_primary')) {
+      const advOffset = fieldValues.signature_offsets?.advocate || { x: 520, y: 640 };
+      result.push({
+        id: 'advocate_primary',
+        type: 'advocate',
+        label: 'Advocate Signature',
+        image_url: selectedForm.advocate_signature_image,
+        x: advOffset.x,
+        y: advOffset.y,
+        width: 140,
+        height: 55
+      });
+    }
+
+    // If form has client_signature_image and not yet in list
+    if (selectedForm?.client_signature_image && !result.some(s => s.type === 'client' || s.id === 'client_primary')) {
+      const cliOffset = fieldValues.signature_offsets?.client || { x: 80, y: 640 };
+      result.push({
+        id: 'client_primary',
+        type: 'client',
+        label: 'Client Signature',
+        image_url: selectedForm.client_signature_image,
+        x: cliOffset.x,
+        y: cliOffset.y,
+        width: 140,
+        height: 55
+      });
+    }
+
+    return result;
+  })();
+
   const handleSignatureDragEnd = (sigType: string, info: any) => {
-    setFieldValues(prev => {
-      const currentOffsets = prev.signature_offsets || {};
-      const typeOffset = currentOffsets[sigType] || { x: 0, y: 0 };
-      return {
-        ...prev,
-        signature_offsets: {
-          ...currentOffsets,
-          [sigType]: {
-            x: typeOffset.x + info.offset.x,
-            y: typeOffset.y + info.offset.y
-          }
-        }
-      };
+    const sigId = sigType === 'advocate' ? 'advocate_primary' : (sigType === 'client' ? 'client_primary' : sigType);
+    const existing = placedSignatures.find(s => s.id === sigId || s.type === sigType);
+    const curX = existing ? existing.x : (sigType === 'advocate' ? 520 : 80);
+    const curY = existing ? existing.y : 640;
+    updateSignaturePosition(existing ? existing.id : sigId, curX + info.offset.x, curY + info.offset.y);
+  };
+
+  const updateSignaturePosition = (sigId: string, newX: number, newY: number) => {
+    const clampedX = Math.max(0, Math.min(Math.round(newX), A4_WIDTH - 80));
+    const clampedY = Math.max(0, Math.min(Math.round(newY), A4_HEIGHT - 30));
+
+    const updated = placedSignatures.map(s => {
+      if (s.id === sigId) {
+        return { ...s, x: clampedX, y: clampedY };
+      }
+      return s;
     });
+
+    setFieldValues(prev => ({
+      ...prev,
+      placed_signatures: updated,
+      signature_offsets: {
+        ...(prev.signature_offsets || {}),
+        [sigId]: { x: clampedX, y: clampedY }
+      }
+    }));
+  };
+
+  const handleRemoveSignature = (sigId: string) => {
+    const updated = placedSignatures.filter(s => s.id !== sigId);
+    setFieldValues(prev => ({
+      ...prev,
+      placed_signatures: updated
+    }));
+    toast.success('Signature removed from document');
+  };
+
+  const handleAddPlacedSignature = (imageUrl: string, label: string, type: 'advocate' | 'client' | 'custom') => {
+    const newSig: PlacedSignature = {
+      id: `sig_${Date.now()}`,
+      type,
+      label,
+      image_url: imageUrl,
+      x: 480,
+      y: 640,
+      width: 140,
+      height: 55
+    };
+
+    const updated = [...placedSignatures, newSig];
+    setFieldValues(prev => ({
+      ...prev,
+      placed_signatures: updated
+    }));
+
+    setShowAddSigModal(false);
+    setCustomSigDrawing(false);
+    toast.success(`${label} added! Drag it anywhere on the form.`);
   };
 
   const isAdvocateRole = role === 'advocate' || role === 'super-admin' || role === 'firm-admin';
@@ -268,56 +369,92 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
 
   useEffect(() => {
     fetchData();
-  }, [caseId]);
+  }, [caseId, initialFormId]);
 
   const formatSignatureUrl = (url: string) => {
     if (!url) return '';
-    if (url.startsWith('http')) return url;
+    if (url.startsWith('http') || url.startsWith('data:image')) return url;
     return `${API_BASE_URL}${url.startsWith('/') ? url : '/' + url}`;
   };
 
   const fetchData = async () => {
     try {
       setLoading(true);
+
+      // Start with frontend native court form templates
+      let availableTemplates: CourtFormTemplate[] = [...DEFAULT_COURT_FORM_TEMPLATES];
+
       const [templatesRes, formsRes] = await Promise.all([
-        customFetch('/api/documents/court-form-templates/'),
-        customFetch(`/api/documents/filled-court-forms/?case=${caseId}`)
+        customFetch('/api/documents/court-form-templates/').catch(() => null),
+        customFetch(`/api/documents/filled-court-forms/?case=${caseId}`).catch(() => null)
       ]);
 
-      if (templatesRes.ok) {
+      if (templatesRes && templatesRes.ok) {
         const data = await templatesRes.json();
-        let fetchedTemplates = Array.isArray(data) ? data : data.results || [];
-
-        // Filter by category if provided
-        if (categoryFilter) {
-          fetchedTemplates = fetchedTemplates.filter((t: any) => t.category === categoryFilter);
+        const fetchedTemplates = Array.isArray(data) ? data : data.results || [];
+        if (fetchedTemplates.length > 0) {
+          availableTemplates = fetchedTemplates;
         }
-
-        // Sort by sequence then name
-        fetchedTemplates.sort((a: any, b: any) => {
-          if (a.sequence !== b.sequence) return a.sequence - b.sequence;
-          return a.name.localeCompare(b.name);
-        });
-
-        setTemplates(fetchedTemplates);
       }
 
-      if (formsRes.ok) {
+      // Filter by category if provided
+      if (categoryFilter) {
+        availableTemplates = availableTemplates.filter((t: any) => t.category === categoryFilter);
+      }
+
+      // Sort by sequence then name
+      availableTemplates.sort((a: any, b: any) => {
+        const seqA = a.sequence ?? 99;
+        const seqB = b.sequence ?? 99;
+        if (seqA !== seqB) return seqA - seqB;
+        return a.name.localeCompare(b.name);
+      });
+
+      setTemplates(availableTemplates);
+
+      if (formsRes && formsRes.ok) {
         const data = await formsRes.json();
         const fetchedForms = Array.isArray(data) ? data : data.results || [];
         setFilledForms(fetchedForms);
 
         // Auto-open form if initialFormId is provided
         if (initialFormId) {
-          const formToOpen = fetchedForms.find((f: any) => String(f.id) === String(initialFormId));
+          let formToOpen = fetchedForms.find((f: any) => String(f.id) === String(initialFormId));
+          
+          // If not in list, fetch directly by ID
+          if (!formToOpen) {
+            try {
+              const singleRes = await customFetch(`/api/documents/filled-court-forms/${initialFormId}/`);
+              if (singleRes.ok) {
+                formToOpen = await singleRes.json();
+              }
+            } catch (e) {
+              console.warn('Direct court form fetch error:', e);
+            }
+          }
+
           if (formToOpen) {
             setSelectedForm(formToOpen);
             setFieldValues(formToOpen.field_values || {});
 
-            // Find the template
-            const templatesData = await (await customFetch(`/api/documents/court-form-templates/${formToOpen.template}/`)).json();
-            setSelectedTemplate(templatesData);
+            // Find the template (try backend first, fallback to availableTemplates)
+            let templateObj: CourtFormTemplate | null = null;
+            try {
+              const res = await customFetch(`/api/documents/court-form-templates/${formToOpen.template}/`);
+              if (res.ok) {
+                templateObj = await res.json();
+              }
+            } catch (e) {
+              console.warn('Template API fetch error, searching local templates:', e);
+            }
 
+            if (!templateObj) {
+              templateObj = availableTemplates.find(
+                (t) => String(t.id) === String(formToOpen.template) || t.name === formToOpen.template_name
+              ) || DEFAULT_COURT_FORM_TEMPLATES[0];
+            }
+
+            setSelectedTemplate(templateObj);
             setView('edit');
             return; // Stop here if we've opened a form
           }
@@ -325,20 +462,16 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
 
         // New Blank Logic
         if (newBlank) {
-          const fetchedTemplatesResponse = await customFetch('/api/documents/court-form-templates/');
-          if (fetchedTemplatesResponse.ok) {
-            const temps = await fetchedTemplatesResponse.json();
-            const tempArray = Array.isArray(temps) ? temps : temps.results || [];
-            const blankTemp = tempArray.find((t: any) => t.name.includes('BLANK A4'));
-            if (blankTemp) {
-              handleSelectTemplate(blankTemp);
-            }
+          const blankTemp = availableTemplates.find((t: any) => t.name.includes('BLANK A4')) || DEFAULT_COURT_FORM_TEMPLATES[0];
+          if (blankTemp) {
+            handleSelectTemplate(blankTemp);
           }
         }
       }
     } catch (err: any) {
       console.error('Error fetching data:', err);
-      toast.error('Failed to load forms');
+      // Fallback to frontend native templates if error occurs
+      setTemplates(DEFAULT_COURT_FORM_TEMPLATES);
     } finally {
       setLoading(false);
     }
@@ -508,13 +641,16 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   };
 
   const renderField = (fieldName: string, placeholder: string) => {
+    const isEditing = view === 'edit';
     return (
       <input
         type="text"
         value={fieldValues[fieldName] || ''}
         onChange={(e) => setFieldValues({ ...fieldValues, [fieldName]: e.target.value })}
         placeholder={placeholder}
-        className="inline-block border-b-2 border-gray-800 focus:border-purple-600 outline-none bg-transparent px-1 min-w-[200px] text-gray-900 font-medium text-base"
+        className={`inline-block border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 min-w-[200px] font-semibold text-base transition-colors ${
+          isEditing ? 'text-red-600' : 'text-gray-900'
+        }`}
         style={{ fontSize: '14px' }}
       />
     );
@@ -609,7 +745,9 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                     type="date"
                     value={fieldValues[field.name] || ''}
                     onChange={(e) => setFieldValues({ ...fieldValues, [field.name]: e.target.value })}
-                    className="border-b-2 border-gray-800 focus:border-purple-600 outline-none bg-transparent px-1 text-gray-900 font-medium text-base"
+                    className={`border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 font-semibold text-base transition-colors ${
+                      view === 'edit' ? 'text-red-600' : 'text-gray-900'
+                    }`}
                     style={{ fontSize: '14px' }}
                   />
                 ) : (
@@ -617,7 +755,9 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                     type="text"
                     value={fieldValues[field.name] || ''}
                     onChange={(e) => setFieldValues({ ...fieldValues, [field.name]: e.target.value })}
-                    className="border-b-2 border-gray-800 focus:border-purple-600 outline-none bg-transparent px-1 min-w-[150px] text-gray-900 font-medium text-base"
+                    className={`border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 min-w-[150px] font-semibold text-base transition-colors ${
+                      view === 'edit' ? 'text-red-600' : 'text-gray-900'
+                    }`}
                     style={{ fontSize: '14px' }}
                   />
                 )}
@@ -678,7 +818,9 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                               const fieldName = cell.content.replace(/[{}]/g, '');
                               setFieldValues({ ...fieldValues, [fieldName]: e.target.value });
                             }}
-                            className="border-b-2 border-gray-800 focus:border-purple-600 outline-none bg-transparent px-1 text-gray-900 font-bold text-base min-w-[150px]"
+                            className={`border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 font-bold text-base min-w-[150px] transition-colors ${
+                              view === 'edit' ? 'text-red-600' : 'text-gray-900'
+                            }`}
                             style={{ fontSize: '16px' }}
                           />
                         ) : (
@@ -716,7 +858,9 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                               type="text"
                               value={fieldValues[fieldName] || rightValue}
                               onChange={(e) => setFieldValues({ ...fieldValues, [fieldName]: e.target.value })}
-                              className="border-b-2 border-gray-900 focus:border-purple-600 outline-none bg-transparent px-1 text-gray-900 font-bold min-w-[200px]"
+                              className={`border-b-2 border-gray-900 focus:border-red-600 outline-none bg-transparent px-1 font-bold min-w-[200px] transition-colors ${
+                                view === 'edit' ? 'text-red-600' : 'text-gray-900'
+                              }`}
                               style={{ fontSize: tableSize }}
                             />
                           ) : (
@@ -744,7 +888,9 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
               type="text"
               value={fieldValues[fieldName] || ''}
               onChange={(e) => setFieldValues({ ...fieldValues, [fieldName]: e.target.value })}
-              className="flex-1 border-b-2 border-gray-800 focus:border-purple-600 outline-none bg-transparent px-1 text-gray-900"
+              className={`flex-1 border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 font-semibold transition-colors ${
+                view === 'edit' ? 'text-red-600' : 'text-gray-900'
+              }`}
               style={{ fontSize: editLineSize }}
             />
           </div>
@@ -819,7 +965,9 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                           <textarea
                             value={fieldValues[fName] || ''}
                             onChange={(e) => setFieldValues({ ...fieldValues, [fName]: e.target.value })}
-                            className="w-full h-full p-2 outline-none bg-transparent text-sm text-black resize-none font-bold"
+                            className={`w-full h-full p-2 outline-none bg-transparent text-sm resize-none font-bold transition-colors ${
+                              view === 'edit' ? 'text-red-600' : 'text-black'
+                            }`}
                           />
                         </td>
                       );
@@ -850,7 +998,9 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                       <input
                         type="text"
                         placeholder={cell.placeholder}
-                        className="flex-1 outline-none bg-transparent text-[11px] text-black font-bold"
+                        className={`flex-1 outline-none bg-transparent text-[11px] font-bold transition-colors ${
+                          view === 'edit' ? 'text-red-600' : 'text-black'
+                        }`}
                         value={fieldValues[cell.field] || ''}
                         onChange={(e) => setFieldValues({ ...fieldValues, [cell.field]: e.target.value })}
                       />
@@ -877,7 +1027,9 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                   <input
                     type="text"
                     maxLength={1}
-                    className="w-full h-full text-center text-xs outline-none bg-transparent font-medium uppercase"
+                    className={`w-full h-full text-center text-xs outline-none bg-transparent font-bold uppercase transition-colors ${
+                      view === 'edit' ? 'text-red-600' : 'text-black'
+                    }`}
                     value={fieldValues[`${section.field}_${i}`] || ''}
                     onChange={(e) => {
                       const val = e.target.value.slice(-1).toUpperCase();
@@ -1028,24 +1180,32 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
 
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h3 className="text-lg font-bold text-gray-900">{selectedTemplate.name}</h3>
-              <p className="text-sm text-gray-500 mt-1">Preview Mode - Read Only</p>
+              <p className="text-sm text-gray-500 mt-1">Preview Mode - Read Only (Signatures can be dragged/positioned)</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {isAdvocateRole && (
                 <>
                   <button
                     onClick={() => setView('edit')}
-                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2"
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2 transition-all active:scale-95"
                   >
                     <Edit className="w-4 h-4" />
                     Edit
                   </button>
                   <button
+                    type="button"
+                    onClick={() => setShowAddSigModal(true)}
+                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Signature
+                  </button>
+                  <button
                     onClick={() => openSignaturePad('advocate')}
-                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 flex items-center gap-2"
+                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 flex items-center gap-2 transition-all active:scale-95"
                   >
                     <CheckCircle className="w-4 h-4" />
                     {selectedForm.advocate_signed ? 'Change Signature' : 'Sign as Advocate'}
@@ -1053,7 +1213,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                   {!selectedForm.is_shared_with_client && (
                     <button
                       onClick={() => handleShareWithClient(selectedForm.id)}
-                      className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 flex items-center gap-2"
+                      className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 flex items-center gap-2 transition-all active:scale-95"
                     >
                       <Share2 className="w-4 h-4" />
                       Share with Client
@@ -1064,7 +1224,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
               {isClientRole && !selectedForm.client_signed && (
                 <button
                   onClick={() => openSignaturePad('client')}
-                  className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 flex items-center gap-2 transition-all active:scale-95"
                 >
                   <CheckCircle className="w-4 h-4" />
                   Sign Form
@@ -1077,7 +1237,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                   setSelectedForm(null);
                   setFieldValues({});
                 }}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2"
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2 transition-all active:scale-95"
               >
                 <X className="w-4 h-4" />
                 Close
@@ -1112,7 +1272,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           {/* A4 Document Container - Read Only */}
           <div className="flex justify-center bg-gray-100 p-8 rounded-lg">
             <div
-              className="bg-white shadow-2xl overflow-hidden"
+              id="a4-document-container-preview"
+              className="relative bg-white shadow-2xl overflow-hidden"
               style={{
                 width: `${A4_WIDTH}px`,
                 minHeight: `${A4_HEIGHT}px`,
@@ -1123,6 +1284,52 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
               <div className="space-y-4 pointer-events-none">
                 {content_structure.sections?.map((section, index) => renderSection(section, index))}
               </div>
+
+              {/* Free-Floating Movable Signatures Overlay */}
+              {placedSignatures.map((sig) => (
+                <motion.div
+                  key={sig.id}
+                  drag
+                  dragMomentum={false}
+                  dragConstraints={{
+                    left: 0,
+                    top: 0,
+                    right: A4_WIDTH - (sig.width || 140),
+                    bottom: A4_HEIGHT - (sig.height || 55)
+                  }}
+                  initial={{ x: sig.x, y: sig.y }}
+                  onDragEnd={(e, info) => {
+                    updateSignaturePosition(sig.id, sig.x + info.offset.x, sig.y + info.offset.y);
+                  }}
+                  className="absolute top-0 left-0 z-30 group select-none cursor-grab active:cursor-grabbing"
+                  style={{ width: `${sig.width || 140}px`, height: `${sig.height || 55}px` }}
+                >
+                  <img
+                    src={formatSignatureUrl(sig.image_url)}
+                    alt={sig.label}
+                    className="w-full h-full object-contain pointer-events-none"
+                  />
+                  
+                  {/* Floating Action Badge on Hover */}
+                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-lg pointer-events-auto whitespace-nowrap">
+                    <GripVertical className="w-3 h-3 text-purple-300" />
+                    <span>{sig.label}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveSignature(sig.id);
+                      }}
+                      className="ml-1 text-red-400 hover:text-red-300 font-black px-1 rounded hover:bg-white/10"
+                      title="Delete Signature"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="absolute inset-0 border border-dashed border-purple-400/50 group-hover:border-purple-600 rounded pointer-events-none transition-colors" />
+                </motion.div>
+              ))}
             </div>
           </div>
         </div>
@@ -1136,32 +1343,40 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
 
       return (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h3 className="text-lg font-bold text-gray-900">{selectedTemplate.name}</h3>
               <p className="text-sm text-gray-500 mt-1">{selectedTemplate.description}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2 transition-all active:scale-95"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddSigModal(true)}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                Add Signature
               </button>
               {selectedForm && isAdvocateRole && (
                 <>
                   <button
                     onClick={() => handleShareWithClient(selectedForm.id)}
-                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 flex items-center gap-2"
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 flex items-center gap-2 transition-all active:scale-95"
                   >
                     <Share2 className="w-4 h-4" />
                     Share
                   </button>
                   <button
                     onClick={() => openSignaturePad('advocate')}
-                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 flex items-center gap-2"
+                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 flex items-center gap-2 transition-all active:scale-95"
                   >
                     <CheckCircle className="w-4 h-4" />
                     {selectedForm.advocate_signed ? 'Change Signature' : 'Sign'}
@@ -1170,7 +1385,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
               )}
               <button
                 onClick={() => setView('preview')}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2"
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2 transition-all active:scale-95"
               >
                 <Eye className="w-4 h-4" />
                 Preview
@@ -1191,7 +1406,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                       toast.error('Failed to refresh index');
                     }
                   }}
-                  className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 flex items-center gap-2 transition-all active:scale-95"
                 >
                   <RefreshCw className="w-4 h-4" />
                   Refresh Index
@@ -1204,7 +1419,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                   setSelectedForm(null);
                   setFieldValues({});
                 }}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2"
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2 transition-all active:scale-95"
               >
                 <X className="w-4 h-4" />
                 Close
@@ -1215,7 +1430,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           {/* A4 Document Container */}
           <div className="flex justify-center bg-gray-100 p-8 rounded-lg">
             <div
-              className="bg-white shadow-2xl overflow-hidden"
+              id="a4-document-container-edit"
+              className="relative bg-white shadow-2xl overflow-hidden"
               style={{
                 width: `${A4_WIDTH}px`,
                 minHeight: `${A4_HEIGHT}px`,
@@ -1226,6 +1442,52 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
               <div className="space-y-4">
                 {content_structure.sections?.map((section, index) => renderSection(section, index))}
               </div>
+
+              {/* Free-Floating Movable Signatures Overlay */}
+              {placedSignatures.map((sig) => (
+                <motion.div
+                  key={sig.id}
+                  drag
+                  dragMomentum={false}
+                  dragConstraints={{
+                    left: 0,
+                    top: 0,
+                    right: A4_WIDTH - (sig.width || 140),
+                    bottom: A4_HEIGHT - (sig.height || 55)
+                  }}
+                  initial={{ x: sig.x, y: sig.y }}
+                  onDragEnd={(e, info) => {
+                    updateSignaturePosition(sig.id, sig.x + info.offset.x, sig.y + info.offset.y);
+                  }}
+                  className="absolute top-0 left-0 z-30 group select-none cursor-grab active:cursor-grabbing"
+                  style={{ width: `${sig.width || 140}px`, height: `${sig.height || 55}px` }}
+                >
+                  <img
+                    src={formatSignatureUrl(sig.image_url)}
+                    alt={sig.label}
+                    className="w-full h-full object-contain pointer-events-none"
+                  />
+                  
+                  {/* Floating Action Badge on Hover */}
+                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-lg pointer-events-auto whitespace-nowrap">
+                    <GripVertical className="w-3 h-3 text-purple-300" />
+                    <span>{sig.label}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveSignature(sig.id);
+                      }}
+                      className="ml-1 text-red-400 hover:text-red-300 font-black px-1 rounded hover:bg-white/10"
+                      title="Delete Signature"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="absolute inset-0 border border-dashed border-purple-400/50 group-hover:border-purple-600 rounded pointer-events-none transition-colors" />
+                </motion.div>
+              ))}
             </div>
           </div>
         </div>
@@ -1386,6 +1648,122 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
             title={signatureType === 'advocate' ? 'Sign as Advocate' : 'Sign as Client'}
             saving={saving}
           />
+        </div>
+      )}
+
+      {/* Add Additional Signature Modal */}
+      {showAddSigModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl max-w-md w-full p-6 space-y-5">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <PenTool className="w-5 h-5 text-indigo-600" />
+                Add Signature to Form
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddSigModal(false);
+                  setCustomSigDrawing(false);
+                }}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {customSigDrawing ? (
+              <div>
+                <SignaturePad
+                  onSave={(dataUrl) => {
+                    handleAddPlacedSignature(dataUrl, addSigLabel, addSigType);
+                  }}
+                  onCancel={() => setCustomSigDrawing(false)}
+                  title={`Draw ${addSigLabel}`}
+                  saving={false}
+                />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                    Signature Role / Label
+                  </label>
+                  <select
+                    value={addSigLabel}
+                    onChange={(e) => {
+                      setAddSigLabel(e.target.value);
+                      if (e.target.value.includes('Advocate')) setAddSigType('advocate');
+                      else if (e.target.value.includes('Client') || e.target.value.includes('Deponent')) setAddSigType('client');
+                      else setAddSigType('custom');
+                    }}
+                    className="w-full h-11 px-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-bold text-gray-900 outline-none focus:border-indigo-600"
+                  >
+                    <option value="Advocate Signature">👨‍⚖️ Advocate Signature</option>
+                    <option value="Client Signature">👤 Client / Deponent Signature</option>
+                    <option value="Witness Signature">✍️ Witness Signature</option>
+                    <option value="Co-Counsel Signature">💼 Co-Counsel Signature</option>
+                    <option value="Notary / Seal">🔖 Notary / Seal Stamp</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="block text-xs font-bold uppercase tracking-wider text-gray-500">
+                    How would you like to provide the signature?
+                  </span>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCustomSigDrawing(true)}
+                      className="p-4 rounded-xl border-2 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 flex flex-col items-center gap-2 text-indigo-950 font-bold text-xs transition-all active:scale-95 shadow-xs"
+                    >
+                      <PenTool className="w-6 h-6 text-indigo-600" />
+                      <span>Draw Signature</span>
+                    </button>
+
+                    <label className="p-4 rounded-xl border-2 border-gray-200 bg-gray-50 hover:bg-gray-100 flex flex-col items-center gap-2 text-gray-800 font-bold text-xs cursor-pointer transition-all active:scale-95 shadow-xs">
+                      <Upload className="w-6 h-6 text-gray-600" />
+                      <span>Upload Image</span>
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                              if (evt.target?.result) {
+                                handleAddPlacedSignature(evt.target.result as string, addSigLabel, addSigType);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Quick Add from Profile Signature if available */}
+                {selectedForm?.advocate_signature_image && (
+                  <div className="pt-2 border-t">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleAddPlacedSignature(selectedForm.advocate_signature_image!, addSigLabel, addSigType);
+                      }}
+                      className="w-full py-2.5 px-3 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-xs font-bold text-indigo-900 flex items-center justify-center gap-2 transition-all active:scale-95"
+                    >
+                      <img src={formatSignatureUrl(selectedForm.advocate_signature_image)} alt="sig" className="h-5 object-contain" />
+                      Use Saved Profile Signature
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

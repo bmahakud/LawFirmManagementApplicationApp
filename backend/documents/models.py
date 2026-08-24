@@ -207,6 +207,7 @@ class UserDocument(models.Model):
     
     # Version tracking (for array-like storage of multiple versions)
     version = models.IntegerField(default=1, help_text="Version number of this document")
+    custom_sequence = models.IntegerField(default=0, help_text="Manual override for filing pack document ordering")
     parent_document = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
@@ -221,7 +222,7 @@ class UserDocument(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        ordering = ['-uploaded_at']
+        ordering = ['custom_sequence', '-uploaded_at']
         indexes = [
             models.Index(fields=['firm', 'is_deleted']),
             models.Index(fields=['client', 'is_deleted']),
@@ -247,7 +248,8 @@ class UserDocument(models.Model):
         self.save()
 
 
-# Import PDF-style court form templates
+# Import PDF-style court form templates and version models
 from .models_templates import CourtFormTemplate, FilledCourtForm
+from .models_versions import CaseDraftVersion
 
-__all__ = ['UserDocument', 'CourtFormTemplate', 'FilledCourtForm']
+__all__ = ['UserDocument', 'CourtFormTemplate', 'FilledCourtForm', 'CaseDraftVersion']

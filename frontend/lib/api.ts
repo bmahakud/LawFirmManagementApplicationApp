@@ -73,13 +73,29 @@ export const API = {
     LIST: "/api/documents/",
     UPLOAD: "/api/documents/",
     DETAIL: (uuid: string) => `/api/documents/${uuid}/`,
+    RESTORE: (id: string) => `/api/documents/${id}/restore/`,
     USER_DOCUMENTS: "/api/documents/user_documents/",
     BY_CLIENT: (id: string) => `/api/documents/by_client/?client_id=${id}`,
     BY_CASE: (id: string, section: string = 'all') => `/api/documents/by_case/?case_id=${id}&section=${section}`,
+    STATS: "/api/documents/stats/",
     MOVE_TO_OTHER: (id: string) => `/api/documents/${id}/move-to-other/`,
     COPY_TO_OTHER: (id: string) => `/api/documents/${id}/copy-to-other/`,
     MOVE_TO_ALL: (id: string) => `/api/documents/${id}/move-to-all/`,
+    GENERATE_MERGED_PDF: "/api/documents/generate-merged-pdf/",
+    FILING_PACK_ITEMS: (caseId: string) => `/api/documents/filing-pack-items/?case_id=${encodeURIComponent(caseId)}`,
+    REORDER_FILING_PACK: "/api/documents/reorder-filing-pack/",
     TEMPLATES: "/api/documents/templates/",
+    TEMPLATES_OBJ: {
+      LIST: "/api/documents/templates/",
+      DETAIL: (id: string) => `/api/documents/templates/${id}/`,
+      CREATE_FILLED: (id: string) => `/api/documents/templates/${id}/create_filled/`,
+    },
+    COURT_FORM_TEMPLATES: {
+      LIST: "/api/documents/court-form-templates/",
+      DETAIL: (id: string) => `/api/documents/court-form-templates/${id}/`,
+      PREVIEW: (id: string) => `/api/documents/court-form-templates/${id}/preview/`,
+      INITIALIZE_FORMS: "/api/documents/court-form-templates/initialize_forms/",
+    },
     FILLED_TEMPLATES: {
       LIST: "/api/documents/filled-templates/",
       CREATE: "/api/documents/filled-templates/",
@@ -89,6 +105,8 @@ export const API = {
       CLIENT_SIGN: (id: string) => `/api/documents/filled-templates/${id}/client_sign/`,
       ADVOCATE_SIGN: (id: string) => `/api/documents/filled-templates/${id}/advocate_sign/`,
       GENERATE_PDF: (id: string) => `/api/documents/filled-templates/${id}/generate_pdf/`,
+      SIGNING_VIEW: (id: string) => `/api/documents/filled-templates/${id}/signing_view/`,
+      PUBLIC_CLIENT_SIGN: (id: string) => `/api/documents/filled-templates/${id}/public_client_sign/`,
     },
     FILLED_COURT_FORMS: {
       LIST: "/api/documents/filled-court-forms/",
@@ -97,6 +115,20 @@ export const API = {
       CREATE_FROM_TEMPLATE: "/api/documents/filled-court-forms/create_from_template/",
       REFRESH_INDEX: (id: string) => `/api/documents/filled-court-forms/${id}/refresh_index/`,
       PREVIEW_FILING_PACK: (caseId: string) => `/api/documents/filled-court-forms/preview_filing_pack/?case_id=${caseId}`,
+      GENERATE_FORM_PDF: (id: string) => `/api/documents/filled-court-forms/${id}/generate_form_pdf/`,
+      GENERATE_MASTER_PACK: "/api/documents/filled-court-forms/generate_master_pack/",
+    },
+    DRAFT_VERSIONS: {
+      LIST: "/api/documents/draft-versions/",
+      CREATE: "/api/documents/draft-versions/",
+      DETAIL: (id: string) => `/api/documents/draft-versions/${id}/`,
+      BY_CASE: (caseId: string, documentIdentifier?: string) =>
+        documentIdentifier
+          ? `/api/documents/draft-versions/?case_id=${encodeURIComponent(caseId)}&document_identifier=${encodeURIComponent(documentIdentifier)}`
+          : `/api/documents/draft-versions/?case_id=${encodeURIComponent(caseId)}`,
+      NAME_VERSION: (id: string) => `/api/documents/draft-versions/${id}/name-version/`,
+      RESTORE: (id: string) => `/api/documents/draft-versions/${id}/restore/`,
+      DELETE: (id: string) => `/api/documents/draft-versions/${id}/`,
     }
   },
   DOCUMENT_REQUESTS: {

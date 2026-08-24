@@ -1,10 +1,10 @@
 """
 ViewSets for PDF-style court form templates
 """
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db import models
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
@@ -74,6 +74,11 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
     """
     queryset = FilledCourtForm.objects.all()
     permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['pdf', 'download_master_pdf', 'preview_filing_pack']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
     
     def get_serializer_class(self):
         if self.action == 'create':
@@ -139,6 +144,25 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
     
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        if instance.case_id:
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(instance.case_id), self.request.user)
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if instance.case_id:
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(instance.case_id), self.request.user)
+
+    def perform_destroy(self, instance):
+        case_id = instance.case_id
+        instance.delete()
+        if case_id:
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(case_id), self.request.user)
+    
     @action(detail=False, methods=['post'])
     def create_from_template(self, request):
         """
@@ -182,6 +206,10 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
         # Auto-populate INDEX data if it's an index template
         if "INDEX" in template.name.upper():
             self._populate_index_data(filled_form)
+        
+        if filled_form.case_id:
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(filled_form.case_id), request.user)
         
         serializer = FilledCourtFormSerializer(filled_form)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -367,18 +395,37 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(filled_form)
         return Response(serializer.data)
     
+    @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
+    def pdf(self, request, pk=None):
+        """Returns the rendered A4 PDF for this filled court form"""
+        from django.shortcuts import get_object_or_404
+        filled_form = get_object_or_404(FilledCourtForm, id=pk)
+        from .services.pdf_merger import generate_court_form_pdf
+        from django.http import HttpResponse
+        pdf_bytes = generate_court_form_pdf(filled_form)
+        if not pdf_bytes:
+            return Response({'error': 'Could not generate form PDF'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        filename = f"{filled_form.template.name if filled_form.template else 'Form'}.pdf".replace(' ', '_')
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        return response
+
     @action(detail=True, methods=['post'])
     def generate_pdf(self, request, pk=None):
-        """Generate PDF from filled form"""
+        """Generate and save PDF from filled form"""
         filled_form = self.get_object()
-        
-        # TODO: Implement PDF generation using ReportLab or WeasyPrint
-        # For now, return success message
-        
-        return Response({
-            'message': 'PDF generation will be implemented',
-            'form_id': str(filled_form.id)
-        })
+        from .services.pdf_merger import generate_court_form_pdf
+        from django.core.files.base import ContentFile
+        pdf_bytes = generate_court_form_pdf(filled_form)
+        if pdf_bytes:
+            filename = f"form_{filled_form.id}.pdf"
+            filled_form.generated_pdf.save(filename, ContentFile(pdf_bytes), save=True)
+            return Response({
+                'message': 'PDF generated successfully',
+                'pdf_url': filled_form.generated_pdf.url if filled_form.generated_pdf else None,
+                'form_id': str(filled_form.id)
+            })
+        return Response({'error': 'Could not generate form PDF'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def _extract_value(self, case, client, mapping_path):
         """Extract value from case or client using dot notation"""

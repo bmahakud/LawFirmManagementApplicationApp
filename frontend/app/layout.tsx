@@ -18,6 +18,7 @@ export const metadata: Metadata = {
 };
 
 import { Toaster } from 'react-hot-toast';
+import GlobalErrorHandler from '@/components/platform/GlobalErrorHandler';
 
 export default function RootLayout({
   children,
@@ -32,6 +33,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {children}
+        <GlobalErrorHandler />
         <Toaster
           position="top-center"
           toastOptions={{

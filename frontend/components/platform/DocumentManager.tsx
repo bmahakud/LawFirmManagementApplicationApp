@@ -4,7 +4,12 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
-import { Upload, FileText, Loader2, X, Eye, Download, Trash2, CheckCircle, XCircle, Clock, Search, ChevronLeft, ChevronRight, FolderOutput, FolderInput, Copy, MoreVertical } from 'lucide-react';
+import { 
+  Upload, FileText, Loader2, X, Eye, Download, Trash2, 
+  CheckCircle, XCircle, Clock, Search, ChevronLeft, ChevronRight, 
+  FolderOutput, FolderInput, Copy, MoreVertical, Layers, ArrowUp, ArrowDown, 
+  GripVertical, FileSpreadsheet, Sparkles
+} from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 type Document = {
@@ -24,6 +29,9 @@ type Document = {
   is_in_all_documents?: boolean;
   is_in_other_documents?: boolean;
   is_copied?: boolean;
+  is_court_form?: boolean;
+  custom_sequence?: number;
+  item_type?: 'court_form' | 'document';
 };
 
 type DocumentManagerProps = {
@@ -41,14 +49,16 @@ type DocumentManagerProps = {
 
 export default function DocumentManager({ accent, userId, clientId, caseId, showUpload = true, viewBase, userDocuments, role, onDocumentVerified, section = 'all' }: DocumentManagerProps) {
   const [documents, setDocuments] = useState<Document[]>(userDocuments || []);
-  const [loading, setLoading] = useState(!userDocuments); // Don't load if documents are provided
+  const [loading, setLoading] = useState(!userDocuments);
   const [uploading, setUploading] = useState(false);
+  const [reordering, setReordering] = useState(false);
   const [error, setError] = useState('');
   const [showUploadForm, setShowUploadForm] = useState(false);
-  const [verifying, setVerifying] = useState<string | null>(null); // Document ID being verified
+  const [verifying, setVerifying] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -77,26 +87,6 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
     setPageSize(newSize);
     setCurrentPage(1);
     localStorage.setItem('docTablePageSize', newSize.toString());
-  };
-
-  const handleDeleteDocument = async (documentId: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) return;
-    setDeleting(documentId);
-    try {
-      const response = await customFetch(API.DOCUMENTS.DETAIL(documentId), {
-        method: 'DELETE',
-      });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Failed to delete document');
-      }
-      await fetchDocuments();
-      if (onDocumentVerified) onDocumentVerified();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setDeleting(null);
-    }
   };
 
   const isAdvocateRole = role === 'advocate' || role === 'super-admin' || role === 'firm-admin';
@@ -137,57 +127,128 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   ];
 
   useEffect(() => {
-    // If documents are provided via props, use them
     if (userDocuments) {
       setDocuments(userDocuments);
       setLoading(false);
     } else {
-      // Otherwise fetch from API
       fetchDocuments();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, clientId, caseId, section, userDocuments]);
 
   const fetchDocuments = async () => {
     try {
       setLoading(true);
-      setDocuments([]); // Reset documents so previous section state is cleared
-      let url = API.DOCUMENTS.LIST; // Default: user's own documents
-      const params = new URLSearchParams();
+      setDocuments([]);
+      let url = API.DOCUMENTS.LIST;
       
-      // Priority order: userId > caseId > clientId > default
-      // If viewing a specific user's profile documents, use the user_documents endpoint
       if (userId) {
         url = `${API.DOCUMENTS.USER_DOCUMENTS}?user_id=${userId}`;
-      } 
-      // If filtering by case, use by_case endpoint (higher priority than clientId)
-      else if (caseId) {
+      } else if (caseId) {
         url = typeof API.DOCUMENTS.BY_CASE === 'function' 
           ? API.DOCUMENTS.BY_CASE(caseId, section) 
           : `${API.DOCUMENTS.BY_CASE}?case_id=${caseId}&section=${section}`;
-      } 
-      // If filtering by client, use by_client endpoint
-      else if (clientId) {
+      } else if (clientId) {
         url = typeof API.DOCUMENTS.BY_CLIENT === 'function' 
           ? API.DOCUMENTS.BY_CLIENT(clientId) 
           : `${API.DOCUMENTS.BY_CLIENT}?client_id=${clientId}`;
       }
 
-      console.log('DocumentManager - Fetching documents from:', url);
       const response = await customFetch(url);
       const data = await response.json();
 
       if (!response.ok) throw new Error(data.detail || 'Failed to fetch documents');
 
-      // Handle both paginated and non-paginated responses
       const fetchedDocs = Array.isArray(data) ? data : (data.results || []);
-      
-      console.log('DocumentManager - Fetched documents:', fetchedDocs);
       setDocuments(fetchedDocs);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReorderRow = async (fromNonMasterIdx: number, toNonMasterIdx: number) => {
+    const masterDoc = documents.find(d => d.document_title.toLowerCase().includes('master case filing pack'));
+    const nonMasterList = documents.filter(d => !d.document_title.toLowerCase().includes('master case filing pack'));
+
+    if (toNonMasterIdx < 0 || toNonMasterIdx >= nonMasterList.length || fromNonMasterIdx === toNonMasterIdx) return;
+
+    const updated = [...nonMasterList];
+    const [moved] = updated.splice(fromNonMasterIdx, 1);
+    updated.splice(toNonMasterIdx, 0, moved);
+
+    const fullUpdated = masterDoc ? [masterDoc, ...updated] : updated;
+    setDocuments(fullUpdated);
+
+    if (caseId) {
+      try {
+        setReordering(true);
+        const payload = {
+          case_id: caseId,
+          ordered_items: updated.map((item, idx) => ({
+            id: item.id,
+            type: item.is_court_form || item.document_type === 'court_form' ? 'court_form' : 'document',
+            sequence: idx + 1
+          }))
+        };
+
+        const res = await customFetch(API.DOCUMENTS.REORDER_FILING_PACK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          toast.success('Master PDF recompiled with new document order!');
+          if (onDocumentVerified) onDocumentVerified();
+        }
+      } catch (err) {
+        console.error('Error saving reordered items:', err);
+        toast.error('Failed to update filing sequence.');
+      } finally {
+        setReordering(false);
+      }
+    }
+  };
+
+  const handleDeleteDocument = async (documentId: string, isCourtForm?: boolean) => {
+    if (isCourtForm) {
+      if (!confirm('Are you sure you want to delete this filled court form?')) return;
+      setDeleting(documentId);
+      try {
+        const response = await customFetch(`${API.DOCUMENTS.FILLED_COURT_FORMS.DETAIL(documentId)}`, {
+          method: 'DELETE',
+        });
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.detail || 'Failed to delete court form');
+        }
+        await fetchDocuments();
+        if (onDocumentVerified) onDocumentVerified();
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setDeleting(null);
+      }
+      return;
+    }
+
+    if (!confirm('Are you sure you want to delete this document?')) return;
+    setDeleting(documentId);
+    try {
+      const response = await customFetch(API.DOCUMENTS.DETAIL(documentId), {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Failed to delete document');
+      }
+      await fetchDocuments();
+      if (onDocumentVerified) onDocumentVerified();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -257,20 +318,18 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   const handleVerifyDocument = async (documentId: string, action: 'verify' | 'reject') => {
     setVerifying(documentId);
     try {
+      const status = action === 'verify' ? 'verified' : 'rejected';
       const response = await customFetch(API.DOCUMENTS.DETAIL(documentId), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          verification_status: action === 'verify' ? 'verified' : 'rejected'
-        })
+        body: JSON.stringify({ verification_status: status }),
       });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.detail || 'Failed to update document');
+        throw new Error(data.detail || `Failed to ${action} document`);
       }
 
-      // Refresh documents
       await fetchDocuments();
       if (onDocumentVerified) onDocumentVerified();
     } catch (err: any) {
@@ -283,7 +342,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadData.document_file) {
-      setError('Please select a file');
+      setError('Please select a file to upload');
       return;
     }
 
@@ -292,27 +351,28 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
 
     try {
       const formData = new FormData();
-      formData.append('document_file', uploadData.document_file);
       formData.append('document_type', uploadData.document_type);
       formData.append('document_title', uploadData.document_title || uploadData.document_file.name);
-      if (uploadData.document_number) formData.append('document_number', uploadData.document_number);
-      if (uploadData.document_category) formData.append('document_category', uploadData.document_category);
-      if (uploadData.description) formData.append('description', uploadData.description);
-      
-      // Handle IDs (ensuring they are sent as strings)
+      formData.append('document_number', uploadData.document_number);
+      formData.append('document_category', uploadData.document_category);
+      formData.append('description', uploadData.description);
+      formData.append('document_file', uploadData.document_file);
+      formData.append('is_in_all_documents', section === 'all' ? 'true' : 'false');
+      formData.append('is_in_other_documents', section === 'other' ? 'true' : 'false');
       if (clientId) formData.append('client', clientId);
       if (caseId) formData.append('case', caseId);
 
-      const response = await customFetch(API.DOCUMENTS.UPLOAD, {
+      const response = await customFetch(API.DOCUMENTS.LIST, {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.detail || 'Failed to upload document');
+        throw new Error(data.detail || Object.values(data).flat().join(', ') || 'Failed to upload document');
       }
 
+      setShowUploadForm(false);
       setUploadData({
         document_type: 'other',
         document_title: '',
@@ -321,8 +381,8 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
         description: '',
         document_file: null,
       });
-      setShowUploadForm(false);
-      fetchDocuments();
+      await fetchDocuments();
+      if (onDocumentVerified) onDocumentVerified();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -334,21 +394,21 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
     switch (status) {
       case 'verified':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-green-50 text-green-700 text-xs font-semibold">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-green-50 text-green-700 text-xs font-semibold">
             <CheckCircle className="w-3 h-3" />
             Verified
           </span>
         );
       case 'rejected':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-50 text-red-700 text-xs font-semibold">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-red-50 text-red-700 text-xs font-semibold">
             <XCircle className="w-3 h-3" />
             Rejected
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-yellow-50 text-yellow-700 text-xs font-semibold">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-yellow-50 text-yellow-700 text-xs font-semibold">
             <Clock className="w-3 h-3" />
             Pending
           </span>
@@ -369,7 +429,17 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
     <div className="space-y-6">
       {showUpload && (
         <div className="flex justify-between items-center">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">All Documents</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">
+              {section === 'all' ? 'All Documents' : 'Other Documents'}
+            </h3>
+            {reordering && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md animate-pulse">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Updating Master PDF...
+              </span>
+            )}
+          </div>
           <button
             onClick={() => setShowUploadForm(!showUploadForm)}
             className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors"
@@ -510,9 +580,14 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
           );
         });
 
-        const totalItems = filteredDocs.length;
+        // Ensure single Master Case Filing Pack is always pinned at the very top (Row #1)
+        const masterDoc = filteredDocs.find(d => d.document_title.toLowerCase().includes('master case filing pack'));
+        const nonMasterDocs = filteredDocs.filter(d => !d.document_title.toLowerCase().includes('master case filing pack'));
+        const orderedDocs = masterDoc && section === 'all' ? [masterDoc, ...nonMasterDocs] : filteredDocs;
+
+        const totalItems = orderedDocs.length;
         const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-        const paginatedDocs = filteredDocs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+        const paginatedDocs = orderedDocs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
         if (documents.length === 0) {
           return (
@@ -523,9 +598,11 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
           );
         }
 
+        const isReorderingEnabled = section === 'all' && Boolean(caseId) && isAdvocateRole;
+
         return (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* Search & Pagination Header (Gmail/Advocate Portal Style) */}
+            {/* Search & Pagination Header */}
             <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white">
               <div className="relative group max-w-xs w-full">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-purple-600 transition-colors" />
@@ -539,6 +616,13 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
               </div>
 
               <div className="flex items-center gap-3 text-xs text-gray-500 font-medium">
+                {isReorderingEnabled && (
+                  <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200/70 px-2.5 py-1 rounded-lg mr-2">
+                    <Sparkles className="w-3.5 h-3.5 text-violet-600" />
+                    Organize filing order directly in table
+                  </span>
+                )}
+
                 {/* Page Size Selector */}
                 <div className="flex items-center gap-1.5 mr-2">
                   <span className="text-gray-400 font-normal">Show:</span>
@@ -580,7 +664,9 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/70 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                    <th className="py-3.5 px-6">SL. NO</th>
+                    <th className="py-3.5 px-6">
+                      {isReorderingEnabled ? 'SEQUENCE / SL. NO' : 'SL. NO'}
+                    </th>
                     <th className="py-3.5 px-4">DOCUMENT TITLE</th>
                     <th className="py-3.5 px-4">DOCUMENT TYPE</th>
                     <th className="py-3.5 px-4">UPLOADED BY</th>
@@ -592,34 +678,154 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                   {paginatedDocs.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-xs text-gray-400">
-                        No documents match "{searchQuery}"
+                        No documents match &quot;{searchQuery}&quot;
                       </td>
                     </tr>
                   ) : (
                     paginatedDocs.map((doc, idx) => {
-                      const slNo = (currentPage - 1) * pageSize + idx + 1;
+                      const isMaster = doc.document_title.toLowerCase().includes('master case filing pack');
+                      const isCourtForm = Boolean(doc.is_court_form || doc.document_type === 'court_form' || doc.document_category === 'court_form');
+                      
+                      // Calculate non-master index for reordering
+                      const nonMasterIdx = nonMasterDocs.findIndex(d => d.id === doc.id);
+                      const slNo = isMaster ? 1 : (nonMasterIdx >= 0 ? nonMasterIdx + 2 : idx + 1);
+
                       return (
-                        <tr key={doc.id} className="hover:bg-gray-50/60 transition-colors">
-                          <td className="py-4 px-6 text-xs font-semibold text-gray-400">{slNo}</td>
+                        <tr 
+                          key={doc.id}
+                          draggable={isReorderingEnabled && !isMaster}
+                          onDragStart={() => setDraggedIdx(nonMasterIdx)}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (draggedIdx !== null && draggedIdx !== nonMasterIdx && nonMasterIdx >= 0) {
+                              handleReorderRow(draggedIdx, nonMasterIdx);
+                              setDraggedIdx(nonMasterIdx);
+                            }
+                          }}
+                          className={`transition-all duration-150 ${
+                            isMaster 
+                              ? "bg-emerald-50/40 hover:bg-emerald-50/60 border-l-4 border-l-emerald-600" 
+                              : isCourtForm
+                                ? "bg-violet-50/75 hover:bg-violet-100/80 border-l-4 border-l-violet-600"
+                                : "bg-white hover:bg-slate-50/80 border-l-4 border-l-transparent"
+                          }`}
+                        >
+                          {/* Sequence / Sl. No Column */}
+                          <td className="py-4 px-6 text-xs font-semibold">
+                            {isMaster ? (
+                              <div className="flex items-center gap-2 pl-4 text-emerald-800 font-bold">
+                                <span className="w-5 h-5 rounded-md bg-emerald-100 flex items-center justify-center text-[10px]">📌</span>
+                                <span className="font-extrabold">#1</span>
+                              </div>
+                            ) : isReorderingEnabled && nonMasterIdx >= 0 ? (
+                              <div className="flex items-center gap-2">
+                                <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-600 p-0.5">
+                                  <GripVertical className="w-3.5 h-3.5" />
+                                </div>
+                                <select
+                                  value={nonMasterIdx + 1}
+                                  onChange={(e) => handleReorderRow(nonMasterIdx, Number(e.target.value) - 1)}
+                                  className={`w-11 h-7 font-bold text-xs rounded-lg text-center cursor-pointer border focus:outline-none transition-colors ${
+                                    isCourtForm 
+                                      ? 'bg-violet-100/80 hover:bg-violet-200 border-violet-300 text-violet-950 font-black' 
+                                      : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+                                  }`}
+                                  title="Change document position sequence"
+                                >
+                                  {nonMasterDocs.map((_, pIdx) => (
+                                    <option key={pIdx + 1} value={pIdx + 1}>
+                                      {pIdx + 1}
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className="flex flex-col gap-0.5">
+                                  <button
+                                    type="button"
+                                    disabled={nonMasterIdx === 0 || reordering}
+                                    onClick={() => handleReorderRow(nonMasterIdx, nonMasterIdx - 1)}
+                                    className="p-0.5 rounded text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                                    title="Move Up in Master PDF"
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={nonMasterIdx === nonMasterDocs.length - 1 || reordering}
+                                    onClick={() => handleReorderRow(nonMasterIdx, nonMasterIdx + 1)}
+                                    className="p-0.5 rounded text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                                    title="Move Down in Master PDF"
+                                  >
+                                    <ArrowDown className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 font-semibold">{slNo}</span>
+                            )}
+                          </td>
+
+                          {/* Document Title Column */}
                           <td className="py-4 px-4 font-bold text-gray-900">
-                            <div>{doc.document_title}</div>
+                            <div className="flex items-center gap-2">
+                              {isCourtForm ? (
+                                <FileSpreadsheet className="w-4 h-4 text-violet-600 shrink-0" />
+                              ) : isMaster ? (
+                                <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                              ) : (
+                                <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                              )}
+                              
+                              <span className={isCourtForm ? "text-violet-950 font-bold" : "text-gray-900"}>
+                                {doc.document_title}
+                              </span>
+
+                              {isMaster && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wide">
+                                  Master PDF
+                                </span>
+                              )}
+
+                              {isCourtForm && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold bg-violet-200/80 text-violet-900 border border-violet-300 uppercase tracking-wider shadow-xs">
+                                  Court Form
+                                </span>
+                              )}
+                            </div>
                             {doc.description && (
                               <p className="text-xs text-gray-500 font-normal mt-0.5">{doc.description}</p>
                             )}
                           </td>
-                          <td className="py-4 px-4 text-xs font-medium text-gray-600">
-                            {doc.document_type_display || doc.document_type}
+
+                          {/* Document Type Column */}
+                          <td className="py-4 px-4 text-xs font-medium">
+                            {isCourtForm ? (
+                              <span className="font-bold text-violet-800 bg-violet-100/60 px-2 py-0.5 rounded-md">
+                                Court Form
+                              </span>
+                            ) : (
+                              <span className="text-gray-600">
+                                {doc.document_type_display || doc.document_type}
+                              </span>
+                            )}
                           </td>
-                          <td className="py-4 px-4 text-xs text-gray-600 font-medium">
+
+                          {/* Uploaded By Column */}
+                          <td className="py-4 px-4 text-xs font-medium">
                             <span className="font-bold text-gray-900">{doc.uploaded_by_name}</span>
-                            <span className="block text-[11px] text-gray-400 mt-0.5">{new Date(doc.uploaded_at).toLocaleDateString()}</span>
+                            <span className="block text-[11px] text-gray-400 mt-0.5">
+                              {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : 'N/A'}
+                            </span>
                           </td>
+
+                          {/* Status Column */}
                           <td className="py-4 px-4">
                             {getStatusBadge(doc.verification_status)}
                           </td>
+
+                          {/* Action Column */}
                           <td className="py-4 px-6 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              {/* Verification actions for advocates on pending documents */}
+                              {/* Verification actions */}
                               {isAdvocateRole && doc.verification_status === 'pending' && (
                                 <>
                                   <button
@@ -660,20 +866,25 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                 </button>
                               )}
 
+                              {/* View Action Link */}
                               <Link
-                                href={`${viewBase || '/super-admin/documents'}/${doc.id}${caseId ? `?fromCase=${caseId}&subtab=${section}` : ''}`}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                href={`${viewBase || '/advocate/documents'}/${doc.id}${caseId ? `?fromCase=${caseId}&subtab=${section}` : ''}`}
+                                className={`w-[96px] h-8 inline-flex items-center justify-center gap-1.5 rounded-lg border text-xs font-bold transition-colors shadow-xs shrink-0 ${
+                                  isCourtForm
+                                    ? "border-violet-200 bg-violet-100/80 text-violet-900 hover:bg-violet-200"
+                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                }`}
                               >
-                                <Eye className="w-3.5 h-3.5" />
-                                View
+                                <Eye className={`w-3.5 h-3.5 ${isCourtForm ? 'text-violet-700' : ''}`} />
+                                {isCourtForm ? 'View Form' : 'View'}
                               </Link>
 
                               <button
                                 type="button"
-                                onClick={() => handleDeleteDocument(doc.id)}
+                                onClick={() => handleDeleteDocument(doc.id, isCourtForm)}
                                 disabled={deleting === doc.id}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50/50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100/80 transition-colors disabled:opacity-50"
-                                title="Delete Document"
+                                className="w-[82px] h-8 inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50/50 text-xs font-semibold text-red-600 hover:bg-red-100/80 transition-colors disabled:opacity-50 shrink-0"
+                                title="Delete"
                               >
                                 {deleting === doc.id ? (
                                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -683,16 +894,16 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                 Delete
                               </button>
 
-                              {/* 3-Dots Action Dropdown Menu for All Documents */}
-                              {section === 'all' && (
-                                <div className="relative inline-block text-left row-action-menu">
+                              {/* 3-Dots Action Dropdown Menu for non-master and non-court form */}
+                              {section === 'all' && !isMaster && !isCourtForm ? (
+                                <div className="relative inline-block text-left row-action-menu shrink-0">
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setOpenMenuId(openMenuId === doc.id ? null : doc.id);
                                     }}
-                                    className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-all active:scale-95 shadow-sm"
+                                    className="w-8 h-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-all active:scale-95 shadow-sm"
                                     title="More Actions"
                                   >
                                     <MoreVertical className="w-4 h-4" />
@@ -727,7 +938,9 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                     </div>
                                   )}
                                 </div>
-                              )}
+                              ) : section === 'all' ? (
+                                <div className="w-8 h-8 shrink-0" aria-hidden="true" />
+                              ) : null}
                             </div>
                           </td>
                         </tr>

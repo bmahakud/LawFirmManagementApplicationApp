@@ -33,6 +33,7 @@ import {
   AlertCircle,
   Eye,
   CheckCircle2,
+  Layers,
 } from 'lucide-react';
 import {
   ActivityFeed,
@@ -55,6 +56,7 @@ import {
   PhoneInput,
 } from '@/components/platform/ui';
 import { DocuMindIntegration } from './DocuMindIntegration';
+import ReorderFilingPackModal from './ReorderFilingPackModal';
 import {
   activityRows,
   caseFormFields,
@@ -654,6 +656,12 @@ export function CasesPage({
 
         const response = await customFetch(url);
         const data = await response.json();
+
+        if (!response.ok) {
+          setError(data.detail || data.message || 'Failed to load cases');
+          setCases([]);
+          return;
+        }
 
         // Handle both paginated and non-paginated responses
         const casesList = Array.isArray(data) ? data : (data.results || []);
@@ -2355,6 +2363,9 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const [showReorderModal, setShowReorderModal] = useState(false);
+
+  const targetCaseId = fromCase || (doc?.case && (typeof doc.case === 'object' ? doc.case.id : doc.case));
 
   const handleBack = () => {
     const caseId = fromCase || (doc?.case && (typeof doc.case === 'object' ? doc.case.id : doc.case));
@@ -2377,10 +2388,39 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
     const fetchDoc = async () => {
       try {
         setLoading(true);
+        setError('');
+
+        // 1. Try standard UserDocument detail
         const response = await customFetch(API.DOCUMENTS.DETAIL(documentId));
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || 'Failed to fetch document');
-        setDoc(data);
+        if (response.ok) {
+          const data = await response.json();
+          setDoc(data);
+          return;
+        }
+
+        // 2. If not found in UserDocument, try FilledCourtForm detail
+        const formRes = await customFetch(API.DOCUMENTS.FILLED_COURT_FORMS.DETAIL(documentId));
+        if (formRes.ok) {
+          const formData = await formRes.json();
+          const pdfEndpoint = `/api/documents/filled-court-forms/${documentId}/pdf/`;
+          setDoc({
+            id: formData.id,
+            document_title: formData.template_name || 'Court Form',
+            document_type: 'court_form',
+            document_type_display: 'Court Form',
+            file_url: formData.generated_pdf || pdfEndpoint,
+            document_file: formData.generated_pdf || pdfEndpoint,
+            case: formData.case,
+            case_title: formData.case_number ? `Case #${formData.case_number}` : 'Case Court Form',
+            uploaded_at: formData.created_at,
+            uploaded_by_name: formData.created_by_name || 'Advocate',
+            verification_status: 'verified',
+            is_court_form: true
+          });
+          return;
+        }
+
+        throw new Error('Document record not found');
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -2389,6 +2429,21 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
     };
     fetchDoc();
   }, [documentId]);
+
+  const handleReordered = async () => {
+    try {
+      setLoading(true);
+      const response = await customFetch(API.DOCUMENTS.DETAIL(documentId));
+      if (response.ok) {
+        const data = await response.json();
+        setDoc(data);
+      }
+    } catch (err) {
+      console.error('Error refreshing document after reordering:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const docTitle = doc?.document_title || 'Document';
   useTopbarTitle(docTitle, docTitle ? 'Document Detail' : '');
@@ -2435,11 +2490,11 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageSection
-        eyebrow="Library Archive"
+        eyebrow={doc.is_court_form ? "Case Court Form" : "Library Archive"}
         title={doc.document_title}
         description={`Detailed record for ${doc.document_type_display || doc.document_type}. Original file is stored securely.`}
         actions={
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
             <button
               onClick={handleBack}
               className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all active:scale-[0.98]"
@@ -2447,6 +2502,25 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
               <ChevronLeft className="h-4 w-4" />
               Back
             </button>
+            {doc.is_court_form && targetCaseId && (
+              <Link
+                href={`/advocate/cases/${targetCaseId}?tab=Documents&subtab=court_forms&formId=${doc.id}`}
+                className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-bold text-violet-900 hover:bg-violet-100 shadow-sm transition-all active:scale-[0.98]"
+              >
+                <PenTool className="h-4 w-4 text-violet-600" />
+                Edit Form Fields
+              </Link>
+            )}
+            {targetCaseId && !doc.is_court_form && (
+              <button
+                type="button"
+                onClick={() => setShowReorderModal(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-2.5 text-sm font-bold text-indigo-900 hover:bg-indigo-100 shadow-sm transition-all active:scale-[0.98]"
+              >
+                <Layers className="h-4 w-4 text-indigo-600" />
+                Reorder Filing Index
+              </button>
+            )}
             <button
               onClick={handleDownload}
               disabled={downloading}
@@ -2467,89 +2541,16 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
         />
       </div>
 
-      <SplitPanels
-        left={
-          <div className="space-y-6">
-            <Panel title="Identity & Classification" subtitle="Core document identifiers and types.">
-              <DetailList
-                columns={2}
-                items={[
-                  { label: 'Document Title', value: <span className="font-bold text-gray-900">{doc.document_title}</span> },
-                  { label: 'Type Display', value: <span className="font-semibold text-gray-700">{doc.document_type_display}</span> },
-                  { label: 'Internal ID', value: <span className="font-mono text-[10px] text-gray-400 uppercase">{doc.id}</span> },
-                  { label: 'Category', value: <span className="text-gray-500 italic">{doc.document_category || 'General Content'}</span> },
-                  { label: 'Version', value: <Badge label={`v${doc.version || 1}`} tone="info" /> },
-                  { label: 'Doc Number', value: <span className="font-semibold text-gray-700">{doc.document_number || '--'}</span> },
-                ]}
-              />
-            </Panel>
-
-            <Panel title="Origin & Lifecycle" subtitle="Creation details and maintenance timestamps.">
-              <DetailList
-                columns={2}
-                items={[
-                  { label: 'Uploaded By', value: <span className="font-semibold text-gray-700">{doc.uploaded_by_name}</span> },
-                  { label: 'Firm Reference', value: <span className="font-mono text-[10px] text-gray-400">{doc.firm}</span> },
-                  { label: 'Upload Date', value: <span className="text-gray-600 font-medium text-xs">{new Date(doc.uploaded_at).toLocaleString()}</span> },
-                  { label: 'Last Modified', value: <span className="text-gray-600 font-medium text-xs">{new Date(doc.updated_at).toLocaleString()}</span> },
-                  { label: 'Active Status', value: doc.is_deleted ? <Badge label="Deleted" tone="danger" /> : <Badge label="Normal" tone="success" /> },
-                ]}
-              />
-            </Panel>
-
-            {doc.description && (
-              <Panel title="Description / Notes" subtitle="Contextual information provided during archive.">
-                <div className="bg-[#f7f8fa] rounded-2xl p-5 border border-dashed border-gray-200">
-                  <p className="text-sm text-gray-600 italic leading-relaxed">"{doc.description}"</p>
-                </div>
-              </Panel>
-            )}
-          </div>
-        }
-        right={
-          <div className="space-y-6">
-            <Panel title="Verification Status" subtitle="Audit trails and compliance state.">
-              <div className="space-y-6">
-                <div className="flex items-center justify-between p-4 bg-[#f7f8fa] rounded-2xl border border-gray-100">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Current State</span>
-                  <Badge
-                    label={(doc.verification_status || 'pending').toUpperCase()}
-                    tone={doc.verification_status === 'verified' ? 'success' : doc.verification_status === 'rejected' ? 'danger' : 'warning'}
-                  />
-                </div>
-
-                <DetailList
-                  columns={1}
-                  items={[
-                    { label: 'Verified By', value: <span className="font-semibold text-gray-700">{doc.verified_by || 'Not Reviewed'}</span> },
-                    { label: 'Review Timestamp', value: <span className="text-gray-600 font-medium text-xs">{doc.verified_at ? new Date(doc.verified_at).toLocaleString() : '--'}</span> },
-                  ]}
-                />
-
-                {doc.verification_notes && (
-                  <div className="pt-4 border-t border-gray-100">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Reviewer Feedback</p>
-                    <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl">
-                      <p className="text-sm text-amber-900 italic leading-relaxed">{doc.verification_notes}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Panel>
-
-            <InfoAside
-              accent={accent}
-              title="Audit Constraints"
-              items={[
-                'This metadata record is a read-only historical archive.',
-                'Direct file URLs may be session-restricted for data protection.',
-                'Deletion records are preserved for compliance audit trails.',
-                'Verification status impacts case accessibility and legal standing.',
-              ]}
-            />
-          </div>
-        }
-      />
+      {targetCaseId && (
+        <ReorderFilingPackModal
+          isOpen={showReorderModal}
+          onClose={() => setShowReorderModal(false)}
+          caseId={targetCaseId}
+          caseTitle={doc?.case_title}
+          accent={accent}
+          onReordered={handleReordered}
+        />
+      )}
     </div>
   );
 }
