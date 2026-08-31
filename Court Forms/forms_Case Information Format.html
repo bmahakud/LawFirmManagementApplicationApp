@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Case Information Format</title>
+<style>
+  @page{
+    size: A4;
+    margin: 10mm 12mm;
+  }
+  :root{
+    --ink:#111;
+    --line:#333;
+    --hair:#8a8a8a;
+    --paper:#fff;
+    --band:#e9e9e9;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    background:#d9d6cd;
+    font-family:Arial, Helvetica, sans-serif;
+    color:var(--ink);
+  }
+  body{ padding:20px 10px; }
+
+  .sheet{
+    width:210mm;
+    min-height:297mm;
+    margin:0 auto 16px;
+    background:var(--paper);
+    border:1px solid #999;
+    padding:10mm 12mm;
+    font-size:11.5px;
+    line-height:1.35;
+    display:flex;
+    flex-direction:column;
+  }
+  .sheet > .extra-title{ margin-top:0; }
+  #extraParties{
+    display:flex;
+    flex-direction:column;
+    gap:22px;
+    flex:1;
+  }
+
+  .masthead{
+    text-align:center;
+    position:relative;
+    margin-bottom:4px;
+  }
+  .masthead h1{
+    margin:0;
+    font-size:16px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    font-weight:bold;
+  }
+  .masthead h2{
+    margin:1px 0 0;
+    font-size:12.5px;
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+    font-weight:bold;
+  }
+  .case-type{
+    position:absolute;
+    right:0;
+    top:0;
+    font-size:10.5px;
+    text-align:left;
+    line-height:1.6;
+  }
+  .case-type div{ white-space:nowrap; }
+  .case-type input[type="checkbox"]{
+    transform:scale(0.9);
+    margin-right:4px;
+    vertical-align:middle;
+  }
+
+  .district-row{
+    display:flex;
+    align-items:baseline;
+    gap:6px;
+    font-size:11px;
+    font-weight:bold;
+    border-bottom:1.5px solid var(--ink);
+    padding-bottom:5px;
+    margin-bottom:6px;
+  }
+  .district-row input{
+    flex:1;
+    border:none;
+    border-bottom:1px dotted var(--line);
+    background:transparent;
+    font-family:inherit;
+    font-size:11px;
+    font-weight:normal;
+    padding:1px 3px;
+  }
+
+  .section-title{
+    background:var(--band);
+    border:1px solid var(--hair);
+    border-bottom:none;
+    padding:5px 8px;
+    font-size:10.5px;
+    font-weight:bold;
+    line-height:1.4;
+  }
+  .section-title .note{
+    font-weight:normal;
+    font-style:italic;
+    font-size:9.5px;
+  }
+
+  table.field-table{
+    width:100%;
+    border-collapse:collapse;
+    margin-bottom:10px;
+    font-size:11px;
+  }
+  table.field-table td{
+    border:1px solid var(--hair);
+    padding:5px 8px;
+    vertical-align:middle;
+    height:26px;
+  }
+  table.field-table td.sno{
+    width:24px;
+    text-align:center;
+    font-weight:bold;
+  }
+  table.field-table td.label{
+    width:190px;
+    font-weight:bold;
+  }
+  table.field-table input[type="text"],
+  table.field-table input[type="date"],
+  table.field-table input[type="email"],
+  table.field-table input[type="tel"]{
+    width:100%;
+    border:none;
+    background:transparent;
+    font-family:inherit;
+    font-size:11px;
+    padding:2px 3px;
+    height:20px;
+  }
+  table.field-table input:focus{
+    outline:1px solid #999;
+    background:#fbfbe6;
+  }
+  .subfield{
+    font-size:9.5px;
+    font-weight:bold;
+    color:var(--line);
+    margin-right:4px;
+    white-space:nowrap;
+  }
+  .inline-cell{
+    display:flex;
+    align-items:center;
+    gap:3px;
+  }
+  .inline-cell input{ flex:1; min-width:0; }
+  .two-col{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .two-col > div{
+    display:flex;
+    align-items:center;
+    gap:3px;
+  }
+  .two-col > div:first-child{
+    border-right:1px solid var(--hair);
+    padding-right:6px;
+    margin-right:-1px;
+  }
+  .two-col > div:last-child{ padding-left:6px; }
+
+  .radio-row{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    font-size:10.5px;
+    white-space:nowrap;
+  }
+  .radio-row label{
+    display:flex;
+    align-items:center;
+    gap:3px;
+  }
+  .radio-row input[type="radio"]{ transform:scale(1); }
+
+  .party-block{ margin-bottom:16px; }
+
+  .signature-line{
+    margin-top:16px;
+    font-size:11.5px;
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+  }
+  .signature-line .fill{
+    flex:1;
+    border-bottom:1px dotted var(--line);
+    min-height:18px;
+  }
+  .signature-caption{
+    text-align:center;
+    font-size:10px;
+    letter-spacing:0.3px;
+    margin-top:5px;
+    font-style:italic;
+  }
+
+  .extra-title{
+    text-align:center;
+    font-size:14px;
+    font-weight:bold;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    border-bottom:1.5px solid var(--ink);
+    padding-bottom:4px;
+    margin:10px 0 6px;
+  }
+
+  #addPartyWrap{
+    text-align:center;
+    margin:4px 0 6px;
+  }
+  #addPartyWrap button{
+    font-family:inherit;
+    font-size:9.5px;
+    padding:4px 10px;
+    border:1px solid var(--ink);
+    background:transparent;
+    cursor:pointer;
+  }
+
+  .toolbar{
+    width:210mm;
+    margin:0 auto 10px;
+    display:flex;
+    justify-content:flex-end;
+    gap:8px;
+  }
+  .toolbar button{
+    font-family:Arial, sans-serif;
+    font-size:12px;
+    padding:8px 16px;
+    border:1px solid var(--ink);
+    background:var(--ink);
+    color:#fff;
+    cursor:pointer;
+  }
+  .toolbar button.secondary{
+    background:transparent;
+    color:var(--ink);
+  }
+  .page-heading{
+    width:210mm;
+    margin:0 auto 6px;
+    font-size:12px;
+    color:#555;
+    font-family:Arial, sans-serif;
+  }
+
+  @media print{
+    html,body{ background:#fff; }
+    body{ padding:0; }
+    .toolbar, .page-heading, #addPartyWrap{ display:none; }
+    .sheet{
+      border:none;
+      width:auto;
+      min-height:0;
+      margin:0;
+      padding:0;
+      page-break-after:always;
+    }
+    .sheet:last-child{ page-break-after:auto; }
+  }
+
+  @media (max-width:900px){
+    .sheet, .toolbar, .page-heading{ width:100%; }
+    .sheet{ padding:4mm; font-size:9.5px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-heading">One-page fillable version of the Case Information Format. Use Print / Save as PDF for a clean single-page printout.</div>
+<div class="toolbar">
+  <button class="secondary" type="button" onclick="document.getElementById('caseForm').reset()">Clear form</button>
+  <button type="button" onclick="window.print()">Print / Save as PDF</button>
+</div>
+
+<form id="caseForm">
+<div class="sheet">
+
+  <div class="masthead">
+    <h1>Check List</h1>
+    <h2>Case Information Format</h2>
+    <div class="case-type">
+      <div><input type="checkbox" name="caseType" value="Civil"> Civil</div>
+      <div><input type="checkbox" name="caseType" value="Criminal"> Criminal</div>
+    </div>
+  </div>
+
+  <div class="district-row">
+    <label for="district">DISTRICT:</label>
+    <input type="text" id="district" name="district">
+  </div>
+
+  <div class="party-block">
+    <div class="section-title">
+      PLAINTIFF/PETITIONER/COMPLAINANT/APPELLANT/DECREE HOLDER ETC.
+      <span class="note">— Please fill up all the relevant fields &amp; (*) fields are mandatory</span>
+    </div>
+    <table class="field-table">
+      <tr>
+        <td class="sno">1</td>
+        <td class="label">Name of the Plaintiff/complainant/etc</td>
+        <td><input type="text" name="p_name"></td>
+      </tr>
+      <tr>
+        <td class="sno">2</td>
+        <td class="label">S/o W/o D/o</td>
+        <td><input type="text" name="p_parent"></td>
+      </tr>
+      <tr>
+        <td class="sno">3</td>
+        <td class="label">Address</td>
+        <td><input type="text" name="p_address"></td>
+      </tr>
+      <tr>
+        <td class="sno">4</td>
+        <td class="label">Aadhar Card No.</td>
+        <td>
+          <div class="two-col">
+            <div><input type="text" name="p_aadhar" maxlength="12"></div>
+            <div><span class="subfield">Pin Code</span><input type="text" name="p_pincode" maxlength="6"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno">5</td>
+        <td class="label">Gender</td>
+        <td>
+          <div class="two-col">
+            <div class="radio-row">
+              <label><input type="radio" name="p_gender" value="Male">Male</label>
+              <label><input type="radio" name="p_gender" value="Female">Female</label>
+              <label><input type="radio" name="p_gender" value="Other">Other</label>
+            </div>
+            <div><span class="subfield">Nationality</span><input type="text" name="p_nationality" value="Indian"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno">6</td>
+        <td class="label">Date of Birth</td>
+        <td>
+          <div class="two-col">
+            <div><input type="date" name="p_dob"></div>
+            <div><span class="subfield">Age</span><input type="text" name="p_age"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno">7</td>
+        <td class="label">Mobile No.</td>
+        <td>
+          <div class="two-col">
+            <div><input type="tel" name="p_mobile" maxlength="10"></div>
+            <div><span class="subfield">E-mail Id</span><input type="email" name="p_email"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno">9</td>
+        <td class="label">Act/Section</td>
+        <td><input type="text" name="p_act"></td>
+      </tr>
+      <tr>
+        <td class="sno">10</td>
+        <td class="label">Valuation of Suit</td>
+        <td>
+          <div class="two-col">
+            <div><input type="text" name="p_valuation"></div>
+            <div><span class="subfield">Court Fee Ascertained</span><input type="text" name="p_feeascertained"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno"></td>
+        <td class="label"></td>
+        <td><div class="inline-cell"><span class="subfield">Court Fee Paid/Deposited</span><input type="text" name="p_feepaid"></div></td>
+      </tr>
+      <tr>
+        <td class="sno">11</td>
+        <td class="label">Police Station</td>
+        <td><input type="text" name="p_ps"></td>
+      </tr>
+      <tr>
+        <td class="sno">12</td>
+        <td class="label">F.I.R. No. and Year</td>
+        <td><input type="text" name="p_fir"></td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="party-block">
+    <div class="section-title">
+      DEFENDANT/ACCUSED/RESPONDENT JUDGEMENT DEBATER ETC.
+      <span class="note">— Please fill up all the relevant fields &amp; (*) fields are mandatory</span>
+    </div>
+    <table class="field-table">
+      <tr>
+        <td class="sno">1</td>
+        <td class="label">Name of the DEFENDANT/ACCUSED/etc</td>
+        <td><input type="text" name="d_name"></td>
+      </tr>
+      <tr>
+        <td class="sno">2</td>
+        <td class="label">S/o W/o D/o</td>
+        <td><input type="text" name="d_parent"></td>
+      </tr>
+      <tr>
+        <td class="sno">3</td>
+        <td class="label">Address</td>
+        <td><input type="text" name="d_address"></td>
+      </tr>
+      <tr>
+        <td class="sno">4</td>
+        <td class="label">Aadhar Card No.</td>
+        <td>
+          <div class="two-col">
+            <div><input type="text" name="d_aadhar" maxlength="12"></div>
+            <div><span class="subfield">Pin Code</span><input type="text" name="d_pincode" maxlength="6"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno">5</td>
+        <td class="label">Gender</td>
+        <td>
+          <div class="two-col">
+            <div class="radio-row">
+              <label><input type="radio" name="d_gender" value="Male">Male</label>
+              <label><input type="radio" name="d_gender" value="Female">Female</label>
+              <label><input type="radio" name="d_gender" value="Other">Other</label>
+            </div>
+            <div><span class="subfield">Nationality</span><input type="text" name="d_nationality" value="Indian"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno">6</td>
+        <td class="label">Date of Birth</td>
+        <td>
+          <div class="two-col">
+            <div><input type="date" name="d_dob"></div>
+            <div><span class="subfield">Age</span><input type="text" name="d_age"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno">7</td>
+        <td class="label">Mobile No.</td>
+        <td>
+          <div class="two-col">
+            <div><input type="tel" name="d_mobile" maxlength="10"></div>
+            <div><span class="subfield">E-mail Id</span><input type="email" name="d_email"></div>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="party-block">
+    <div class="section-title">
+      ADVOCATE FOR PLAINTIFF/COMPLAINANT/PETITIONER/DECREE HOLDER ETC.
+    </div>
+    <table class="field-table">
+      <tr>
+        <td class="sno">1</td>
+        <td class="label">Name of the Advocate<br>Enrolment No.</td>
+        <td><input type="text" name="adv_name"></td>
+      </tr>
+      <tr>
+        <td class="sno">2</td>
+        <td class="label">Office/Chamber No.</td>
+        <td><input type="text" name="adv_office"></td>
+      </tr>
+      <tr>
+        <td class="sno">3</td>
+        <td class="label">Mobile No.</td>
+        <td>
+          <div class="two-col">
+            <div><input type="tel" name="adv_mobile" maxlength="10"></div>
+            <div><span class="subfield">E-mail</span><input type="email" name="adv_email"></div>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="signature-line">SUBMITTED BY:- <span class="fill"></span></div>
+  <div class="signature-caption">PLAINTIFF / PETITIONER / DEFENDANT / ACCUSED / OTHER / ADVOCATE</div>
+
+</div>
+
+<div class="sheet">
+  <div class="extra-title">Extra Party Information</div>
+  <div id="extraParties"></div>
+  <div id="addPartyWrap">
+    <button type="button" onclick="addExtraParty()">+ Add another extra party</button>
+  </div>
+
+  <div class="signature-line" style="margin-top:auto;">SUBMITTED BY:- <span class="fill"></span></div>
+  <div class="signature-caption">PLAINTIFF / PETITIONER / DEFENDANT / ACCUSED / OTHER / ADVOCATE</div>
+</div>
+</form>
+
+<script>
+let extraCount = 0;
+
+function extraPartyTemplate(idx){
+  return `
+  <div class="party-block extra-party" data-idx="${idx}" style="border:1px solid #ccc; padding:10px; border-radius:2px;">
+    <table class="field-table">
+      <tr>
+        <td class="sno">1</td>
+        <td class="label">Name Of The Extra Party</td>
+        <td><input type="text" name="ep${idx}_name"></td>
+      </tr>
+      <tr>
+        <td class="sno">2</td>
+        <td class="label">S/o W/o D/o</td>
+        <td><input type="text" name="ep${idx}_parent"></td>
+      </tr>
+      <tr>
+        <td class="sno">3</td>
+        <td class="label">Address</td>
+        <td><input type="text" name="ep${idx}_address"></td>
+      </tr>
+      <tr>
+        <td class="sno">4</td>
+        <td class="label">Aadhar Card No.</td>
+        <td>
+          <div class="two-col">
+            <div><input type="text" name="ep${idx}_aadhar" maxlength="12"></div>
+            <div><span class="subfield">Pin Code</span><input type="text" name="ep${idx}_pincode" maxlength="6"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno">5</td>
+        <td class="label">Gender</td>
+        <td>
+          <div class="two-col">
+            <div class="radio-row">
+              <label><input type="radio" name="ep${idx}_gender" value="Male">Male</label>
+              <label><input type="radio" name="ep${idx}_gender" value="Female">Female</label>
+              <label><input type="radio" name="ep${idx}_gender" value="Other">Other</label>
+            </div>
+            <div><span class="subfield">Nationality</span><input type="text" name="ep${idx}_nationality" value="Indian"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno">6</td>
+        <td class="label">Date of Birth</td>
+        <td>
+          <div class="two-col">
+            <div><input type="date" name="ep${idx}_dob"></div>
+            <div><span class="subfield">Age</span><input type="text" name="ep${idx}_age"></div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sno">7</td>
+        <td class="label">Mobile No.</td>
+        <td>
+          <div class="two-col">
+            <div><input type="tel" name="ep${idx}_mobile" maxlength="10"></div>
+            <div><span class="subfield">e-mail</span><input type="email" name="ep${idx}_email"></div>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>`;
+}
+
+function addExtraParty(){
+  extraCount++;
+  const container = document.getElementById('extraParties');
+  const div = document.createElement('div');
+  div.innerHTML = extraPartyTemplate(extraCount);
+  container.appendChild(div.firstElementChild);
+}
+
+for(let i=0;i<3;i++){ addExtraParty(); }
+</script>
+
+</body>
+</html>

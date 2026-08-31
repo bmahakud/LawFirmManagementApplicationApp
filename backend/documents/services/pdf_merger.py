@@ -280,14 +280,25 @@ def _parse_form_cell(cell, field_values, base_style):
 
 def generate_court_form_pdf(form):
     """
-    Generates a formal ReportLab A4 PDF for a FilledCourtForm using its template content_structure design.
+    Generates a formal A4 PDF for a FilledCourtForm.
+    1. First attempts pixel-perfect HTML template rendering via WeasyPrint.
+    2. Falls back to ReportLab flowables.
     """
+    try:
+        from .court_form_html_engine import generate_pdf_from_html_template
+        html_pdf = generate_pdf_from_html_template(form)
+        if html_pdf:
+            return html_pdf
+    except Exception as ex:
+        print(f"HTML PDF generation exception, falling back: {ex}")
+
     try:
         buffer = io.BytesIO()
         content = getattr(form, 'filled_content', None) or (getattr(form.template, 'content_structure', {}) if getattr(form, 'template', None) else {})
         field_values = getattr(form, 'field_values', {}) or {}
         sections = content.get('sections', []) if isinstance(content, dict) else []
         content_margins = content.get('margins', {}) if isinstance(content, dict) else {}
+
 
         # Precise scale conversion from 96 DPI CSS px (794x1123) to 72 DPI PDF pt (595.27x841.89)
         scale_x = 595.27 / 794.0 # 0.74971

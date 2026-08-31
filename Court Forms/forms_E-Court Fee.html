@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SHCIL e-Court Fee Receipt Application Form</title>
+<style>
+  @page{ size: A4; margin: 10mm 12mm; }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    background:#d9d6cd;
+    font-family:Arial, Helvetica, sans-serif;
+    color:#111;
+  }
+  body{ padding:20px 10px; }
+
+  .sheet{
+    width:210mm;
+    min-height:180mm;
+    margin:0 auto;
+    background:#fff;
+    border:1px solid #999;
+    padding:10mm 12mm;
+    font-size:12px;
+  }
+
+  /* ===== Header ===== */
+  .letterhead{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    border-bottom:2px solid #111;
+    padding-bottom:8px;
+    margin-bottom:10px;
+  }
+  .logo{
+    width:56px;
+    height:56px;
+    flex-shrink:0;
+  }
+  .logo svg{ width:100%; height:100%; }
+  .letterhead-text{
+    text-align:center;
+    flex:1;
+  }
+  .letterhead-text h1{
+    margin:0;
+    font-size:20px;
+    letter-spacing:0.3px;
+    font-weight:bold;
+  }
+  .letterhead-text .addr{
+    font-size:10.5px;
+    margin-top:2px;
+  }
+  .letterhead-text .web{
+    font-size:10.5px;
+    margin-top:1px;
+  }
+  .web a{ color:#111; font-weight:bold; text-decoration:none; }
+
+  .form-title{
+    text-align:center;
+    font-size:17px;
+    font-weight:bold;
+    margin:8px 0 14px;
+  }
+
+  /* ===== Section blocks ===== */
+  .section{
+    border:1.5px solid #333;
+  }
+  .section-bar{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    background:#e4e2da;
+    border-bottom:1.5px solid #333;
+    padding:3px 8px;
+  }
+  .section-bar .title{
+    font-weight:bold;
+    font-size:13px;
+  }
+  .section-bar .receipt-word{
+    font-weight:bold;
+    font-size:13px;
+    text-decoration:underline;
+  }
+  .section-bar .note{
+    font-style:italic;
+    font-weight:bold;
+    font-size:10px;
+  }
+
+  table.form-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:11.5px;
+  }
+  table.form-table td{
+    border:1px solid #666;
+    padding:4px 6px;
+    vertical-align:middle;
+  }
+  table.form-table td.label{
+    font-weight:normal;
+    white-space:nowrap;
+    width:150px;
+  }
+  table.form-table input[type="text"],
+  table.form-table input[type="number"]{
+    width:100%;
+    border:none;
+    background:transparent;
+    font-family:inherit;
+    font-size:11.5px;
+    padding:2px 2px;
+  }
+  table.form-table input:focus{
+    outline:1px solid #999;
+    background:#fbfbe6;
+  }
+
+  .rupee{
+    font-weight:bold;
+    margin-right:4px;
+  }
+
+  .checkbox-group{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    row-gap:4px;
+    align-items:center;
+    font-size:11px;
+  }
+  .checkbox-group label{
+    display:flex;
+    align-items:center;
+    gap:3px;
+    white-space:nowrap;
+  }
+  .checkbox-group input[type="checkbox"]{
+    transform:scale(1);
+    margin:0;
+  }
+
+  .date-row{
+    display:flex;
+    align-items:center;
+    gap:4px;
+    font-size:11.5px;
+    white-space:nowrap;
+  }
+  .date-row span.lbl{ font-weight:normal; margin-right:2px; }
+  .date-row input[type="text"]{
+    border:none;
+    border-bottom:1px dotted #888;
+    width:26px;
+    text-align:center;
+    font-size:11.5px;
+    background:transparent;
+  }
+  .date-row .yy{
+    width:34px;
+  }
+  .date-row .slash{ margin:0 1px; }
+  .date-row .fixed20{ font-weight:normal; }
+
+  .sig-cell{
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .sig-cell input[type="text"]{
+    flex:1;
+  }
+
+  /* ===== Cut line ===== */
+  .cutline{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:14px 0;
+    color:#333;
+    font-size:16px;
+  }
+  .cutline .dash{
+    flex:1;
+    border-top:1.5px dashed #555;
+  }
+  .cutline .scissors{
+    font-size:18px;
+    transform:rotate(0deg);
+  }
+
+  .footer-note{
+    text-align:center;
+    font-weight:bold;
+    font-size:12.5px;
+    margin-top:16px;
+  }
+
+  /* ===== Toolbar (screen only) ===== */
+  .toolbar{
+    width:210mm;
+    margin:0 auto 10px;
+    display:flex;
+    justify-content:flex-end;
+    gap:8px;
+  }
+  .toolbar button{
+    font-family:Arial, sans-serif;
+    font-size:12px;
+    padding:8px 16px;
+    border:1px solid #111;
+    background:#111;
+    color:#fff;
+    cursor:pointer;
+  }
+  .toolbar button.secondary{
+    background:transparent;
+    color:#111;
+  }
+  .page-heading{
+    width:210mm;
+    margin:0 auto 6px;
+    font-size:12px;
+    color:#555;
+    font-family:Arial, sans-serif;
+  }
+
+  @media print{
+    html,body{ background:#fff; }
+    body{ padding:0; }
+    .toolbar, .page-heading{ display:none; }
+    .sheet{ border:none; width:auto; min-height:0; margin:0; padding:0; }
+  }
+
+  @media (max-width:900px){
+    .sheet, .toolbar, .page-heading{ width:100%; }
+    .sheet{ padding:4mm; }
+    table.form-table td.label{ width:110px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-heading">Fillable version of the SHCIL e-Court Fee Receipt Application Form. Use Print / Save as PDF when done.</div>
+<div class="toolbar">
+  <button class="secondary" type="button" onclick="document.getElementById('feeForm').reset()">Clear form</button>
+  <button type="button" onclick="window.print()">Print / Save as PDF</button>
+</div>
+
+<form id="feeForm">
+<div class="sheet">
+
+  <!-- Letterhead -->
+  <div class="letterhead">
+    <div class="logo">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="46" fill="none" stroke="#111" stroke-width="4"/>
+        <path d="M30 65 C 40 40, 60 40, 70 30 M28 55 C 40 32, 62 32, 72 22 M26 45 C 40 24, 64 24, 74 16" fill="none" stroke="#111" stroke-width="3.5"/>
+        <text x="50" y="82" font-size="13" text-anchor="middle" font-family="Arial" font-weight="bold">SHCIL</text>
+      </svg>
+    </div>
+    <div class="letterhead-text">
+      <h1>Stock Holding Corporation of India Limited</h1>
+      <div class="addr">Registered office : 301, Centre Point, Dr. Babasaheb Ambedkar Road, Parel, Mumbai &ndash; 400012</div>
+      <div class="web">Visit us at : <a href="https://www.shcilestamp.com" target="_blank">www.shcilestamp.com</a></div>
+    </div>
+  </div>
+
+  <div class="form-title">e-Court fee Receipt Application Form</div>
+
+  <!-- ============ SECTION 1: APPLICATION ============ -->
+  <div class="section">
+    <div class="section-bar">
+      <span class="title">SHCIL e-Court fee</span>
+      <span class="note">(To be filled in CAPITAL letter by the client)</span>
+    </div>
+    <table class="form-table">
+      <tr>
+        <td class="label">Name of the<br>Litigant (s)</td>
+        <td><input type="text" name="a_name" style="text-transform:uppercase;"></td>
+        <td class="label" style="width:80px;">Phone No</td>
+        <td><input type="text" name="a_phone" maxlength="15"></td>
+        <td class="label" style="width:70px;">Mobile</td>
+        <td><input type="text" name="a_mobile" maxlength="10"></td>
+      </tr>
+      <tr>
+        <td class="label">eCourt fee Amount</td>
+        <td><span class="rupee">&#8377;</span><input type="text" name="a_amount" style="width:calc(100% - 22px); display:inline-block;"></td>
+        <td class="label">Type of Payment</td>
+        <td colspan="3">
+          <div class="checkbox-group">
+            <label><input type="checkbox" name="a_paytype" value="Cash"> Cash</label>
+            <label><input type="checkbox" name="a_paytype" value="Cheque"> Cheque</label>
+            <label><input type="checkbox" name="a_paytype" value="DD"> DD</label>
+            <label><input type="checkbox" name="a_paytype" value="Pay-Order"> Pay-Order</label>
+            <label><input type="checkbox" name="a_paytype" value="NEFT"> NEFT</label>
+            <label><input type="checkbox" name="a_paytype" value="RTGS"> RTGS</label>
+            <label><input type="checkbox" name="a_paytype" value="Account to Account Transfer"> Account to Account Transfer</label>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="label" style="white-space:normal;">Details of Cash/ Cheque/ DD/ PO/ RTGS/NEFT/Funds Transfer Account No.</td>
+        <td><input type="text" name="a_details"></td>
+        <td class="label" colspan="1" style="width:60px;">Date:</td>
+        <td colspan="3">
+          <div class="date-row">
+            <input type="text" name="a_date_d" maxlength="2" placeholder="DD">
+            <span class="slash">/</span>
+            <input type="text" name="a_date_m" maxlength="2" placeholder="MM">
+            <span class="slash">/</span>
+            <span class="fixed20">20</span>
+            <input type="text" name="a_date_y" maxlength="2" class="yy" placeholder="YY">
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="label">Bank Name</td>
+        <td><input type="text" name="a_bank"></td>
+        <td class="label">Branch Name</td>
+        <td colspan="3"><input type="text" name="a_branch"></td>
+      </tr>
+      <tr>
+        <td class="label">Signature of the applicant</td>
+        <td colspan="5"><input type="text" name="a_signature" placeholder=""></td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Cut line -->
+  <div class="cutline">
+    <div class="dash"></div>
+    <span class="scissors">&#9986;</span>
+    <div class="dash"></div>
+    <span class="scissors">&#9986;</span>
+    <div class="dash"></div>
+  </div>
+
+  <!-- ============ SECTION 2: RECEIPT ============ -->
+  <div class="section">
+    <div class="section-bar">
+      <span class="title">SHCIL e-Court fee&nbsp;&nbsp;&nbsp;&nbsp;<span class="receipt-word">Receipt</span></span>
+      <span class="note">(To be filled in CAPITAL letter by the client)</span>
+    </div>
+    <table class="form-table">
+      <tr>
+        <td class="label">Name of the<br>Litigant (s)</td>
+        <td><input type="text" name="r_name" style="text-transform:uppercase;"></td>
+        <td class="label" style="width:80px;">Phone No</td>
+        <td><input type="text" name="r_phone" maxlength="15"></td>
+        <td class="label" style="width:70px;">Mobile</td>
+        <td><input type="text" name="r_mobile" maxlength="10"></td>
+      </tr>
+      <tr>
+        <td class="label">eCourt fee Amount</td>
+        <td><span class="rupee">&#8377;</span><input type="text" name="r_amount" style="width:calc(100% - 22px); display:inline-block;"></td>
+        <td class="label">Type of Payment</td>
+        <td colspan="3">
+          <div class="checkbox-group">
+            <label><input type="checkbox" name="r_paytype" value="Cash"> Cash</label>
+            <label><input type="checkbox" name="r_paytype" value="Cheque"> Cheque</label>
+            <label><input type="checkbox" name="r_paytype" value="DD"> DD</label>
+            <label><input type="checkbox" name="r_paytype" value="Pay-Order"> Pay-Order</label>
+            <label><input type="checkbox" name="r_paytype" value="NEFT"> NEFT</label>
+            <label><input type="checkbox" name="r_paytype" value="RTGS"> RTGS</label>
+            <label><input type="checkbox" name="r_paytype" value="Account to Account Transfer"> Account to Account Transfer</label>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="label" style="white-space:normal;">Details of Cash/ Cheque/ DD/ PO/RTGS NEFT/Funds Transfer Account No.</td>
+        <td><input type="text" name="r_details"></td>
+        <td class="label" style="width:60px;">Date:</td>
+        <td colspan="3">
+          <div class="date-row">
+            <input type="text" name="r_date_d" maxlength="2" placeholder="DD">
+            <span class="slash">/</span>
+            <input type="text" name="r_date_m" maxlength="2" placeholder="MM">
+            <span class="slash">/</span>
+            <span class="fixed20">20</span>
+            <input type="text" name="r_date_y" maxlength="2" class="yy" placeholder="YY">
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="label">Bank Name</td>
+        <td><input type="text" name="r_bank"></td>
+        <td class="label">Branch Name</td>
+        <td colspan="3"><input type="text" name="r_branch"></td>
+      </tr>
+      <tr>
+        <td class="label">Signature &amp; Seal of SHCIL</td>
+        <td colspan="5"><input type="text" name="r_signature" placeholder=""></td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="footer-note">This original receipt has to be produced and surrenderd to collect the eCourt fee receipt</div>
+
+</div>
+</form>
+
+</body>
+</html>

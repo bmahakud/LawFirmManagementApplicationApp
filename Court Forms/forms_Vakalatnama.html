@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vakalatnama.PDF</title>
+<style>
+/* pdf2html base stylesheet — fixed-layout, faithful page reproduction. */
+html, body { margin: 0; padding: 0; }
+body { background: #e8e8e8; }
+
+/* One page = a positioning context sized to the PDF page box (CSS px). isolation:isolate makes it a
+   stacking context so each page's per-element paint-order z-indexes stay self-contained (and the fixed
+   sidebars keep sitting above every page's content, form fields included). */
+.page {
+	position: relative;
+	isolation: isolate;
+	margin: 8px auto;
+	background: #fff;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+	overflow: hidden;
+}
+
+/* The text-suppressed background raster (vectors + images), behind the text. */
+.bg {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 0;
+	user-select: none;
+	-webkit-user-select: none;
+	pointer-events: none;
+}
+
+/* Type3-only transparent overlay (Type3Mode.IMAGE): Type3 glyph shapes above the background, below text. */
+.t3o {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 0;
+	user-select: none;
+	-webkit-user-select: none;
+	pointer-events: none;
+	image-orientation: none;
+}
+
+/* A positioned text run. transform + font-size carry position/rotation/scale; the pooled style class
+   carries font-family/size/color. Runs are emitted in logical reading order (tagged PDFs) but carry an
+   inline z-index equal to their paint sequence, so visual stacking is unaffected by the DOM order. */
+.t {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 1;
+	white-space: pre;
+	line-height: 1;
+	transform-origin: 0 0;
+	display: inline-block;
+}
+
+/* An extracted image. Each element carries an inline z-index equal to its paint sequence (this class value
+   is only a fallback), so images stack correctly over/under text and vectors no matter the DOM order. */
+.im {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 1;
+	transform-origin: 0 0;
+	display: block;
+	/* PDF placement ignores EXIF Orientation; browsers honour it by default. Pass-through JPEGs may carry
+	   an Orientation tag, so pin it off to match the PDF (no-op for re-encoded images, which have no EXIF). */
+	image-orientation: none;
+}
+
+/* An extracted vector layer (SVG). Carries an inline z-index equal to its group's paint sequence (this
+   class value is only a fallback), so it layers correctly against text and images regardless of DOM order. */
+.vec {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 1;
+	overflow: visible;
+	pointer-events: none;
+}
+
+/* Zero-size internal-link target anchor at a destination's exact Y; scroll lands here, not the page top. */
+.dst {
+	position: absolute;
+	left: 0;
+	width: 0;
+	height: 0;
+	scroll-margin-top: 8px;
+}
+
+/* Zero-size holder for <clipPath> defs referenced by clipped vector paths; takes no layout space. */
+.cdefs {
+	position: absolute;
+	width: 0;
+	height: 0;
+	overflow: hidden;
+}
+
+/* A detected ruled table (opt-in): a real, copyable/accessible <table> sized to the grid, laid over the
+   visual layer. Cells are transparent and border-less so the ruling lines and fills underneath show. */
+.tbl {
+	position: absolute;
+	z-index: 1000000000; /* above the paint-order content band (runs/images/vectors carry z-index = paint seq) */
+	border-collapse: collapse;
+	table-layout: fixed;
+	margin: 0;
+	color: #000;
+	line-height: 1.1;
+}
+.tbl td {
+	border: 0;
+	padding: 1px 2px;
+	overflow: hidden;
+	vertical-align: middle;
+	text-align: left;
+	white-space: normal;
+	word-break: break-word;
+}
+
+/* Interactive link boxes and form controls, above the text/image/table layer (which uses a paint-order
+   z-index band). Kept below the fixed sidebars (z-index:10 in the root context; each .page isolates its
+   own high z-indexes). */
+.lnk {
+	position: absolute;
+	z-index: 2000000000;
+	display: block;
+}
+
+.fld {
+	position: absolute;
+	z-index: 2000000000;
+	box-sizing: border-box;
+	font-size: 12px;
+	margin: 0;
+}
+
+/* Collapsible navigation sidebars (opt-in): outline (bookmarks) on the left, thumbnails on the right.
+   Both are fixed, scroll independently, sit above the pages and are hidden when printing. */
+.toc, .thumbs {
+	position: fixed;
+	top: 0;
+	bottom: 0;
+	z-index: 10;
+	background: rgba(250, 250, 250, .97);
+	box-shadow: 0 0 6px rgba(0, 0, 0, .25);
+	overflow: auto;
+	font-family: sans-serif;
+	font-size: 13px;
+	-webkit-user-select: none;
+	user-select: none;
+}
+.toc {
+	left: 0;
+	width: 250px;
+}
+.thumbs {
+	right: 0;
+	width: 172px;
+}
+.toc summary, .thumbs summary {
+	cursor: pointer;
+	padding: 8px 10px;
+	font-weight: bold;
+	position: sticky;
+	top: 0;
+	background: inherit;
+	border-bottom: 1px solid #ddd;
+}
+.toc ul {
+	list-style: none;
+	margin: 0;
+	padding-left: 12px;
+}
+.toc li {
+	margin: 1px 0;
+}
+.toc a, .toc span {
+	display: block;
+	padding: 2px 6px;
+	text-decoration: none;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.toc a {
+	color: #06c;
+}
+.toc a:hover {
+	text-decoration: underline;
+	background: #eef4ff;
+}
+.toc span {
+	color: #333;
+}
+.thumbs ol {
+	list-style: none;
+	margin: 0;
+	padding: 8px;
+}
+.thumbs li {
+	margin: 0 0 10px;
+	text-align: center;
+}
+.thumbs a {
+	text-decoration: none;
+	color: #666;
+	font-size: 11px;
+}
+.thumbs img {
+	display: block;
+	width: 140px;
+	height: auto;
+	margin: 0 auto 2px;
+	border: 1px solid #bbb;
+	background: #fff;
+}
+.thumbs a:hover img {
+	border-color: #06c;
+	box-shadow: 0 0 0 2px #cfe0ff;
+}
+
+/* Print / PDF round-trip: one source page per printed page, no chrome margins or shadow.
+   The exact paper size is pinned by a generated @page rule when all pages share one size. */
+@media print {
+	body { background: #fff; }
+	.toc, .thumbs { display: none; }
+	.page { margin: 0; box-shadow: none; break-after: page; }
+	.page:last-child { break-after: auto; }
+}
+.c0{font-family:"Times New Roman", Times, serif;font-size:16px;color:#000000}
+@page{size:816px 1248px;margin:0}
+</style>
+</head>
+<body>
+<style>
+#p0{width:816px;height:1248px}
+</style>
+<div class="page" id="p0">
+<svg class="vec" style="z-index:2079;left:273.72px;top:57.72px;overflow:hidden" width="315.28" height="63.12" viewBox="273.72 57.72 315.28 63.12"><path d="M275.2 119.4H587.5V59.2H275.2ZZ" fill="#ffffff" stroke="#000000" stroke-width="0.96"/></svg>
+<div class="t c0" style="z-index:1;transform:matrix(1,0,0,1,143.04,172.11)">IN THE COURT OF ___________________________________________________</div>
+<div class="t c0" style="z-index:68;transform:matrix(1,0,0,1,143.04,208.91)">Suit /Appeal No./CWP ____________________________________ JURISDICTION</div>
+<div class="t c0" style="z-index:138;transform:matrix(1,0,0,1,623.04,227.47)">    </div>
+<div class="t c0" style="z-index:142;transform:matrix(1,0,0,1,639.04,227.47)">of  2001</div>
+<div class="t c0" style="z-index:150;transform:matrix(1,0,0,1,143.04,245.71)">In re:</div>
+<div class="t c0" style="z-index:156;transform:matrix(1,0,0,1,143.04,264.27)">___________________________________________________ Plaintiff /Appellants/</div>
+<div class="t c0" style="z-index:230;transform:matrix(1,0,0,1,527.04,282.51)"> Petitioner/ Complainant</div>
+<div class="t c0" style="z-index:254;transform:matrix(1,0,0,1,378.24,319.31)">V E R S U S</div>
+<div class="t c0" style="z-index:265;transform:matrix(1,0,0,1,143.04,356.11)">_________________________________________________Defendant/Respondent/</div>
+<div class="t c0" style="z-index:335;transform:matrix(1,0,0,1,623.04,374.67)"> Accused</div>
+<div class="t c0" style="z-index:343;transform:matrix(1,0,0,1,143.04,411.47)">KNOW ALL to whom these present shall come that I/We ______________________</div>
+<div class="t c0" style="z-index:417;transform:matrix(1,0,0,1,143.04,448.27)">____________________________________________________________________</div>
+<div class="t c0" style="z-index:485;transform:matrix(1,0,0,1,143.04,466.51)">the above named _______________________________________ do hereby appoint</div>
+<div class="t c0" style="z-index:558;transform:matrix(1,0,0,1,143.04,521.87)">(herein after called the advocate/s) to be my/our Advocate in the above noted case</div>
+<div class="t c0" style="z-index:640;transform:matrix(1,0,0,1,143.04,540.11)">authorized him :-</div>
+<div class="t c0" style="z-index:657;transform:matrix(1,0,0,1,191.04,576.91)">To act, appear and plead in the  above-noted  case in this Court or in any other</div>
+<div class="t c0" style="z-index:737;transform:matrix(1,0,0,1,143.04,595.47)">Court </div>
+<div class="t c0" style="z-index:743;transform:matrix(1,0,0,1,187.15,595.47)">in </div>
+<div class="t c0" style="z-index:746;transform:matrix(1,0,0,1,207.42,595.47)">which </div>
+<div class="t c0" style="z-index:752;transform:matrix(1,0,0,1,254.19,595.47)">the </div>
+<div class="t c0" style="z-index:756;transform:matrix(1,0,0,1,281.51,595.47)">same </div>
+<div class="t c0" style="z-index:761;transform:matrix(1,0,0,1,322.11,595.47)">may </div>
+<div class="t c0" style="z-index:765;transform:matrix(1,0,0,1,357.43,595.47)">be </div>
+<div class="t c0" style="z-index:768;transform:matrix(1,0,0,1,380.36,595.47)">tried </div>
+<div class="t c0" style="z-index:774;transform:matrix(1,0,0,1,417.35,595.47)">or </div>
+<div class="t c0" style="z-index:777;transform:matrix(1,0,0,1,438.51,595.47)">heard </div>
+<div class="t c0" style="z-index:783;transform:matrix(1,0,0,1,481.7,595.47)">and </div>
+<div class="t c0" style="z-index:787;transform:matrix(1,0,0,1,512.58,595.47)">also </div>
+<div class="t c0" style="z-index:792;transform:matrix(1,0,0,1,546.07,595.47)">in </div>
+<div class="t c0" style="z-index:795;transform:matrix(1,0,0,1,566.34,595.47)">the </div>
+<div class="t c0" style="z-index:799;transform:matrix(1,0,0,1,593.67,595.47)">appellate </div>
+<div class="t c0" style="z-index:809;transform:matrix(1,0,0,1,658.87,595.47)">Court</div>
+<div class="t c0" style="z-index:814;transform:matrix(1,0,0,1,143.04,613.71)">including High Court subject to payment of fees separately for each Court by me/ us.</div>
+<div class="t c0" style="z-index:898;transform:matrix(1,0,0,1,191.04,650.51)">To sign, file verify and present pleadings, appeals cross objections or petitions</div>
+<div class="t c0" style="z-index:979;transform:matrix(1,0,0,1,143.04,669.07)">for </div>
+<div class="t c0" style="z-index:983;transform:matrix(1,0,0,1,172.7,669.07)">execution </div>
+<div class="t c0" style="z-index:993;transform:matrix(1,0,0,1,245.8,669.07)">review, </div>
+<div class="t c0" style="z-index:1001;transform:matrix(1,0,0,1,304.27,669.07)">revision, </div>
+<div class="t c0" style="z-index:1011;transform:matrix(1,0,0,1,370.72,669.07)">withdrawal, </div>
+<div class="t c0" style="z-index:1023;transform:matrix(1,0,0,1,457.56,669.07)">compromise </div>
+<div class="t c0" style="z-index:1034;transform:matrix(1,0,0,1,547.54,669.07)">or </div>
+<div class="t c0" style="z-index:1037;transform:matrix(1,0,0,1,571.89,669.07)">other </div>
+<div class="t c0" style="z-index:1043;transform:matrix(1,0,0,1,615.73,669.07)">petitions </div>
+<div class="t c0" style="z-index:1053;transform:matrix(1,0,0,1,681.75,669.07)">or</div>
+<div class="t c0" style="z-index:1055;transform:matrix(1,0,0,1,143.04,687.31)">affidavits </div>
+<div class="t c0" style="z-index:1066;transform:matrix(1,0,0,1,212.88,687.31)">or </div>
+<div class="t c0" style="z-index:1069;transform:matrix(1,0,0,1,235.88,687.31)">other </div>
+<div class="t c0" style="z-index:1075;transform:matrix(1,0,0,1,278.33,687.31)">documents </div>
+<div class="t c0" style="z-index:1085;transform:matrix(1,0,0,1,357.1,687.31)">as </div>
+<div class="t c0" style="z-index:1088;transform:matrix(1,0,0,1,380.1,687.31)">may </div>
+<div class="t c0" style="z-index:1092;transform:matrix(1,0,0,1,417.29,687.31)">be </div>
+<div class="t c0" style="z-index:1095;transform:matrix(1,0,0,1,442.06,687.31)">deemed </div>
+<div class="t c0" style="z-index:1102;transform:matrix(1,0,0,1,501.36,687.31)">necessary </div>
+<div class="t c0" style="z-index:1112;transform:matrix(1,0,0,1,573,687.31)">or </div>
+<div class="t c0" style="z-index:1115;transform:matrix(1,0,0,1,595.99,687.31)">proper </div>
+<div class="t c0" style="z-index:1122;transform:matrix(1,0,0,1,647.29,687.31)">for </div>
+<div class="t c0" style="z-index:1126;transform:matrix(1,0,0,1,675.58,687.31)">the</div>
+<div class="t c0" style="z-index:1129;transform:matrix(1,0,0,1,143.04,705.87)">prosecution of the said case in all its stages.</div>
+<div class="t c0" style="z-index:1176;transform:matrix(1,0,0,1,191.04,742.67)">To </div>
+<div class="t c0" style="z-index:1179;transform:matrix(1,0,0,1,216,742.67)">file </div>
+<div class="t c0" style="z-index:1184;transform:matrix(1,0,0,1,244.48,742.67)">and </div>
+<div class="t c0" style="z-index:1188;transform:matrix(1,0,0,1,274.75,742.67)">take </div>
+<div class="t c0" style="z-index:1193;transform:matrix(1,0,0,1,308.55,742.67)">back </div>
+<div class="t c0" style="z-index:1198;transform:matrix(1,0,0,1,345.91,742.67)">documents </div>
+<div class="t c0" style="z-index:1208;transform:matrix(1,0,0,1,422.29,742.67)">to </div>
+<div class="t c0" style="z-index:1211;transform:matrix(1,0,0,1,441.92,742.67)">admit </div>
+<div class="t c0" style="z-index:1217;transform:matrix(1,0,0,1,485.44,742.67)"> </div>
+<div class="t c0" style="z-index:1218;transform:matrix(1,0,0,1,492.8,742.67)">and/or </div>
+<div class="t c0" style="z-index:1225;transform:matrix(1,0,0,1,540.69,742.67)">deny </div>
+<div class="t c0" style="z-index:1230;transform:matrix(1,0,0,1,578.92,742.67)">the </div>
+<div class="t c0" style="z-index:1234;transform:matrix(1,0,0,1,605.66,742.67)">documents </div>
+<div class="t c0" style="z-index:1244;transform:matrix(1,0,0,1,681.83,742.67)">of</div>
+<div class="t c0" style="z-index:1246;transform:matrix(1,0,0,1,143.04,760.91)">opposite party.</div>
+<div class="t c0" style="z-index:1261;transform:matrix(1,0,0,1,191.04,797.71)">To </div>
+<div class="t c0" style="z-index:1264;transform:matrix(1,0,0,1,218.01,797.71)">withdraw </div>
+<div class="t c0" style="z-index:1273;transform:matrix(1,0,0,1,287.52,797.71)">or </div>
+<div class="t c0" style="z-index:1276;transform:matrix(1,0,0,1,310.21,797.71)">compromise </div>
+<div class="t c0" style="z-index:1287;transform:matrix(1,0,0,1,398.36,797.71)">the </div>
+<div class="t c0" style="z-index:1291;transform:matrix(1,0,0,1,427.24,797.71)">said </div>
+<div class="t c0" style="z-index:1296;transform:matrix(1,0,0,1,462.3,797.71)">case </div>
+<div class="t c0" style="z-index:1301;transform:matrix(1,0,0,1,499.11,797.71)">or </div>
+<div class="t c0" style="z-index:1304;transform:matrix(1,0,0,1,521.8,797.71)">submit </div>
+<div class="t c0" style="z-index:1311;transform:matrix(1,0,0,1,574.58,797.71)">to </div>
+<div class="t c0" style="z-index:1314;transform:matrix(1,0,0,1,596.39,797.71)">arbitration </div>
+<div class="t c0" style="z-index:1326;transform:matrix(1,0,0,1,672.05,797.71)">any</div>
+<div class="t c0" style="z-index:1329;transform:matrix(1,0,0,1,143.04,816.27)">differences or disputes that may arise touching or in any manner relating to the said</div>
+<div class="t c0" style="z-index:1414;transform:matrix(1,0,0,1,143.04,834.51)">case.</div>
+<div class="t c0" style="z-index:1419;transform:matrix(1,0,0,1,191.04,871.31)">To take execution proceedings.</div>
+<div class="t c0" style="z-index:1449;transform:matrix(1,0,0,1,191.04,908.11)">The deposit, draw and receive money, cheques, cash and grant receipts thereof</div>
+<div class="t c0" style="z-index:1526;transform:matrix(1,0,0,1,143.04,926.67)">and </div>
+<div class="t c0" style="z-index:1530;transform:matrix(1,0,0,1,173.39,926.67)">to </div>
+<div class="t c0" style="z-index:1533;transform:matrix(1,0,0,1,193.13,926.67)">do </div>
+<div class="t c0" style="z-index:1536;transform:matrix(1,0,0,1,216.42,926.67)">all </div>
+<div class="t c0" style="z-index:1540;transform:matrix(1,0,0,1,239.66,926.67)">other </div>
+<div class="t c0" style="z-index:1546;transform:matrix(1,0,0,1,279.69,926.67)">acts </div>
+<div class="t c0" style="z-index:1551;transform:matrix(1,0,0,1,311.76,926.67)">and </div>
+<div class="t c0" style="z-index:1555;transform:matrix(1,0,0,1,342.1,926.67)">things </div>
+<div class="t c0" style="z-index:1562;transform:matrix(1,0,0,1,388.31,926.67)">which </div>
+<div class="t c0" style="z-index:1568;transform:matrix(1,0,0,1,434.56,926.67)">may </div>
+<div class="t c0" style="z-index:1572;transform:matrix(1,0,0,1,469.49,926.67)"> </div>
+<div class="t c0" style="z-index:1573;transform:matrix(1,0,0,1,477.05,926.67)">be </div>
+<div class="t c0" style="z-index:1576;transform:matrix(1,0,0,1,499.59,926.67)">necessary </div>
+<div class="t c0" style="z-index:1586;transform:matrix(1,0,0,1,568.79,926.67)">to </div>
+<div class="t c0" style="z-index:1589;transform:matrix(1,0,0,1,588.68,926.67)">be </div>
+<div class="t c0" style="z-index:1592;transform:matrix(1,0,0,1,611.22,926.67)">done </div>
+<div class="t c0" style="z-index:1597;transform:matrix(1,0,0,1,649.64,926.67)">for </div>
+<div class="t c0" style="z-index:1601;transform:matrix(1,0,0,1,675.67,926.67)">the</div>
+<div class="t c0" style="z-index:1604;transform:matrix(1,0,0,1,143.04,944.91)">progress and in the course of the prosecution of the said case.</div>
+<div class="t c0" style="z-index:1667;transform:matrix(1,0,0,1,191.04,981.71)">To </div>
+<div class="t c0" style="z-index:1670;transform:matrix(1,0,0,1,218.35,981.71)">appoint </div>
+<div class="t c0" style="z-index:1678;transform:matrix(1,0,0,1,275.62,981.71)">and </div>
+<div class="t c0" style="z-index:1682;transform:matrix(1,0,0,1,308.21,981.71)">instruct </div>
+<div class="t c0" style="z-index:1691;transform:matrix(1,0,0,1,365.42,981.71)">any </div>
+<div class="t c0" style="z-index:1695;transform:matrix(1,0,0,1,398.01,981.71)">other </div>
+<div class="t c0" style="z-index:1701;transform:matrix(1,0,0,1,440.27,981.71)">Legal </div>
+<div class="t c0" style="z-index:1707;transform:matrix(1,0,0,1,486.08,981.71)">Practioner, </div>
+<div class="t c0" style="z-index:1719;transform:matrix(1,0,0,1,565.49,981.71)">authorizing </div>
+<div class="t c0" style="z-index:1731;transform:matrix(1,0,0,1,648.02,981.71)">him </div>
+<div class="t c0" style="z-index:1735;transform:matrix(1,0,0,1,682.6,981.71)">to</div>
+<div class="t c0" style="z-index:1737;transform:matrix(1,0,0,1,143.04,1000.27)">exercise the power and authority hereby conferred upon the Advocate  whenever he</div>
+<div class="t c0" style="z-index:1817;transform:matrix(1,0,0,1,143.04,1018.51)">may think it to do so and to sign the Power of Attorney on our behalf.</div>
+<div class="t c0" style="z-index:1887;transform:matrix(1,0,0,1,191.04,1055.31)">And I/We the undersigned do hereby agree to ratify and confirm all acts done</div>
+<div class="t c0" style="z-index:1963;transform:matrix(1,0,0,1,143.04,1073.87)">by the Advocate or his substitute in the matter as my/our own acts,  as if done by</div>
+<div class="t c0" style="z-index:2045;transform:matrix(1,0,0,1,143.04,1092.11)">me/us to all intents and purposes.</div>
+</div>
+<style>
+#p1{width:816px;height:1248px}
+</style>
+<div class="page" id="p1">
+<div class="t c0" style="z-index:1;transform:matrix(1,0,0,1,191.04,98.51)">And I/We undertake that I / we or my /our duly authorized agent would appear</div>
+<div class="t c0" style="z-index:77;transform:matrix(1,0,0,1,143.04,117.07)">in the Court on all hearings and will inform the Advocates for appearance when the</div>
+<div class="t c0" style="z-index:159;transform:matrix(1,0,0,1,143.04,135.31)">case is called.</div>
+<div class="t c0" style="z-index:174;transform:matrix(1,0,0,1,191.04,172.11)">And </div>
+<div class="t c0" style="z-index:178;transform:matrix(1,0,0,1,225.5,172.11)">I </div>
+<div class="t c0" style="z-index:180;transform:matrix(1,0,0,1,237.83,172.11)">/we </div>
+<div class="t c0" style="z-index:184;transform:matrix(1,0,0,1,267.84,172.11)">undersigned </div>
+<div class="t c0" style="z-index:196;transform:matrix(1,0,0,1,352.86,172.11)"> </div>
+<div class="t c0" style="z-index:197;transform:matrix(1,0,0,1,360.11,172.11)">do </div>
+<div class="t c0" style="z-index:200;transform:matrix(1,0,0,1,383.28,172.11)">hereby </div>
+<div class="t c0" style="z-index:207;transform:matrix(1,0,0,1,433.83,172.11)">agree </div>
+<div class="t c0" style="z-index:213;transform:matrix(1,0,0,1,475.52,172.11)">not </div>
+<div class="t c0" style="z-index:217;transform:matrix(1,0,0,1,503.1,172.11)">to </div>
+<div class="t c0" style="z-index:220;transform:matrix(1,0,0,1,522.72,172.11)">hold </div>
+<div class="t c0" style="z-index:225;transform:matrix(1,0,0,1,558.26,172.11)">the </div>
+<div class="t c0" style="z-index:229;transform:matrix(1,0,0,1,584.94,172.11)">advocate </div>
+<div class="t c0" style="z-index:238;transform:matrix(1,0,0,1,648.73,172.11)"> </div>
+<div class="t c0" style="z-index:239;transform:matrix(1,0,0,1,655.99,172.11)">or </div>
+<div class="t c0" style="z-index:242;transform:matrix(1,0,0,1,676.49,172.11)">his</div>
+<div class="t c0" style="z-index:245;transform:matrix(1,0,0,1,143.04,190.67)">substitute responsible for the result of the said case. The adjournment costs whenever</div>
+<div class="t c0" style="z-index:331;transform:matrix(1,0,0,1,143.04,208.91)">ordered </div>
+<div class="t c0" style="z-index:339;transform:matrix(1,0,0,1,199.02,208.91)">by </div>
+<div class="t c0" style="z-index:342;transform:matrix(1,0,0,1,222.41,208.91)">the </div>
+<div class="t c0" style="z-index:346;transform:matrix(1,0,0,1,249.3,208.91)">Court </div>
+<div class="t c0" style="z-index:352;transform:matrix(1,0,0,1,292.98,208.91)">shall </div>
+<div class="t c0" style="z-index:358;transform:matrix(1,0,0,1,330.43,208.91)">be </div>
+<div class="t c0" style="z-index:361;transform:matrix(1,0,0,1,352.92,208.91)">of </div>
+<div class="t c0" style="z-index:364;transform:matrix(1,0,0,1,373.64,208.91)">the </div>
+<div class="t c0" style="z-index:368;transform:matrix(1,0,0,1,400.53,208.91)">Advocate </div>
+<div class="t c0" style="z-index:377;transform:matrix(1,0,0,1,468.91,208.91)">which </div>
+<div class="t c0" style="z-index:383;transform:matrix(1,0,0,1,515.24,208.91)">he </div>
+<div class="t c0" style="z-index:386;transform:matrix(1,0,0,1,537.73,208.91)">shall </div>
+<div class="t c0" style="z-index:392;transform:matrix(1,0,0,1,575.18,208.91)">receive </div>
+<div class="t c0" style="z-index:400;transform:matrix(1,0,0,1,628.49,208.91)">and </div>
+<div class="t c0" style="z-index:404;transform:matrix(1,0,0,1,658.93,208.91)">retain</div>
+<div class="t c0" style="z-index:410;transform:matrix(1,0,0,1,143.04,227.47)">himself.</div>
+<div class="t c0" style="z-index:418;transform:matrix(1,0,0,1,191.04,264.27)">And I /we  the undersigned do hereby agree that in the event of the whole or</div>
+<div class="t c0" style="z-index:494;transform:matrix(1,0,0,1,143.04,282.51)">part of the fee agreed by me/us  to be paid to the Advocate remaining unpaid he shall</div>
+<div class="t c0" style="z-index:579;transform:matrix(1,0,0,1,143.04,301.07)">be entitled to  withdraw from the prosecution of the said case until the same  is paid</div>
+<div class="t c0" style="z-index:665;transform:matrix(1,0,0,1,143.04,319.31)">up. The fee settled is only for the above case and above Court. I/We hereby  agree</div>
+<div class="t c0" style="z-index:747;transform:matrix(1,0,0,1,143.04,337.87)">that once the fee is paid. I /we  will not be entitled  for the refund of the same in any</div>
+<div class="t c0" style="z-index:836;transform:matrix(1,0,0,1,143.04,356.11)">case whatsoever. If the  case lasts for more than three years, the advocate shall be</div>
+<div class="t c0" style="z-index:920;transform:matrix(1,0,0,1,143.04,374.67)">entitled for  additional fee equivalent to half of the agreed fee for every addition three</div>
+<div class="t c0" style="z-index:1010;transform:matrix(1,0,0,1,143.04,392.91)">years or part thereof.</div>
+<div class="t c0" style="z-index:1032;transform:matrix(1,0,0,1,191.04,429.71)">IN </div>
+<div class="t c0" style="z-index:1035;transform:matrix(1,0,0,1,216.75,429.71)">WITNESS </div>
+<div class="t c0" style="z-index:1043;transform:matrix(1,0,0,1,294.72,429.71)">WHEREOF </div>
+<div class="t c0" style="z-index:1051;transform:matrix(1,0,0,1,380.69,429.71)">I/We </div>
+<div class="t c0" style="z-index:1056;transform:matrix(1,0,0,1,421.43,429.71)">do </div>
+<div class="t c0" style="z-index:1059;transform:matrix(1,0,0,1,446.25,429.71)">hereunto </div>
+<div class="t c0" style="z-index:1068;transform:matrix(1,0,0,1,510.84,429.71)">set </div>
+<div class="t c0" style="z-index:1072;transform:matrix(1,0,0,1,537.41,429.71)">my </div>
+<div class="t c0" style="z-index:1075;transform:matrix(1,0,0,1,566.69,429.71)">/our </div>
+<div class="t c0" style="z-index:1080;transform:matrix(1,0,0,1,601.22,429.71)">hand </div>
+<div class="t c0" style="z-index:1085;transform:matrix(1,0,0,1,641.07,429.71)">to </div>
+<div class="t c0" style="z-index:1088;transform:matrix(1,0,0,1,662.35,429.71)">these</div>
+<div class="t c0" style="z-index:1093;transform:matrix(1,0,0,1,143.04,448.27)">presents the contents of which have been understood by me/us on this ____________</div>
+<div class="t c0" style="z-index:1174;transform:matrix(1,0,0,1,143.04,466.51)">day of ____________2002.</div>
+<div class="t c0" style="z-index:1198;transform:matrix(1,0,0,1,191.04,503.31)">Accepted subject to the terms of fees.</div>
+<div class="t c0" style="z-index:1236;transform:matrix(1,0,0,1,159.36,576.91)">Advocate</div>
+<div class="t c0" style="z-index:1244;transform:matrix(1,0,0,1,447.36,576.91)">Client </div>
+<div class="t c0" style="z-index:1251;transform:matrix(1,0,0,1,639.36,576.91)">Client</div>
+</div>
+</body>
+</html>

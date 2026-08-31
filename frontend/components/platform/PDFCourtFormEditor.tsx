@@ -23,10 +23,13 @@ type CourtFormTemplate = {
   description: string;
   category: string;
   category_display: string;
+  sequence?: number;
   content_structure: {
-    page_size: string;
-    margins: { top: number; right: number; bottom: number; left: number };
-    sections: any[];
+    template_type?: 'html_overlay' | 'structured' | 'drafting';
+    html_filename?: string;
+    page_size?: string;
+    margins?: { top: number; right: number; bottom: number; left: number };
+    sections?: any[];
   };
   default_field_mappings: Record<string, string>;
   is_active: boolean;
@@ -54,11 +57,13 @@ type FilledCourtForm = {
 
 type PlacedSignature = {
   id: string;
+  name?: string;
   type: 'advocate' | 'client' | 'custom';
   label: string;
   image_url: string;
   x: number;
   y: number;
+  page?: number;
   width?: number;
   height?: number;
 };
@@ -244,7 +249,27 @@ function DraftingArea({
   );
 }
 
+// Helper to get default dimensions based on template name
+function getTemplateDimensions(templateName?: string | null): { width: number; height: number } {
+  if (!templateName) return { width: 850, height: 1150 };
+  const name = templateName.toLowerCase();
+  if (name.includes('ca form 7') || name.includes('c.a.i') || name.includes('ca_form_7')) {
+    return { width: 1090, height: 860 };
+  }
+  if (name.includes('vakalatnama form') || name.includes('vakalatnama_form')) {
+    return { width: 850, height: 1390 };
+  }
+  if (name.includes('vakalatnama') || name.includes('memo of appearance') || name.includes('list of documents') || (name.includes('process fee') && !name.includes('talbana'))) {
+    return { width: 850, height: 1290 };
+  }
+  if (name.includes('advocate form') || name.includes('filing form') || name.includes('litigant') || name.includes('case information') || name.includes('e-court fee')) {
+    return { width: 830, height: 1160 };
+  }
+  return { width: 850, height: 1100 };
+}
+
 export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#4a1c40', categoryFilter, initialFormId, newBlank }: Props) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [view, setView] = useState<'list' | 'templates' | 'edit' | 'preview'>('list');
   const [templates, setTemplates] = useState<CourtFormTemplate[]>([]);
   const [filledForms, setFilledForms] = useState<FilledCourtForm[]>([]);
@@ -255,6 +280,14 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   const [searchQuery, setSearchQuery] = useState('');
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [signatureType, setSignatureType] = useState<'advocate' | 'client' | 'custom'>('advocate');
+  const [activeSigTarget, setActiveSigTarget] = useState<{
+    sigId?: string;
+    sigName?: string;
+    sigLabel?: string;
+    sigType?: string;
+    page?: number;
+  } | null>(null);
+  const [activeTab, setActiveTab] = useState<'details' | 'parties' | 'content' | 'signatures' | 'preview'>('details');
 
   // Additional signature modal
   const [showAddSigModal, setShowAddSigModal] = useState(false);
@@ -262,8 +295,106 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   const [addSigType, setAddSigType] = useState<'advocate' | 'client' | 'custom'>('advocate');
   const [customSigDrawing, setCustomSigDrawing] = useState(false);
 
+  // Dynamic dimensions for the court form viewer
+  const [dynamicDimensions, setDynamicDimensions] = useState<{ width: number; height: number } | null>(null);
+
+  // Reset dynamic dimensions when switching templates or forms
+  useEffect(() => {
+    setDynamicDimensions(null);
+  }, [selectedTemplate?.id, selectedForm?.id]);
+
+  // Loading States
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+
   // Field values for the form
   const [fieldValues, setFieldValues] = useState<Record<string, any>>({});
+  const fieldValuesRef = useRef<Record<string, any>>({});
+
+  useEffect(() => {
+    fieldValuesRef.current = fieldValues;
+  }, [fieldValues]);
+
+  // Listen for real-time field inputs, signature events, and page dimensions from the court form iframe
+  useEffect(() => {
+    const handleWindowMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'COURT_FORM_VALUES') {
+        const incoming = event.data.values || {};
+        fieldValuesRef.current = { ...fieldValuesRef.current, ...incoming };
+        setFieldValues((prev) => ({ ...prev, ...incoming }));
+      } else if (event.data && event.data.type === 'COURT_FORM_FIELD_UPDATE') {
+        const { fieldName, value } = event.data;
+        if (fieldName) {
+          fieldValuesRef.current = { ...fieldValuesRef.current, [fieldName]: value };
+          setFieldValues((prev) => ({ ...prev, [fieldName]: value }));
+        }
+      } else if (event.data && event.data.type === 'COURT_FORM_PAGE_SIZE') {
+        if (event.data.width && event.data.height) {
+          setDynamicDimensions({
+            width: Math.max(Math.round(event.data.width) + 30, 830),
+            height: Math.max(Math.round(event.data.height) + 40, 850)
+          });
+        }
+      } else if (event.data && event.data.type === 'OPEN_SIGNATURE_PAD') {
+        const { sigId, sigName, sigLabel, sigType, page } = event.data;
+        setActiveSigTarget({ sigId, sigName, sigLabel, sigType, page });
+        setSignatureType(sigType === 'client' ? 'client' : (sigType === 'custom' ? 'custom' : 'advocate'));
+        setShowSignaturePad(true);
+      } else if (event.data && event.data.type === 'COURT_FORM_SIGNATURE_MOVE') {
+        const { sigId, sigName, sigType, page, x, y } = event.data;
+        const pageNum = typeof page === 'number' ? page : 0;
+        setFieldValues((prev) => {
+          const list = [...(prev.placed_signatures || [])];
+          const idx = list.findIndex((s: any) => 
+            (sigId && s.id === sigId) || 
+            (sigName && (s.name === sigName || s.id === sigName)) ||
+            (sigType && ['advocate', 'client'].includes(sigType) && (s.type === sigType || s.name === `${sigType}_signature` || s.id === `${sigType}_primary` || s.id === `${sigType}_signature`))
+          );
+          if (idx >= 0) {
+            list[idx] = { 
+              ...list[idx], 
+              id: sigId || list[idx].id,
+              name: sigName || list[idx].name,
+              type: sigType || list[idx].type,
+              x, 
+              y, 
+              page: pageNum 
+            };
+          } else {
+            list.push({ 
+              id: sigId || (sigType ? `${sigType}_signature` : `sig_${Date.now()}`), 
+              name: sigName || (sigType ? `${sigType}_signature` : 'signature'), 
+              type: sigType || 'custom', 
+              x, 
+              y, 
+              page: pageNum 
+            });
+          }
+          return {
+            ...prev,
+            placed_signatures: list,
+            signature_offsets: {
+              ...(prev.signature_offsets || {}),
+              [sigId]: { x, y, page: pageNum },
+              [sigName]: { x, y, page: pageNum },
+              ...(sigType ? { [sigType]: { x, y, page: pageNum } } : {})
+            }
+          };
+        });
+      } else if (event.data && event.data.type === 'COURT_FORM_SIGNATURE_REMOVE') {
+        const { sigId, sigName } = event.data;
+        setFieldValues((prev) => ({
+          ...prev,
+          placed_signatures: (prev.placed_signatures || []).filter((s: any) => s.id !== sigId && s.name !== sigName)
+        }));
+        toast.success('Signature cleared');
+      }
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => window.removeEventListener('message', handleWindowMessage);
+  }, []);
 
   // Computed placed signatures list
   const placedSignatures: PlacedSignature[] = (() => {
@@ -271,30 +402,34 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
     const result = [...list];
 
     // If form has advocate_signature_image and not yet in list
-    if (selectedForm?.advocate_signature_image && !result.some(s => s.type === 'advocate' || s.id === 'advocate_primary')) {
-      const advOffset = fieldValues.signature_offsets?.advocate || { x: 520, y: 640 };
+    if (selectedForm?.advocate_signature_image && !result.some(s => s.type === 'advocate' || s.id === 'advocate_primary' || s.name === 'advocate_signature' || s.id === 'advocate_signature')) {
+      const advOffset = fieldValues.signature_offsets?.advocate || fieldValues.signature_offsets?.advocate_signature || { x: 520, y: 640 };
       result.push({
-        id: 'advocate_primary',
+        id: 'advocate_signature',
+        name: 'advocate_signature',
         type: 'advocate',
         label: 'Advocate Signature',
         image_url: selectedForm.advocate_signature_image,
         x: advOffset.x,
         y: advOffset.y,
+        page: advOffset.page ?? 0,
         width: 140,
         height: 55
       });
     }
 
     // If form has client_signature_image and not yet in list
-    if (selectedForm?.client_signature_image && !result.some(s => s.type === 'client' || s.id === 'client_primary')) {
-      const cliOffset = fieldValues.signature_offsets?.client || { x: 80, y: 640 };
+    if (selectedForm?.client_signature_image && !result.some(s => s.type === 'client' || s.id === 'client_primary' || s.name === 'client_signature' || s.id === 'client_signature')) {
+      const cliOffset = fieldValues.signature_offsets?.client || fieldValues.signature_offsets?.client_signature || { x: 80, y: 640 };
       result.push({
-        id: 'client_primary',
+        id: 'client_signature',
+        name: 'client_signature',
         type: 'client',
         label: 'Client Signature',
         image_url: selectedForm.client_signature_image,
         x: cliOffset.x,
         y: cliOffset.y,
+        page: cliOffset.page ?? 0,
         width: 140,
         height: 55
       });
@@ -342,16 +477,32 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   };
 
   const handleAddPlacedSignature = (imageUrl: string, label: string, type: 'advocate' | 'client' | 'custom') => {
+    const newSigId = `sig_${Date.now()}`;
     const newSig: PlacedSignature = {
-      id: `sig_${Date.now()}`,
+      id: newSigId,
       type,
       label,
       image_url: imageUrl,
-      x: 480,
-      y: 640,
-      width: 140,
-      height: 55
+      x: 450,
+      y: 650,
+      width: 160,
+      height: 50
     };
+
+    // Forward immediately to court form iframe
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'ADD_NEW_SIGNATURE',
+        id: newSigId,
+        name: newSigId,
+        label: label || 'Signature',
+        sigType: type,
+        imageUrl: imageUrl,
+        x: 450,
+        y: 650,
+        page: 0
+      }, '*');
+    }
 
     const updated = [...placedSignatures, newSig];
     setFieldValues(prev => ({
@@ -477,11 +628,67 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
     }
   };
 
+  const handleCloseForm = () => {
+    setView('list');
+    setSelectedTemplate(null);
+    setSelectedForm(null);
+    setFieldValues({});
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('formId');
+      url.searchParams.delete('newBlank');
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
+
+  const handleOpenForm = (form: FilledCourtForm, targetView: 'edit' | 'preview' = 'edit') => {
+    let templateObj = templates.find(
+      (t) => String(t.id) === String(form.template) || t.name === form.template_name
+    ) || DEFAULT_COURT_FORM_TEMPLATES[0];
+    setSelectedForm(form);
+    setSelectedTemplate(templateObj);
+    setFieldValues(form.field_values || {});
+    setView(targetView);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('formId', form.id);
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
+
   const handleSelectTemplate = async (template: CourtFormTemplate) => {
     setSelectedTemplate(template);
     setFieldValues({});
-    setSelectedForm(null); // Don't create a form yet, just show the template
-    setView('edit');
+    setSaving(true);
+    try {
+      // Auto-create a FilledCourtForm so it gets an ID to render the exact HTML template iframe
+      const response = await customFetch('/api/documents/filled-court-forms/create_from_template/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template_id: template.id,
+          case_id: caseId
+        })
+      });
+      if (response.ok) {
+        const newForm = await response.json();
+        setSelectedForm(newForm);
+        setFieldValues(newForm.field_values || {});
+        if (typeof window !== 'undefined') {
+          const url = new URL(window.location.href);
+          url.searchParams.set('formId', newForm.id);
+          window.history.replaceState({}, '', url.toString());
+        }
+      } else {
+        setSelectedForm(null);
+      }
+    } catch (e) {
+      console.error('Error creating form from template:', e);
+      setSelectedForm(null);
+    } finally {
+      setSaving(false);
+      setView('edit');
+    }
   };
 
   const handleSave = async () => {
@@ -489,10 +696,21 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
 
     setSaving(true);
     try {
-      // If no form exists yet, create it. Otherwise update it.
-      if (!selectedForm) {
-        // Create new form
-        const response = await customFetch('/api/documents/filled-court-forms/create_from_template/', {
+      // 1. Request latest values from the iframe via postMessage
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({ type: 'GET_COURT_FORM_VALUES' }, '*');
+      }
+
+      // Allow a brief moment for any pending postMessage events to populate
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const valuesToSave = { ...fieldValues, ...fieldValuesRef.current };
+
+      let currentFormId = selectedForm?.id;
+
+      // If no form exists yet, create it
+      if (!currentFormId) {
+        const createRes = await customFetch('/api/documents/filled-court-forms/create_from_template/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -500,53 +718,36 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
             case_id: caseId
           })
         });
-
-        if (!response.ok) throw new Error('Failed to create form');
-
-        const newForm = await response.json();
-
-        // Now update it with field values
-        const updateResponse = await customFetch(`/api/documents/filled-court-forms/${newForm.id}/`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            field_values: fieldValues,
-            status: 'completed'
-          })
-        });
-
-        if (!updateResponse.ok) throw new Error('Failed to save');
-
-        const updatedForm = await updateResponse.json();
-        setSelectedForm(updatedForm);
-        toast.success('Form saved successfully');
-
-        // Switch to preview mode after saving
-        setView('preview');
-      } else {
-        // Update existing form
-        const response = await customFetch(`/api/documents/filled-court-forms/${selectedForm.id}/`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            field_values: fieldValues,
-            status: 'completed'
-          })
-        });
-
-        if (!response.ok) throw new Error('Failed to save');
-
-        const updatedForm = await response.json();
-        setSelectedForm(updatedForm);
-        toast.success('Form saved successfully');
-
-        // Switch to preview mode after saving
-        setView('preview');
+        if (!createRes.ok) throw new Error('Failed to create form');
+        const newForm = await createRes.json();
+        currentFormId = newForm.id;
       }
 
+      // Update form with latest field values
+      const updateResponse = await customFetch(`/api/documents/filled-court-forms/${currentFormId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          field_values: valuesToSave,
+          status: 'completed'
+        })
+      });
+
+      if (!updateResponse.ok) throw new Error('Failed to save form data');
+      const updatedForm = await updateResponse.json();
+
+      // Trigger server-side PDF compilation
+      await customFetch(`/api/documents/filled-court-forms/${currentFormId}/generate_pdf/`, {
+        method: 'POST'
+      });
+
+      setSelectedForm(updatedForm);
+      setFieldValues(valuesToSave);
+      toast.success('Form saved and PDF generated successfully!');
+      setView('preview');
       await fetchData();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || 'Failed to save form');
     } finally {
       setSaving(false);
     }
@@ -613,11 +814,49 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   };
 
   const openSignaturePad = (type: 'advocate' | 'client') => {
+    setActiveSigTarget({
+      sigName: type === 'advocate' ? 'advocate_signature' : 'client_signature',
+      sigLabel: type === 'advocate' ? 'Advocate Signature' : 'Client Signature',
+      sigType: type
+    });
     setSignatureType(type);
     setShowSignaturePad(true);
   };
 
   const handleSaveSignature = (signatureData: string) => {
+    if (activeSigTarget) {
+      const { sigId, sigName, sigLabel, sigType, page } = activeSigTarget;
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'UPDATE_SIGNATURE_IMAGE',
+          sigId: sigId,
+          sigName: sigName,
+          imageUrl: signatureData
+        }, '*');
+      }
+
+      setFieldValues((prev) => {
+        const list = [...(prev.placed_signatures || [])];
+        const idx = list.findIndex((s: any) => (sigId && s.id === sigId) || (sigName && s.name === sigName));
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], image_url: signatureData };
+        } else {
+          list.push({
+            id: sigId || `sig_${Date.now()}`,
+            name: sigName || 'signature',
+            label: sigLabel || (sigType === 'client' ? 'Client Signature' : 'Advocate Signature'),
+            type: sigType || 'custom',
+            image_url: signatureData,
+            page: page ?? 0
+          });
+        }
+        return {
+          ...prev,
+          placed_signatures: list
+        };
+      });
+    }
+
     if (selectedForm) {
       handleSign(selectedForm.id, signatureData);
     }
@@ -1231,12 +1470,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                 </button>
               )}
               <button
-                onClick={() => {
-                  setView('list');
-                  setSelectedTemplate(null);
-                  setSelectedForm(null);
-                  setFieldValues({});
-                }}
+                onClick={handleCloseForm}
                 className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2 transition-all active:scale-95"
               >
                 <X className="w-4 h-4" />
@@ -1269,68 +1503,83 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
             </div>
           )}
 
-          {/* A4 Document Container - Read Only */}
-          <div className="flex justify-center bg-gray-100 p-8 rounded-lg">
-            <div
-              id="a4-document-container-preview"
-              className="relative bg-white shadow-2xl overflow-hidden"
-              style={{
-                width: `${A4_WIDTH}px`,
-                minHeight: `${A4_HEIGHT}px`,
-                padding: `${margins.top}px ${margins.right}px ${margins.bottom}px ${margins.left}px`,
-                boxSizing: 'border-box'
-              }}
-            >
-              <div className="space-y-4 pointer-events-none">
-                {content_structure.sections?.map((section, index) => renderSection(section, index))}
+          {/* Document Container - Read Only */}
+          <div className="w-full flex justify-center bg-gray-100 p-4 sm:p-8 rounded-lg overflow-x-auto">
+            {selectedForm ? (
+              <iframe
+                key={`iframe-pdf-${selectedForm.id}`}
+                src={`${API_BASE_URL}/api/documents/filled-court-forms/${selectedForm.id}/pdf/`}
+                className="border-0 rounded-lg shadow-2xl bg-white transition-all duration-200"
+                style={{
+                  width: `${(dynamicDimensions || getTemplateDimensions(selectedTemplate?.name || selectedForm?.template_name)).width}px`,
+                  minHeight: `${(dynamicDimensions || getTemplateDimensions(selectedTemplate?.name || selectedForm?.template_name)).height}px`,
+                  height: `${(dynamicDimensions || getTemplateDimensions(selectedTemplate?.name || selectedForm?.template_name)).height}px`,
+                  maxWidth: 'none'
+                }}
+                title={`${selectedTemplate.name} Preview`}
+              />
+            ) : (
+              <div
+                id="a4-document-container-preview"
+                className="relative bg-white shadow-2xl overflow-hidden"
+                style={{
+                  width: `${A4_WIDTH}px`,
+                  minHeight: `${A4_HEIGHT}px`,
+                  padding: `${margins.top}px ${margins.right}px ${margins.bottom}px ${margins.left}px`,
+                  boxSizing: 'border-box'
+                }}
+              >
+                <div className="space-y-4 pointer-events-none">
+                  {content_structure.sections?.map((section, index) => renderSection(section, index))}
+                </div>
+
+                {/* Free-Floating Movable Signatures Overlay */}
+                {placedSignatures.map((sig) => (
+                  <motion.div
+                    key={sig.id}
+                    drag
+                    dragMomentum={false}
+                    dragConstraints={{
+                      left: 0,
+                      top: 0,
+                      right: A4_WIDTH - (sig.width || 140),
+                      bottom: A4_HEIGHT - (sig.height || 55)
+                    }}
+                    initial={{ x: sig.x, y: sig.y }}
+                    onDragEnd={(e, info) => {
+                      updateSignaturePosition(sig.id, sig.x + info.offset.x, sig.y + info.offset.y);
+                    }}
+                    className="absolute top-0 left-0 z-30 group select-none cursor-grab active:cursor-grabbing"
+                    style={{ width: `${sig.width || 140}px`, height: `${sig.height || 55}px` }}
+                  >
+                    <img
+                      src={formatSignatureUrl(sig.image_url)}
+                      alt={sig.label}
+                      className="w-full h-full object-contain pointer-events-none"
+                    />
+                    
+                    {/* Floating Action Badge on Hover */}
+                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-lg pointer-events-auto whitespace-nowrap">
+                      <GripVertical className="w-3 h-3 text-purple-300" />
+                      <span>{sig.label}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveSignature(sig.id);
+                        }}
+                        className="ml-1 text-red-400 hover:text-red-300 font-black px-1 rounded hover:bg-white/10"
+                        title="Delete Signature"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="absolute inset-0 border border-dashed border-purple-400/50 group-hover:border-purple-600 rounded pointer-events-none transition-colors" />
+                  </motion.div>
+                ))}
               </div>
-
-              {/* Free-Floating Movable Signatures Overlay */}
-              {placedSignatures.map((sig) => (
-                <motion.div
-                  key={sig.id}
-                  drag
-                  dragMomentum={false}
-                  dragConstraints={{
-                    left: 0,
-                    top: 0,
-                    right: A4_WIDTH - (sig.width || 140),
-                    bottom: A4_HEIGHT - (sig.height || 55)
-                  }}
-                  initial={{ x: sig.x, y: sig.y }}
-                  onDragEnd={(e, info) => {
-                    updateSignaturePosition(sig.id, sig.x + info.offset.x, sig.y + info.offset.y);
-                  }}
-                  className="absolute top-0 left-0 z-30 group select-none cursor-grab active:cursor-grabbing"
-                  style={{ width: `${sig.width || 140}px`, height: `${sig.height || 55}px` }}
-                >
-                  <img
-                    src={formatSignatureUrl(sig.image_url)}
-                    alt={sig.label}
-                    className="w-full h-full object-contain pointer-events-none"
-                  />
-                  
-                  {/* Floating Action Badge on Hover */}
-                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-lg pointer-events-auto whitespace-nowrap">
-                    <GripVertical className="w-3 h-3 text-purple-300" />
-                    <span>{sig.label}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveSignature(sig.id);
-                      }}
-                      className="ml-1 text-red-400 hover:text-red-300 font-black px-1 rounded hover:bg-white/10"
-                      title="Delete Signature"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <div className="absolute inset-0 border border-dashed border-purple-400/50 group-hover:border-purple-600 rounded pointer-events-none transition-colors" />
-                </motion.div>
-              ))}
-            </div>
+            )}
           </div>
         </div>
       );
@@ -1413,12 +1662,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                 </button>
               )}
               <button
-                onClick={() => {
-                  setView('list');
-                  setSelectedTemplate(null);
-                  setSelectedForm(null);
-                  setFieldValues({});
-                }}
+                onClick={handleCloseForm}
                 className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2 transition-all active:scale-95"
               >
                 <X className="w-4 h-4" />
@@ -1427,68 +1671,84 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
             </div>
           </div>
 
-          {/* A4 Document Container */}
-          <div className="flex justify-center bg-gray-100 p-8 rounded-lg">
-            <div
-              id="a4-document-container-edit"
-              className="relative bg-white shadow-2xl overflow-hidden"
-              style={{
-                width: `${A4_WIDTH}px`,
-                minHeight: `${A4_HEIGHT}px`,
-                padding: `${margins.top}px ${margins.right}px ${margins.bottom}px ${margins.left}px`,
-                boxSizing: 'border-box'
-              }}
-            >
-              <div className="space-y-4">
-                {content_structure.sections?.map((section, index) => renderSection(section, index))}
+          {/* Document Container */}
+          <div className="w-full flex justify-center bg-gray-100 p-4 sm:p-8 rounded-lg overflow-x-auto">
+            {selectedForm ? (
+              <iframe
+                ref={iframeRef}
+                key={`iframe-edit-${selectedForm.id}`}
+                src={`${API_BASE_URL}/api/documents/filled-court-forms/${selectedForm.id}/docx_html/`}
+                className="border-0 rounded-lg shadow-2xl bg-white transition-all duration-200"
+                style={{
+                  width: `${(dynamicDimensions || getTemplateDimensions(selectedTemplate?.name || selectedForm?.template_name)).width}px`,
+                  minHeight: `${(dynamicDimensions || getTemplateDimensions(selectedTemplate?.name || selectedForm?.template_name)).height}px`,
+                  height: `${(dynamicDimensions || getTemplateDimensions(selectedTemplate?.name || selectedForm?.template_name)).height}px`,
+                  maxWidth: 'none'
+                }}
+                title={selectedTemplate.name}
+              />
+            ) : (
+              <div
+                id="a4-document-container-edit"
+                className="relative bg-white shadow-2xl overflow-hidden"
+                style={{
+                  width: `${A4_WIDTH}px`,
+                  minHeight: `${A4_HEIGHT}px`,
+                  padding: `${margins.top}px ${margins.right}px ${margins.bottom}px ${margins.left}px`,
+                  boxSizing: 'border-box'
+                }}
+              >
+                <div className="space-y-4">
+                  {content_structure.sections?.map((section, index) => renderSection(section, index))}
+                </div>
+
+                {/* Free-Floating Movable Signatures Overlay */}
+                {placedSignatures.map((sig) => (
+                  <motion.div
+                    key={sig.id}
+                    drag
+                    dragMomentum={false}
+                    dragConstraints={{
+                      left: 0,
+                      top: 0,
+                      right: A4_WIDTH - (sig.width || 140),
+                      bottom: A4_HEIGHT - (sig.height || 55)
+                    }}
+                    initial={{ x: sig.x, y: sig.y }}
+                    onDragEnd={(e, info) => {
+                      updateSignaturePosition(sig.id, sig.x + info.offset.x, sig.y + info.offset.y);
+                    }}
+                    className="absolute top-0 left-0 z-30 group select-none cursor-grab active:cursor-grabbing"
+                    style={{ width: `${sig.width || 140}px`, height: `${sig.height || 55}px` }}
+                  >
+                    <img
+                      src={formatSignatureUrl(sig.image_url)}
+                      alt={sig.label}
+                      className="w-full h-full object-contain pointer-events-none"
+                    />
+                    
+                    {/* Floating Action Badge on Hover */}
+                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-lg pointer-events-auto whitespace-nowrap">
+                      <GripVertical className="w-3 h-3 text-purple-300" />
+                      <span>{sig.label}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveSignature(sig.id);
+                        }}
+                        className="ml-1 text-red-400 hover:text-red-300 font-black px-1 rounded hover:bg-white/10"
+                        title="Delete Signature"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="absolute inset-0 border border-dashed border-purple-400/50 group-hover:border-purple-600 rounded pointer-events-none transition-colors" />
+                  </motion.div>
+                ))}
               </div>
-
-              {/* Free-Floating Movable Signatures Overlay */}
-              {placedSignatures.map((sig) => (
-                <motion.div
-                  key={sig.id}
-                  drag
-                  dragMomentum={false}
-                  dragConstraints={{
-                    left: 0,
-                    top: 0,
-                    right: A4_WIDTH - (sig.width || 140),
-                    bottom: A4_HEIGHT - (sig.height || 55)
-                  }}
-                  initial={{ x: sig.x, y: sig.y }}
-                  onDragEnd={(e, info) => {
-                    updateSignaturePosition(sig.id, sig.x + info.offset.x, sig.y + info.offset.y);
-                  }}
-                  className="absolute top-0 left-0 z-30 group select-none cursor-grab active:cursor-grabbing"
-                  style={{ width: `${sig.width || 140}px`, height: `${sig.height || 55}px` }}
-                >
-                  <img
-                    src={formatSignatureUrl(sig.image_url)}
-                    alt={sig.label}
-                    className="w-full h-full object-contain pointer-events-none"
-                  />
-                  
-                  {/* Floating Action Badge on Hover */}
-                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-lg pointer-events-auto whitespace-nowrap">
-                    <GripVertical className="w-3 h-3 text-purple-300" />
-                    <span>{sig.label}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveSignature(sig.id);
-                      }}
-                      className="ml-1 text-red-400 hover:text-red-300 font-black px-1 rounded hover:bg-white/10"
-                      title="Delete Signature"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <div className="absolute inset-0 border border-dashed border-purple-400/50 group-hover:border-purple-600 rounded pointer-events-none transition-colors" />
-                </motion.div>
-              ))}
-            </div>
+            )}
           </div>
         </div>
       );
@@ -1509,7 +1769,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           {isAdvocateRole && (
             <button
               onClick={() => setView('templates')}
-              className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 flex items-center gap-2"
+              className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 flex items-center gap-2 shadow-sm transition-all active:scale-95"
             >
               <Plus className="w-4 h-4" />
               Create Form
@@ -1523,23 +1783,23 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
             {filledForms.map(form => (
               <div
                 key={form.id}
-                className="bg-white rounded-xl border border-gray-200 p-4 hover:border-purple-300 transition-all"
+                className="bg-white rounded-xl border border-gray-200 p-4 hover:border-purple-300 transition-all shadow-sm"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-[200px]">
+                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
                       <FileText className="w-5 h-5 text-purple-600" />
                     </div>
-                    <div className="flex-1">
-                      <h4 className="text-sm font-bold text-gray-900">{form.template_name}</h4>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-bold text-gray-900 truncate">{form.template_name}</h4>
                       <p className="text-xs text-gray-500 mt-0.5">
                         Created {new Date(form.created_at).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${form.status === 'draft' ? 'bg-gray-100 text-gray-700' :
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${form.status === 'draft' ? 'bg-gray-100 text-gray-700' :
                       form.status === 'completed' ? 'bg-blue-100 text-blue-700' :
                         form.status === 'signed' ? 'bg-green-100 text-green-700' :
                           'bg-purple-100 text-purple-700'
@@ -1549,66 +1809,53 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
 
                     {form.client_signed && (
                       <span className="text-xs text-green-600 font-semibold flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />
+                        <CheckCircle className="w-3.5 h-3.5" />
                         Client Signed
                       </span>
                     )}
                     {form.advocate_signed && (
                       <span className="text-xs text-blue-600 font-semibold flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />
+                        <CheckCircle className="w-3.5 h-3.5" />
                         Advocate Signed
                       </span>
                     )}
 
+                    <button
+                      onClick={() => handleOpenForm(form, 'edit')}
+                      className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                      title="Edit Form"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      Edit
+                    </button>
+
+                    <button
+                      onClick={() => handleOpenForm(form, 'preview')}
+                      className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-xs font-semibold hover:bg-gray-50 flex items-center gap-1.5 transition-all active:scale-95"
+                      title="Preview Form"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-gray-500" />
+                      Preview
+                    </button>
+
                     {isAdvocateRole && form.status === 'draft' && (
                       <button
                         onClick={() => handleShareWithClient(form.id)}
-                        className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 flex items-center gap-1"
+                        className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 flex items-center gap-1.5 transition-all active:scale-95"
+                        title="Share with Client"
                       >
-                        <Share2 className="w-3 h-3" />
+                        <Share2 className="w-3.5 h-3.5" />
                         Share
                       </button>
                     )}
 
-                    <button
-                      onClick={async () => {
-                        // Find the template for this form
-                        const template = templates.find(t => t.id === form.template);
-                        if (template) {
-                          // Always use the latest template structure, not the saved filled_content
-                          setSelectedTemplate(template);
-                          setSelectedForm(form);
-                          setFieldValues(form.field_values || {});
-                          setView('preview');
-                        } else {
-                          // If template not in list, fetch it
-                          try {
-                            const response = await customFetch(`/api/documents/court-form-templates/${form.template}/`);
-                            if (response.ok) {
-                              const templateData = await response.json();
-                              setSelectedTemplate(templateData);
-                              setSelectedForm(form);
-                              setFieldValues(form.field_values || {});
-                              setView('preview');
-                            }
-                          } catch (err) {
-                            toast.error('Failed to load template');
-                          }
-                        }
-                      }}
-                      className="p-2 hover:bg-gray-100 rounded-lg"
-                      title="View/Edit Form"
-                    >
-                      <Eye className="w-4 h-4 text-gray-400" />
-                    </button>
-
                     {isAdvocateRole && (
                       <button
                         onClick={() => handleDeleteForm(form.id)}
-                        className="p-2 hover:bg-red-50 rounded-lg"
+                        className="p-1.5 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-all active:scale-95"
                         title="Delete Form"
                       >
-                        <X className="w-4 h-4 text-red-400 hover:text-red-600" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>
@@ -1645,7 +1892,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           <SignaturePad
             onSave={handleSaveSignature}
             onCancel={() => setShowSignaturePad(false)}
-            title={signatureType === 'advocate' ? 'Sign as Advocate' : 'Sign as Client'}
+            title={activeSigTarget?.sigLabel ? `Sign: ${activeSigTarget.sigLabel}` : (signatureType === 'advocate' ? 'Sign as Advocate' : (signatureType === 'client' ? 'Sign as Client' : 'Add Signature'))}
             saving={saving}
           />
         </div>

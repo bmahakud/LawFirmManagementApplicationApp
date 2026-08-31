@@ -135,6 +135,12 @@ export function CaseWorkspace({
   const initialFormId = searchParams.get('formId');
   const newBlank = searchParams.get('newBlank') === 'true';
 
+  const [activeFormId, setActiveFormId] = useState<string | null>(initialFormId);
+
+  useEffect(() => {
+    setActiveFormId(initialFormId);
+  }, [initialFormId]);
+
   const [activeTab, setActiveTab] = useState(() => {
     if (initialTabFromUrl === 'Court Forms') return 'Documents';
     return initialTabFromUrl || (caseId && typeof window !== 'undefined' ? sessionStorage.getItem(`lastCaseTab_${caseId}`) : null) || 'Overview';
@@ -530,7 +536,18 @@ export function CaseWorkspace({
             <div className="flex overflow-x-auto border-b border-gray-100 no-scrollbar mb-6">
               <button
                 type="button"
-                onClick={() => setDocSubTab('case')}
+                onClick={() => {
+                  setDocSubTab('case');
+                  setActiveFormId(null);
+                  if (typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('tab', 'Documents');
+                    url.searchParams.set('subtab', 'case');
+                    url.searchParams.delete('formId');
+                    url.searchParams.delete('newBlank');
+                    window.history.replaceState({}, '', url.toString());
+                  }
+                }}
                 className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'case'
                     ? 'text-gray-900 font-bold'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -543,7 +560,18 @@ export function CaseWorkspace({
 
               <button
                 type="button"
-                onClick={() => setDocSubTab('client')}
+                onClick={() => {
+                  setDocSubTab('client');
+                  setActiveFormId(null);
+                  if (typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('tab', 'Documents');
+                    url.searchParams.set('subtab', 'client');
+                    url.searchParams.delete('formId');
+                    url.searchParams.delete('newBlank');
+                    window.history.replaceState({}, '', url.toString());
+                  }
+                }}
                 className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'client'
                     ? 'text-gray-900 font-bold'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -556,7 +584,18 @@ export function CaseWorkspace({
 
               <button
                 type="button"
-                onClick={() => setDocSubTab('other')}
+                onClick={() => {
+                  setDocSubTab('other');
+                  setActiveFormId(null);
+                  if (typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('tab', 'Documents');
+                    url.searchParams.set('subtab', 'other');
+                    url.searchParams.delete('formId');
+                    url.searchParams.delete('newBlank');
+                    window.history.replaceState({}, '', url.toString());
+                  }
+                }}
                 className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'other'
                     ? 'text-gray-900 font-bold'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -569,7 +608,18 @@ export function CaseWorkspace({
 
               <button
                 type="button"
-                onClick={() => setDocSubTab('court_forms')}
+                onClick={() => {
+                  setDocSubTab('court_forms');
+                  setActiveFormId(null);
+                  if (typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('tab', 'Documents');
+                    url.searchParams.set('subtab', 'court_forms');
+                    url.searchParams.delete('formId');
+                    url.searchParams.delete('newBlank');
+                    window.history.replaceState({}, '', url.toString());
+                  }
+                }}
                 className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'court_forms'
                     ? 'text-gray-900 font-bold'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -617,12 +667,13 @@ export function CaseWorkspace({
             ) : docSubTab === 'court_forms' ? (
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <PDFCourtFormEditor
+                  key={activeFormId ? `form-${activeFormId}` : 'court-forms-list'}
                   caseId={caseId}
                   clientId={caseData.client || caseData.client_id}
                   role={role}
                   accent={accent}
-                  initialFormId={initialFormId}
-                  newBlank={newBlank}
+                  initialFormId={activeFormId}
+                  newBlank={activeFormId ? false : newBlank}
                 />
               </div>
             ) : (

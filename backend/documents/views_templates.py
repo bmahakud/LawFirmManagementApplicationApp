@@ -76,9 +76,10 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
-        if self.action in ['pdf', 'download_master_pdf', 'preview_filing_pack']:
+        if self.action in ['pdf', 'docx_html', 'download_master_pdf', 'preview_filing_pack']:
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
+
     
     def get_serializer_class(self):
         if self.action == 'create':
@@ -396,6 +397,30 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
+    def docx_html(self, request, pk=None):
+        """
+        Returns the official court form HTML with interactive editable inputs.
+        """
+        from django.shortcuts import get_object_or_404
+        from django.http import HttpResponse
+        from django.views.decorators.clickjacking import xframe_options_exempt
+        from .services.court_form_html_engine import render_form_html
+
+        filled_form = get_object_or_404(FilledCourtForm, id=pk)
+        template = filled_form.template
+        tpl_name = template.name if template else ''
+        field_values = filled_form.field_values or {}
+
+        rendered_html = render_form_html(tpl_name, field_values=field_values, is_edit_mode=True, form_obj=filled_form)
+        if not rendered_html:
+            return Response({'error': 'Template HTML not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        response = HttpResponse(rendered_html, content_type='text/html; charset=utf-8')
+        response['X-Frame-Options'] = 'ALLOWALL'
+        response.xframe_options_exempt = True
+        return response
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
     def pdf(self, request, pk=None):
         """Returns the rendered A4 PDF for this filled court form"""
         from django.shortcuts import get_object_or_404
@@ -408,6 +433,8 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         filename = f"{filled_form.template.name if filled_form.template else 'Form'}.pdf".replace(' ', '_')
         response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['X-Frame-Options'] = 'ALLOWALL'
+        response.xframe_options_exempt = True
         return response
 
     @action(detail=True, methods=['post'])
@@ -442,6 +469,9 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
                 obj = getattr(obj, part, None)
                 if obj is None:
                     return None
+            
+            if hasattr(obj, 'strftime'):
+                return obj.strftime('%d/%m/%Y')
             
             return str(obj) if obj else None
         except:

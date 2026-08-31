@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>upload_avkzasyqujd7ntrpex6sj35cam.pdf</title>
+<style>
+/* pdf2html base stylesheet — fixed-layout, faithful page reproduction. */
+html, body { margin: 0; padding: 0; }
+body { background: #e8e8e8; }
+
+/* One page = a positioning context sized to the PDF page box (CSS px). isolation:isolate makes it a
+   stacking context so each page's per-element paint-order z-indexes stay self-contained (and the fixed
+   sidebars keep sitting above every page's content, form fields included). */
+.page {
+	position: relative;
+	isolation: isolate;
+	margin: 8px auto;
+	background: #fff;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+	overflow: hidden;
+}
+
+/* The text-suppressed background raster (vectors + images), behind the text. */
+.bg {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 0;
+	user-select: none;
+	-webkit-user-select: none;
+	pointer-events: none;
+}
+
+/* Type3-only transparent overlay (Type3Mode.IMAGE): Type3 glyph shapes above the background, below text. */
+.t3o {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 0;
+	user-select: none;
+	-webkit-user-select: none;
+	pointer-events: none;
+	image-orientation: none;
+}
+
+/* A positioned text run. transform + font-size carry position/rotation/scale; the pooled style class
+   carries font-family/size/color. Runs are emitted in logical reading order (tagged PDFs) but carry an
+   inline z-index equal to their paint sequence, so visual stacking is unaffected by the DOM order. */
+.t {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 1;
+	white-space: pre;
+	line-height: 1;
+	transform-origin: 0 0;
+	display: inline-block;
+}
+
+/* An extracted image. Each element carries an inline z-index equal to its paint sequence (this class value
+   is only a fallback), so images stack correctly over/under text and vectors no matter the DOM order. */
+.im {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 1;
+	transform-origin: 0 0;
+	display: block;
+	/* PDF placement ignores EXIF Orientation; browsers honour it by default. Pass-through JPEGs may carry
+	   an Orientation tag, so pin it off to match the PDF (no-op for re-encoded images, which have no EXIF). */
+	image-orientation: none;
+}
+
+/* An extracted vector layer (SVG). Carries an inline z-index equal to its group's paint sequence (this
+   class value is only a fallback), so it layers correctly against text and images regardless of DOM order. */
+.vec {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 1;
+	overflow: visible;
+	pointer-events: none;
+}
+
+/* Zero-size internal-link target anchor at a destination's exact Y; scroll lands here, not the page top. */
+.dst {
+	position: absolute;
+	left: 0;
+	width: 0;
+	height: 0;
+	scroll-margin-top: 8px;
+}
+
+/* Zero-size holder for <clipPath> defs referenced by clipped vector paths; takes no layout space. */
+.cdefs {
+	position: absolute;
+	width: 0;
+	height: 0;
+	overflow: hidden;
+}
+
+/* A detected ruled table (opt-in): a real, copyable/accessible <table> sized to the grid, laid over the
+   visual layer. Cells are transparent and border-less so the ruling lines and fills underneath show. */
+.tbl {
+	position: absolute;
+	z-index: 1000000000; /* above the paint-order content band (runs/images/vectors carry z-index = paint seq) */
+	border-collapse: collapse;
+	table-layout: fixed;
+	margin: 0;
+	color: #000;
+	line-height: 1.1;
+}
+.tbl td {
+	border: 0;
+	padding: 1px 2px;
+	overflow: hidden;
+	vertical-align: middle;
+	text-align: left;
+	white-space: normal;
+	word-break: break-word;
+}
+
+/* Interactive link boxes and form controls, above the text/image/table layer (which uses a paint-order
+   z-index band). Kept below the fixed sidebars (z-index:10 in the root context; each .page isolates its
+   own high z-indexes). */
+.lnk {
+	position: absolute;
+	z-index: 2000000000;
+	display: block;
+}
+
+.fld {
+	position: absolute;
+	z-index: 2000000000;
+	box-sizing: border-box;
+	font-size: 12px;
+	margin: 0;
+}
+
+/* Collapsible navigation sidebars (opt-in): outline (bookmarks) on the left, thumbnails on the right.
+   Both are fixed, scroll independently, sit above the pages and are hidden when printing. */
+.toc, .thumbs {
+	position: fixed;
+	top: 0;
+	bottom: 0;
+	z-index: 10;
+	background: rgba(250, 250, 250, .97);
+	box-shadow: 0 0 6px rgba(0, 0, 0, .25);
+	overflow: auto;
+	font-family: sans-serif;
+	font-size: 13px;
+	-webkit-user-select: none;
+	user-select: none;
+}
+.toc {
+	left: 0;
+	width: 250px;
+}
+.thumbs {
+	right: 0;
+	width: 172px;
+}
+.toc summary, .thumbs summary {
+	cursor: pointer;
+	padding: 8px 10px;
+	font-weight: bold;
+	position: sticky;
+	top: 0;
+	background: inherit;
+	border-bottom: 1px solid #ddd;
+}
+.toc ul {
+	list-style: none;
+	margin: 0;
+	padding-left: 12px;
+}
+.toc li {
+	margin: 1px 0;
+}
+.toc a, .toc span {
+	display: block;
+	padding: 2px 6px;
+	text-decoration: none;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.toc a {
+	color: #06c;
+}
+.toc a:hover {
+	text-decoration: underline;
+	background: #eef4ff;
+}
+.toc span {
+	color: #333;
+}
+.thumbs ol {
+	list-style: none;
+	margin: 0;
+	padding: 8px;
+}
+.thumbs li {
+	margin: 0 0 10px;
+	text-align: center;
+}
+.thumbs a {
+	text-decoration: none;
+	color: #666;
+	font-size: 11px;
+}
+.thumbs img {
+	display: block;
+	width: 140px;
+	height: auto;
+	margin: 0 auto 2px;
+	border: 1px solid #bbb;
+	background: #fff;
+}
+.thumbs a:hover img {
+	border-color: #06c;
+	box-shadow: 0 0 0 2px #cfe0ff;
+}
+
+/* Print / PDF round-trip: one source page per printed page, no chrome margins or shadow.
+   The exact paper size is pinned by a generated @page rule when all pages share one size. */
+@media print {
+	body { background: #fff; }
+	.toc, .thumbs { display: none; }
+	.page { margin: 0; box-shadow: none; break-after: page; }
+	.page:last-child { break-after: auto; }
+}
+.c0{font-family:"f0", serif;font-size:16px;color:#000000}
+@page{size:816px 1056px;margin:0}
+</style>
+</head>
+<body>
+<style>
+@font-face{font-family:"f0";src:url(data:font/woff;base64,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) format("woff");ascent-override:100%;descent-override:0%;line-gap-override:0%;}
+#p0{width:816px;height:1056px}
+</style>
+<div class="page" id="p0">
+<div class="t c0" style="z-index:1;transform:matrix(1,0,0,1,400.93,119.73)">BAIL BOND</div>
+<div class="t c0" style="z-index:10;transform:matrix(1,0,0,1,120,171.87)">IN THE COURT OF ____________________________</div>
+<div class="t c0" style="z-index:54;transform:matrix(1,0,0,1,120,201.87)">Case No.___________. </div>
+<div class="t c0" style="z-index:75;transform:matrix(1,0,0,1,287.07,232)">BOND OR BAIL BOND FOR ATTENDANCE BEFORE OFFICER IN  </div>
+<div class="t c0" style="z-index:127;transform:matrix(1,0,0,1,253.33,262)">        </div>
+<div class="t c0" style="z-index:135;transform:matrix(1,0,0,1,285.33,262)">CHARGE OF THE POLICE STATION OR COURT. </div>
+<div class="t c0" style="z-index:174;transform:matrix(1,0,0,1,203.6,325.2)">I, (Name) _________________________________________________</div>
+<div class="t c0" style="z-index:233;transform:matrix(1,0,0,1,120,358.27)">Age _______ R/o. ____________________________________________________</div>
+<div class="t c0" style="z-index:302;transform:matrix(1,0,0,1,120,391.33)">having</div>
+<div class="t c0" style="z-index:308;transform:matrix(1,0,0,1,166.13,391.33)"> </div>
+<div class="t c0" style="z-index:309;transform:matrix(1,0,0,1,172.8,391.33)">been</div>
+<div class="t c0" style="z-index:313;transform:matrix(1,0,0,1,205.6,391.33)"> </div>
+<div class="t c0" style="z-index:314;transform:matrix(1,0,0,1,212.13,391.33)">arrested</div>
+<div class="t c0" style="z-index:322;transform:matrix(1,0,0,1,265.73,391.33)"> </div>
+<div class="t c0" style="z-index:323;transform:matrix(1,0,0,1,272.4,391.33)">or</div>
+<div class="t c0" style="z-index:325;transform:matrix(1,0,0,1,288.4,391.33)"> </div>
+<div class="t c0" style="z-index:326;transform:matrix(1,0,0,1,295.07,391.33)">detained</div>
+<div class="t c0" style="z-index:334;transform:matrix(1,0,0,1,351.87,391.33)"> </div>
+<div class="t c0" style="z-index:335;transform:matrix(1,0,0,1,358.4,391.33)">without</div>
+<div class="t c0" style="z-index:342;transform:matrix(1,0,0,1,410,391.33)"> </div>
+<div class="t c0" style="z-index:343;transform:matrix(1,0,0,1,416.53,391.33)">warrant</div>
+<div class="t c0" style="z-index:350;transform:matrix(1,0,0,1,468.4,391.33)"> </div>
+<div class="t c0" style="z-index:351;transform:matrix(1,0,0,1,474.93,391.33)">by</div>
+<div class="t c0" style="z-index:353;transform:matrix(1,0,0,1,493.6,391.33)"> </div>
+<div class="t c0" style="z-index:354;transform:matrix(1,0,0,1,500.13,391.33)">the</div>
+<div class="t c0" style="z-index:357;transform:matrix(1,0,0,1,522.27,391.33)"> </div>
+<div class="t c0" style="z-index:358;transform:matrix(1,0,0,1,528.93,391.33)">officer</div>
+<div class="t c0" style="z-index:365;transform:matrix(1,0,0,1,574.4,391.33)"> </div>
+<div class="t c0" style="z-index:366;transform:matrix(1,0,0,1,580.93,391.33)">in-charge</div>
+<div class="t c0" style="z-index:375;transform:matrix(1,0,0,1,644.13,391.33)"> </div>
+<div class="t c0" style="z-index:376;transform:matrix(1,0,0,1,650.8,391.33)">or</div>
+<div class="t c0" style="z-index:378;transform:matrix(1,0,0,1,666.8,391.33)"> </div>
+<div class="t c0" style="z-index:379;transform:matrix(1,0,0,1,673.47,391.33)">Police</div>
+<div class="t c0" style="z-index:385;transform:matrix(1,0,0,1,716,391.33)"> </div>
+<div class="t c0" style="z-index:386;transform:matrix(1,0,0,1,722.53,391.33)">Station</div>
+<div class="t c0" style="z-index:393;transform:matrix(1,0,0,1,120,424.4)">________________________________(</div>
+<div class="t c0" style="z-index:426;transform:matrix(1,0,0,1,388.13,424.4)"> </div>
+<div class="t c0" style="z-index:427;transform:matrix(1,0,0,1,399.07,424.4)">or</div>
+<div class="t c0" style="z-index:429;transform:matrix(1,0,0,1,419.47,424.4)"> </div>
+<div class="t c0" style="z-index:430;transform:matrix(1,0,0,1,430.4,424.4)">having</div>
+<div class="t c0" style="z-index:436;transform:matrix(1,0,0,1,480.8,424.4)"> </div>
+<div class="t c0" style="z-index:437;transform:matrix(1,0,0,1,491.73,424.4)">been</div>
+<div class="t c0" style="z-index:441;transform:matrix(1,0,0,1,528.8,424.4)"> </div>
+<div class="t c0" style="z-index:442;transform:matrix(1,0,0,1,539.73,424.4)">brought</div>
+<div class="t c0" style="z-index:449;transform:matrix(1,0,0,1,596.67,424.4)"> </div>
+<div class="t c0" style="z-index:450;transform:matrix(1,0,0,1,607.6,424.4)">before</div>
+<div class="t c0" style="z-index:456;transform:matrix(1,0,0,1,655.47,424.4)"> </div>
+<div class="t c0" style="z-index:457;transform:matrix(1,0,0,1,666.4,424.4)">the</div>
+<div class="t c0" style="z-index:460;transform:matrix(1,0,0,1,692.8,424.4)"> </div>
+<div class="t c0" style="z-index:461;transform:matrix(1,0,0,1,703.73,424.4)">court</div>
+<div class="t c0" style="z-index:466;transform:matrix(1,0,0,1,743.6,424.4)"> </div>
+<div class="t c0" style="z-index:467;transform:matrix(1,0,0,1,754.53,424.4)">of</div>
+<div class="t c0" style="z-index:469;transform:matrix(1,0,0,1,120,457.47)">________________________________</div>
+<div class="t c0" style="z-index:501;transform:matrix(1,0,0,1,120,490.53)">changed with the offences on ____________________________________________</div>
+<div class="t c0" style="z-index:574;transform:matrix(1,0,0,1,120,523.6)">and required to give surety for, my attendance before such officer or court and required on</div>
+<div class="t c0" style="z-index:665;transform:matrix(1,0,0,1,120,556.67)">condition, that I shall attend such officer or court on everyday on which any investigation or trial is</div>
+<div class="t c0" style="z-index:768;transform:matrix(1,0,0,1,120,589.73)">held with regard to such charges and in case of making default therein, I bind myself to forfeit to the</div>
+<div class="t c0" style="z-index:871;transform:matrix(1,0,0,1,120,622.8)">Government the sum of Rs. ________________</div>
+<div class="t c0" style="z-index:913;transform:matrix(1,0,0,1,120,655.87)">In words Rs. _________________________ Dated this ________________________</div>
+<div class="t c0" style="z-index:987;transform:matrix(1,0,0,1,120,688.93)">day of _________________200</div>
+<div class="t c0" style="z-index:1014;transform:matrix(1,0,0,1,287.07,755.07)">  </div>
+<div class="t c0" style="z-index:1016;transform:matrix(1,0,0,1,370.67,755.07)">           </div>
+<div class="t c0" style="z-index:1027;transform:matrix(1,0,0,1,414.67,755.07)">____________________________</div>
+<div class="t c0" style="z-index:1055;transform:matrix(1,0,0,1,454.13,785.07)">(Signature of the accused.)</div>
+</div>
+</body>
+</html>
