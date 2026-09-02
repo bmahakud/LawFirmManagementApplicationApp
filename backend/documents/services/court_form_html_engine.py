@@ -1854,14 +1854,22 @@ def render_form_html(template_name, field_values=None, is_edit_mode=False, form_
         var pages = getPageElements();
         var targetPage = null;
         var targetPageIndex = 0;
+        var bestDist = Infinity;
 
         for (var i = 0; i < pages.length; i++) {{
             var p = pages[i];
             var pRect = p.getBoundingClientRect();
-            if (clientY >= pRect.top && (clientY <= pRect.bottom || i === pages.length - 1)) {{
+            if (clientY >= pRect.top && clientY <= pRect.bottom) {{
                 targetPage = p;
                 targetPageIndex = i;
                 break;
+            }}
+            var center = (pRect.top + pRect.bottom) / 2;
+            var dist = Math.abs(clientY - center);
+            if (dist < bestDist) {{
+                bestDist = dist;
+                targetPage = p;
+                targetPageIndex = i;
             }}
         }}
         if (!targetPage) {{
@@ -1956,14 +1964,22 @@ def render_form_html(template_name, field_values=None, is_edit_mode=False, form_
         var pages = getPageElements();
         var targetPage = null;
         var targetPageIndex = 0;
+        var bestDist = Infinity;
 
         for (var i = 0; i < pages.length; i++) {{
             var p = pages[i];
             var pRect = p.getBoundingClientRect();
-            if (clientY >= pRect.top && (clientY <= pRect.bottom || i === pages.length - 1)) {{
+            if (clientY >= pRect.top && clientY <= pRect.bottom) {{
                 targetPage = p;
                 targetPageIndex = i;
                 break;
+            }}
+            var center = (pRect.top + pRect.bottom) / 2;
+            var dist = Math.abs(clientY - center);
+            if (dist < bestDist) {{
+                bestDist = dist;
+                targetPage = p;
+                targetPageIndex = i;
             }}
         }}
         if (!targetPage) {{

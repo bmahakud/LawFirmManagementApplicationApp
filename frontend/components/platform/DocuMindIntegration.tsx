@@ -132,13 +132,12 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
 
       const backendBase = process.env.NEXT_PUBLIC_API_BASE_URL || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://127.0.0.1:8000' : window.location.origin);
 
-      // Sync individual files and court forms to DocuMind
+      // Sync Master PDF and actual case documents to DocuMind
       if (iframeRef.current && iframeRef.current.contentWindow) {
         iframeRef.current.contentWindow.postMessage({
           type: 'DOCU_MIND_SYNC_CASE_FILES',
           backendBaseUrl: backendBase,
           caseDocuments: docs,
-          filledForms: forms,
         }, '*');
 
         // Check if new documents were added during this session

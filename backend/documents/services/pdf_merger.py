@@ -438,9 +438,16 @@ def generate_court_form_pdf(form):
             import os
             import base64
 
+            # 0-indexed current page in ReportLab
+            current_page_idx = getattr(canvas_obj, '_pageNumber', 1) - 1
+
             for sig in placed_signatures:
                 img_path_or_url = sig.get('image_url')
                 if not img_path_or_url:
+                    continue
+
+                sig_page = int(sig.get('page', 0))
+                if sig_page != current_page_idx:
                     continue
 
                 try:

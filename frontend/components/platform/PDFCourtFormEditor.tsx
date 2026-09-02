@@ -446,13 +446,17 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
     updateSignaturePosition(existing ? existing.id : sigId, curX + info.offset.x, curY + info.offset.y);
   };
 
-  const updateSignaturePosition = (sigId: string, newX: number, newY: number) => {
+  const updateSignaturePosition = (sigId: string, newX: number, newY: number, targetPage?: number) => {
+    let pageIndex = targetPage !== undefined ? targetPage : Math.floor(Math.max(0, newY) / A4_HEIGHT);
+    let pageY = targetPage !== undefined ? newY : (newY % A4_HEIGHT);
+    if (pageIndex < 0) pageIndex = 0;
+
     const clampedX = Math.max(0, Math.min(Math.round(newX), A4_WIDTH - 80));
-    const clampedY = Math.max(0, Math.min(Math.round(newY), A4_HEIGHT - 30));
+    const clampedY = Math.max(0, Math.min(Math.round(pageY), A4_HEIGHT - 30));
 
     const updated = placedSignatures.map(s => {
       if (s.id === sigId) {
-        return { ...s, x: clampedX, y: clampedY };
+        return { ...s, x: clampedX, y: clampedY, page: pageIndex };
       }
       return s;
     });
@@ -462,7 +466,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
       placed_signatures: updated,
       signature_offsets: {
         ...(prev.signature_offsets || {}),
-        [sigId]: { x: clampedX, y: clampedY }
+        [sigId]: { x: clampedX, y: clampedY, page: pageIndex }
       }
     }));
   };

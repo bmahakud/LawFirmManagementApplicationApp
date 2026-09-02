@@ -8,7 +8,81 @@ from .models_versions import CaseDraftVersion
 from .serializers_versions import CaseDraftVersionSerializer, CaseDraftVersionListSerializer
 
 
+import base64
+import logging
+import uuid
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.db.models import Q
+
+logger = logging.getLogger(__name__)
+
+
+def _save_base64_to_cdn(data_url, case_id, request=None):
+    """
+    Decodes a base64 image data URL (data:image/png;base64,...) and saves it to
+    Django's default_storage (DigitalOcean Spaces CDN via MediaStorage).
+    Returns the absolute public CDN URL.
+    """
+    try:
+        if not data_url or not isinstance(data_url, str) or not data_url.startswith('data:image/'):
+            return data_url
+
+        header, encoded = data_url.split(',', 1)
+        ext = 'png'
+        if 'image/jpeg' in header or 'image/jpg' in header:
+            ext = 'jpg'
+        elif 'image/webp' in header:
+            ext = 'webp'
+
+        image_bytes = base64.b64decode(encoded)
+        filename = f"draft_versions/excerpts/{case_id}/{uuid.uuid4().hex[:12]}.{ext}"
+        saved_path = default_storage.save(filename, ContentFile(image_bytes))
+        cdn_url = default_storage.url(saved_path)
+
+        if request and cdn_url.startswith('/'):
+            cdn_url = request.build_absolute_uri(cdn_url)
+
+        return cdn_url
+    except Exception as e:
+        logger.exception("Failed to upload base64 image to CDN: %s", e)
+        return data_url
+
+
+def _offload_base64_images_to_cdn(snapshot_data, case_id, request=None):
+    """
+    Recursively scans snapshot_data for base64 image strings (in nodes, anchors, excerpts)
+    and uploads them to the CDN, replacing base64 payloads with lightweight CDN URLs.
+    """
+    if not isinstance(snapshot_data, dict):
+        return snapshot_data
+
+    # 1. Process nodes
+    nodes = snapshot_data.get('nodes')
+    if isinstance(nodes, list):
+        for node in nodes:
+            if isinstance(node, dict) and isinstance(node.get('imageUrl'), str):
+                if node['imageUrl'].startswith('data:image/'):
+                    node['imageUrl'] = _save_base64_to_cdn(node['imageUrl'], case_id, request)
+
+    # 2. Process anchors
+    anchors = snapshot_data.get('anchors')
+    if isinstance(anchors, list):
+        for anchor in anchors:
+            if isinstance(anchor, dict) and isinstance(anchor.get('imageUrl'), str):
+                if anchor['imageUrl'].startswith('data:image/'):
+                    anchor['imageUrl'] = _save_base64_to_cdn(anchor['imageUrl'], case_id, request)
+
+    # 3. Process excerpts
+    excerpts = snapshot_data.get('excerpts')
+    if isinstance(excerpts, list):
+        for excerpt in excerpts:
+            if isinstance(excerpt, dict) and isinstance(excerpt.get('imageUrl'), str):
+                if excerpt['imageUrl'].startswith('data:image/'):
+                    excerpt['imageUrl'] = _save_base64_to_cdn(excerpt['imageUrl'], case_id, request)
+
+    return snapshot_data
+
 
 class CaseDraftVersionViewSet(viewsets.ModelViewSet):
     """
@@ -56,6 +130,12 @@ class CaseDraftVersionViewSet(viewsets.ModelViewSet):
         case = get_object_or_404(Case, id=case_id)
         document_identifier = self.request.data.get('document_identifier') or self.request.data.get('document_id') or ''
         
+        # Offload any inline base64 images in snapshot_data to DigitalOcean Spaces CDN
+        snapshot_data = serializer.validated_data.get('snapshot_data', {})
+        if snapshot_data:
+            snapshot_data = _offload_base64_images_to_cdn(snapshot_data, str(case.id), self.request)
+            serializer.validated_data['snapshot_data'] = snapshot_data
+
         # Calculate next version number for this specific document in this case
         versions_query = CaseDraftVersion.objects.filter(case=case)
         if document_identifier:
@@ -66,9 +146,38 @@ class CaseDraftVersionViewSet(viewsets.ModelViewSet):
         serializer.save(
             case=case,
             document_identifier=document_identifier,
-            created_by=self.request.user,
-            version_number=next_version_num
+            created_by=self.request.user if self.request.user and self.request.user.is_authenticated else None,
+            version_number=next_version_num,
+            snapshot_data=snapshot_data
         )
+
+    @action(detail=False, methods=['post'], url_path='upload-excerpt-image')
+    def upload_excerpt_image(self, request):
+        """
+        Directly uploads an excerpt image to DigitalOcean Spaces CDN / default_storage.
+        Accepts either:
+          - multipart/form-data with 'image' file
+          - JSON with 'data_url' (data:image/...) and optional 'case_id'
+        Returns: { 'image_url': 'https://...' }
+        """
+        case_id = request.data.get('case_id') or request.data.get('case') or 'common'
+        uploaded_file = request.FILES.get('image')
+        data_url = request.data.get('data_url')
+
+        if uploaded_file:
+            ext = uploaded_file.name.split('.')[-1].lower() if '.' in uploaded_file.name else 'png'
+            filename = f"draft_versions/excerpts/{case_id}/{uuid.uuid4().hex[:12]}.{ext}"
+            saved_path = default_storage.save(filename, uploaded_file)
+            cdn_url = default_storage.url(saved_path)
+            if cdn_url.startswith('/'):
+                cdn_url = request.build_absolute_uri(cdn_url)
+            return Response({'image_url': cdn_url}, status=status.HTTP_201_CREATED)
+
+        if data_url and isinstance(data_url, str) and data_url.startswith('data:image/'):
+            cdn_url = _save_base64_to_cdn(data_url, str(case_id), request)
+            return Response({'image_url': cdn_url}, status=status.HTTP_201_CREATED)
+
+        return Response({'error': 'No image file or data_url provided'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'], url_path='name-version')
     def name_version(self, request, pk=None):
