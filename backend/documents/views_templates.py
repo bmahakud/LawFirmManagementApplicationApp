@@ -401,24 +401,29 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
         """
         Returns the official court form HTML with interactive editable inputs.
         """
-        from django.shortcuts import get_object_or_404
-        from django.http import HttpResponse
-        from django.views.decorators.clickjacking import xframe_options_exempt
-        from .services.court_form_html_engine import render_form_html
+        try:
+            from django.shortcuts import get_object_or_404
+            from django.http import HttpResponse
+            from django.views.decorators.clickjacking import xframe_options_exempt
+            from .services.court_form_html_engine import render_form_html
 
-        filled_form = get_object_or_404(FilledCourtForm, id=pk)
-        template = filled_form.template
-        tpl_name = template.name if template else ''
-        field_values = filled_form.field_values or {}
+            filled_form = get_object_or_404(FilledCourtForm, id=pk)
+            template = filled_form.template
+            tpl_name = template.name if template else ''
+            field_values = filled_form.field_values or {}
 
-        rendered_html = render_form_html(tpl_name, field_values=field_values, is_edit_mode=True, form_obj=filled_form)
-        if not rendered_html:
-            return Response({'error': 'Template HTML not found'}, status=status.HTTP_404_NOT_FOUND)
+            rendered_html = render_form_html(tpl_name, field_values=field_values, is_edit_mode=True, form_obj=filled_form)
+            if not rendered_html:
+                return Response({'error': f'Template HTML not found for {tpl_name}'}, status=status.HTTP_404_NOT_FOUND)
 
-        response = HttpResponse(rendered_html, content_type='text/html; charset=utf-8')
-        response['X-Frame-Options'] = 'ALLOWALL'
-        response.xframe_options_exempt = True
-        return response
+            response = HttpResponse(rendered_html, content_type='text/html; charset=utf-8')
+            response['X-Frame-Options'] = 'ALLOWALL'
+            response.xframe_options_exempt = True
+            return response
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
     def pdf(self, request, pk=None):

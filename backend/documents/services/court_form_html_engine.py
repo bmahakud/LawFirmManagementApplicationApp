@@ -32,11 +32,21 @@ if sys.platform == 'darwin':
     except Exception:
         pass
 
-import weasyprint
+try:
+    import weasyprint
+except Exception:
+    weasyprint = None
+
 from django.conf import settings
 
-
-COURT_FORMS_DIR = '/Users/diracai/Desktop/Projects DiracAI/AntLegal/LawFirmManagementApplicationApp/Court Forms'
+# Dynamically locate the "Court Forms" directory across local Mac and production Linux
+_candidates = [
+    os.path.abspath(os.path.join(str(settings.BASE_DIR), '..', 'Court Forms')),
+    os.path.abspath(os.path.join(str(settings.BASE_DIR), 'Court Forms')),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'Court Forms')),
+    '/Users/diracai/Desktop/Projects DiracAI/AntLegal/LawFirmManagementApplicationApp/Court Forms',
+]
+COURT_FORMS_DIR = next((d for d in _candidates if os.path.isdir(d)), _candidates[0])
 
 FORM_DEFINITIONS = {
     'address': {
@@ -2231,7 +2241,10 @@ def generate_pdf_from_html_template(form_obj):
         return None
 
     try:
-        pdf_bytes = weasyprint.HTML(string=rendered_html).write_pdf()
+        wp = weasyprint
+        if wp is None:
+            import weasyprint as wp
+        pdf_bytes = wp.HTML(string=rendered_html).write_pdf()
         return pdf_bytes
     except Exception as ex:
         print(f"Error generating PDF from HTML template: {ex}")
