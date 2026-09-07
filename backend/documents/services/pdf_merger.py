@@ -3,7 +3,7 @@ import io
 import tempfile
 from PIL import Image
 import pypdf
-from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.pagesizes import letter, A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, HRFlowable
@@ -310,7 +310,15 @@ def generate_court_form_pdf(form):
         bottom_m = float(content_margins.get('bottom', 50)) * scale_y
         page_w = 595.27 - (left_m + right_m)
 
-        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=left_m, rightMargin=right_m, topMargin=top_m, bottomMargin=bottom_m)
+        is_landscape = False
+        if isinstance(content, dict) and (content.get('orientation') == 'landscape' or content.get('page_size') == 'A4_LANDSCAPE'):
+            is_landscape = True
+        template_name = getattr(form.template, 'name', '') if getattr(form, 'template', None) else ''
+        if any(w in template_name.lower() for w in ['ca form 7', 'form c.a.i', 'ca_form_7']):
+            is_landscape = True
+
+        p_size = landscape(A4) if is_landscape else A4
+        doc = SimpleDocTemplate(buffer, pagesize=p_size, leftMargin=left_m, rightMargin=right_m, topMargin=top_m, bottomMargin=bottom_m)
         styles = getSampleStyleSheet()
         story = []
 

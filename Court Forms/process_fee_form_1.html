@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Process Fee (Compact)</title>
+<style>
+  @page{ size: A4; margin: 12mm 15mm; }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    background:#fff;
+    font-family:"Times New Roman", Times, serif;
+    color:#000;
+  }
+  body{ padding:0; }
+
+  .sheet{
+    position: relative;
+    width:210mm;
+    min-height:297mm;
+    margin:0 auto;
+    padding:12mm 16mm;
+    font-size:13px;
+    line-height:1.5;
+    background: #fff;
+  }
+
+  .title{
+    text-align:center;
+    font-size:24px;
+    letter-spacing:4px;
+    font-weight:bold;
+    text-transform:uppercase;
+    margin:4px 0 18px;
+  }
+
+  .field-line{
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+    margin-bottom:10px;
+    font-size:13px;
+  }
+  .field-line .lbl{
+    white-space:nowrap;
+    font-weight:600;
+  }
+
+  .versus-line{
+    text-align:center;
+    font-size:13px;
+    font-style:italic;
+    font-weight:bold;
+    margin:6px 0;
+  }
+
+  .suit-row{
+    display:flex;
+    justify-content:space-between;
+    gap:20px;
+    font-size:13px;
+    margin-bottom:14px;
+  }
+  .suit-row .lbl{
+    white-space:nowrap;
+    font-weight:600;
+  }
+
+  table.fee-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:12px;
+    margin-bottom:16px;
+  }
+  table.fee-table th{
+    border:1px solid #333;
+    padding:6px 4px;
+    font-weight:bold;
+    text-align:center;
+    background:#f1f5f9;
+    font-size:11.5px;
+  }
+  table.fee-table td{
+    border:1px solid #333;
+    height:28px;
+    padding:2px 3px;
+    vertical-align:middle;
+  }
+
+  .footer-row{
+    display:flex;
+    justify-content:space-between;
+    margin-top:28px;
+    font-size:12.5px;
+  }
+  .footer-row .footer-sign-col{
+    width:42%;
+    text-align:center;
+    position:relative;
+  }
+  .footer-row .footer-sign-col .sign-label{
+    border-top:1px solid #333;
+    padding-top:4px;
+    font-weight:bold;
+    font-size:12.5px;
+  }
+
+  /* Interactive semantic form inputs */
+  .cf-inline-input {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #000000;
+    border: none;
+    border-bottom: 1.5px dotted #475569;
+    background: rgba(241, 245, 249, 0.45);
+    padding: 2px 6px;
+    outline: none;
+    border-radius: 2px;
+    box-sizing: border-box;
+    transition: all 0.15s ease-in-out;
+  }
+  .cf-inline-input:focus {
+    background: #eff6ff;
+    border-bottom: 2px solid #2563eb;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
+  }
+  .cf-inline-input::placeholder {
+    color: #94a3b8;
+    font-style: italic;
+    font-weight: normal;
+  }
+
+  .cf-table-input {
+    width: 100%;
+    border: none;
+    background: rgba(241, 245, 249, 0.35);
+    font-family: "Times New Roman", Times, serif;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #000000;
+    padding: 3px 5px;
+    outline: none;
+    box-sizing: border-box;
+    border-radius: 2px;
+    transition: all 0.15s ease-in-out;
+  }
+  .cf-table-input:focus {
+    background: #eff6ff;
+    box-shadow: inset 0 0 0 1.5px #2563eb;
+  }
+  .cf-table-input::placeholder {
+    color: #94a3b8;
+    font-style: italic;
+    font-weight: normal;
+  }
+
+  .text-center { text-align: center; }
+  .text-right { text-align: right; }
+
+  @media print{
+    body{ padding:0 !important; background:#fff !important; }
+    .sheet{
+      width:auto !important;
+      min-height:0 !important;
+      margin:0 !important;
+      padding:6mm 10mm !important;
+      box-shadow:none !important;
+    }
+    .cf-inline-input, .cf-table-input {
+      border:none !important;
+      background:transparent !important;
+      color:#000 !important;
+      font-weight:bold !important;
+      box-shadow:none !important;
+      padding:0 !important;
+    }
+    .cf-inline-input {
+      border-bottom:1px dotted #333 !important;
+    }
+    .cf-inline-input::placeholder, .cf-table-input::placeholder {
+      color:transparent !important;
+    }
+    .sig-space {
+      display:none !important;
+    }
+  }
+
+  @media (max-width:800px){
+    .sheet{ width:100%; padding:6mm; }
+    .suit-row{ flex-direction:column; gap:8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sheet page" id="p0">
+
+  <div class="title">Process Fee Form</div>
+
+  <div class="field-line">
+    <span class="lbl">In the Court of</span>
+    <input type="text" name="court_name" data-field="court_name" class="cf-inline-input" style="flex:1;" placeholder="Name of Court / Presiding Judge (e.g. Civil Judge Senior Division, Pune / Delhi)" />
+  </div>
+
+  <div class="field-line">
+    <span class="lbl">Case:</span>
+    <input type="text" name="plaintiff_name" data-field="plaintiff_name" class="cf-inline-input" style="flex:1;" placeholder="Full Name of Plaintiff / Petitioner / Complainant" />
+  </div>
+
+  <div class="versus-line">— Versus —</div>
+
+  <div class="field-line">
+    <span class="lbl">Opposite Party:</span>
+    <input type="text" name="defendant_name" data-field="defendant_name" class="cf-inline-input" style="flex:1;" placeholder="Full Name of Defendant / Respondent / Accused" />
+  </div>
+
+  <div class="suit-row">
+    <div style="display:flex; align-items:baseline; gap:6px; flex:1;">
+      <span class="lbl">Suit / Case No.:</span>
+      <input type="text" name="case_number" data-field="case_number" class="cf-inline-input" style="flex:1; max-width:280px;" placeholder="e.g. Spl. Civil Suit No. 123 of 2024" />
+    </div>
+    <div style="display:flex; align-items:baseline; gap:6px;">
+      <span class="lbl">Date of Hearing :</span>
+      <input type="text" name="hearing_date" data-field="hearing_date" class="cf-inline-input text-center" style="width:140px;" placeholder="DD/MM/YYYY" />
+    </div>
+  </div>
+
+  <table class="fee-table">
+    <thead>
+      <tr>
+        <th style="width:15%;">Date of Filing</th>
+        <th style="width:17%;">Filed by whom</th>
+        <th style="width:23%;">Purpose of filing</th>
+        <th style="width:11%;">Number</th>
+        <th style="width:17%;">Amount of P.Fees</th>
+        <th style="width:17%;">Court Fee Affixed</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><input type="text" name="date_filing_0" data-field="date_filing_0" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_0" data-field="filed_by_0" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_0" data-field="purpose_0" class="cf-table-input" placeholder="Summons / Notice / Regd. Post" /></td>
+        <td><input type="text" name="number_0" data-field="number_0" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_0" data-field="amount_0" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_0" data-field="court_fee_0" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_1" data-field="date_filing_1" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_1" data-field="filed_by_1" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_1" data-field="purpose_1" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_1" data-field="number_1" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_1" data-field="amount_1" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_1" data-field="court_fee_1" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_2" data-field="date_filing_2" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_2" data-field="filed_by_2" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_2" data-field="purpose_2" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_2" data-field="number_2" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_2" data-field="amount_2" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_2" data-field="court_fee_2" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_3" data-field="date_filing_3" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_3" data-field="filed_by_3" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_3" data-field="purpose_3" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_3" data-field="number_3" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_3" data-field="amount_3" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_3" data-field="court_fee_3" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_4" data-field="date_filing_4" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_4" data-field="filed_by_4" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_4" data-field="purpose_4" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_4" data-field="number_4" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_4" data-field="amount_4" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_4" data-field="court_fee_4" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_5" data-field="date_filing_5" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_5" data-field="filed_by_5" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_5" data-field="purpose_5" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_5" data-field="number_5" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_5" data-field="amount_5" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_5" data-field="court_fee_5" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_6" data-field="date_filing_6" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_6" data-field="filed_by_6" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_6" data-field="purpose_6" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_6" data-field="number_6" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_6" data-field="amount_6" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_6" data-field="court_fee_6" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_7" data-field="date_filing_7" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_7" data-field="filed_by_7" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_7" data-field="purpose_7" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_7" data-field="number_7" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_7" data-field="amount_7" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_7" data-field="court_fee_7" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_8" data-field="date_filing_8" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_8" data-field="filed_by_8" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_8" data-field="purpose_8" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_8" data-field="number_8" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_8" data-field="amount_8" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_8" data-field="court_fee_8" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_9" data-field="date_filing_9" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_9" data-field="filed_by_9" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_9" data-field="purpose_9" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_9" data-field="number_9" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_9" data-field="amount_9" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_9" data-field="court_fee_9" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_10" data-field="date_filing_10" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_10" data-field="filed_by_10" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_10" data-field="purpose_10" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_10" data-field="number_10" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_10" data-field="amount_10" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_10" data-field="court_fee_10" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+      <tr>
+        <td><input type="text" name="date_filing_11" data-field="date_filing_11" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td><input type="text" name="filed_by_11" data-field="filed_by_11" class="cf-table-input" placeholder="Advocate for Plaintiff" /></td>
+        <td><input type="text" name="purpose_11" data-field="purpose_11" class="cf-table-input" placeholder="Purpose of filing" /></td>
+        <td><input type="text" name="number_11" data-field="number_11" class="cf-table-input text-center" placeholder="1" /></td>
+        <td><input type="text" name="amount_11" data-field="amount_11" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+        <td><input type="text" name="court_fee_11" data-field="court_fee_11" class="cf-table-input text-center" placeholder="₹ 0.00" /></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="footer-row">
+    <div class="footer-sign-col">
+      <div class="sig-space" style="height:50px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:4px;">
+        <span style="font-size:11px; color:#94a3b8; font-style:italic;">(Received Stamp & Sign)</span>
+      </div>
+      <div class="sign-label">Received P.Fee Form</div>
+    </div>
+    <div class="footer-sign-col">
+      <div class="sig-space" style="height:50px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:4px;">
+        <span style="font-size:11px; color:#94a3b8; font-style:italic;">(Advocate Signature)</span>
+      </div>
+      <div class="sign-label">Signature of Advocate</div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

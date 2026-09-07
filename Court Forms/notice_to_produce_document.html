@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Notice to Produce Document</title>
+<style>
+  @page{ size: A4; margin: 12mm 15mm; }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    background:#fff;
+    font-family:"Times New Roman", Times, serif;
+    color:#000;
+  }
+  body{ padding:0; }
+
+  .sheet{
+    position: relative;
+    width:210mm;
+    min-height:297mm;
+    margin:0 auto;
+    padding:14mm 18mm;
+    font-size:13px;
+    line-height:1.55;
+    background: #fff;
+  }
+
+  .form-no{
+    text-align:right;
+    font-size:11px;
+    font-style:italic;
+  }
+
+  .title{
+    text-align:center;
+    margin:6px 0 2px;
+  }
+  .title .main{
+    font-size:17px;
+    font-weight:bold;
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+  }
+  .title .sub{
+    font-size:12px;
+    margin-top:2px;
+  }
+
+  .rule-line{
+    text-align:center;
+    font-size:11.5px;
+    font-style:italic;
+    margin-bottom:16px;
+  }
+
+  .case-block{
+    margin:18px 0 14px;
+    font-size:13px;
+  }
+  .case-block .row{
+    display:flex;
+    align-items:baseline;
+    gap:6px;
+    margin-bottom:8px;
+  }
+  .case-block .fixed{
+    white-space:nowrap;
+    font-weight:500;
+  }
+
+  .court-line{
+    text-align:center;
+    font-weight:bold;
+    margin:12px 0 16px;
+    font-size:13.5px;
+  }
+
+  .party-row{
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+    margin-bottom:6px;
+  }
+  .party-row .lbl{
+    width:190px;
+    flex-shrink:0;
+    font-weight:600;
+  }
+  .versus{
+    text-align:center;
+    font-style:italic;
+    font-weight:600;
+    margin:6px 0;
+  }
+
+  .body-text{
+    margin:20px 0 14px;
+    text-align:justify;
+    line-height:1.6;
+  }
+
+  table.doc-table{
+    width:100%;
+    border-collapse:collapse;
+    margin:14px 0 20px;
+    font-size:12.5px;
+  }
+  table.doc-table th, table.doc-table td{
+    border:1px solid #333;
+    padding:4px 6px;
+    vertical-align:middle;
+  }
+  table.doc-table th{
+    background:#f1f5f9;
+    font-weight:bold;
+    text-align:center;
+    font-size:12px;
+    padding:6px 4px;
+  }
+  table.doc-table td.sno{ width:44px; text-align:center; padding:2px; }
+  table.doc-table td.desc{ width:auto; padding:2px; }
+  table.doc-table td.date{ width:120px; padding:2px; }
+  table.doc-table td.remark{ width:140px; padding:2px; }
+  table.doc-table td{ height:28px; }
+
+  .receipt-block{
+    margin-top:22px;
+    font-size:13px;
+  }
+  .receipt-block .row{
+    display:flex;
+    align-items:baseline;
+    gap:6px;
+    margin-bottom:8px;
+  }
+  .receipt-block .fixed{
+    white-space:nowrap;
+    font-weight:500;
+  }
+
+  .sign-row{
+    display:flex;
+    justify-content:space-between;
+    margin-top:32px;
+    font-size:12.5px;
+  }
+  .sign-row .sign-box{
+    width:44%;
+    text-align:center;
+    position:relative;
+  }
+  .sign-row .sign-box .sign-label{
+    border-top:1px solid #333;
+    padding-top:4px;
+    font-weight:bold;
+    font-size:12.5px;
+  }
+
+  /* Interactive semantic form inputs */
+  .cf-inline-input {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #000000;
+    border: none;
+    border-bottom: 1.5px dotted #475569;
+    background: rgba(241, 245, 249, 0.45);
+    padding: 2px 6px;
+    outline: none;
+    border-radius: 2px;
+    box-sizing: border-box;
+    transition: all 0.15s ease-in-out;
+  }
+  .cf-inline-input:focus {
+    background: #eff6ff;
+    border-bottom: 2px solid #2563eb;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
+  }
+  .cf-inline-input::placeholder {
+    color: #94a3b8;
+    font-style: italic;
+    font-weight: normal;
+  }
+
+  .cf-table-input {
+    width: 100%;
+    border: none;
+    background: rgba(241, 245, 249, 0.35);
+    font-family: "Times New Roman", Times, serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: #000000;
+    padding: 4px 6px;
+    outline: none;
+    box-sizing: border-box;
+    border-radius: 2px;
+    transition: all 0.15s ease-in-out;
+  }
+  .cf-table-input:focus {
+    background: #eff6ff;
+    box-shadow: inset 0 0 0 1.5px #2563eb;
+  }
+  .cf-table-input::placeholder {
+    color: #94a3b8;
+    font-style: italic;
+    font-weight: normal;
+  }
+
+  .cf-table-textarea {
+    width: 100%;
+    border: none;
+    background: rgba(241, 245, 249, 0.35);
+    font-family: "Times New Roman", Times, serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: #0f172a;
+    padding: 4px 6px;
+    outline: none;
+    box-sizing: border-box;
+    resize: vertical;
+    border-radius: 2px;
+    line-height: 1.4;
+    transition: all 0.15s ease-in-out;
+  }
+  .cf-table-textarea:focus {
+    background: #eff6ff;
+    box-shadow: inset 0 0 0 1.5px #2563eb;
+  }
+  .cf-table-textarea::placeholder {
+    color: #94a3b8;
+    font-style: italic;
+    font-weight: normal;
+  }
+
+  .text-center { text-align: center; }
+
+  @media print{
+    body{ padding:0 !important; background:#fff !important; }
+    .sheet{
+      width:auto !important;
+      min-height:0 !important;
+      margin:0 !important;
+      padding:6mm 10mm !important;
+      box-shadow:none !important;
+    }
+    .cf-inline-input, .cf-table-input, .cf-table-textarea {
+      border:none !important;
+      background:transparent !important;
+      color:#000 !important;
+      font-weight:bold !important;
+      box-shadow:none !important;
+      padding:0 !important;
+      resize:none !important;
+    }
+    .cf-inline-input {
+      border-bottom:1px dotted #333 !important;
+    }
+    .cf-inline-input::placeholder, .cf-table-input::placeholder, .cf-table-textarea::placeholder {
+      color:transparent !important;
+    }
+    .sig-space {
+      display:none !important;
+    }
+  }
+
+  @media (max-width:800px){
+    .sheet{ width:100%; padding:6mm; }
+    .party-row .lbl{ width:130px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sheet page" id="p0">
+
+  <div class="form-no">Form No. 7</div>
+
+  <div class="title">
+    <div class="main">Notice to Produce Document</div>
+  </div>
+  <div class="rule-line">[Order XI, Rule 16 read with the Code of Civil Procedure]</div>
+
+  <div class="case-block">
+    <div class="row">
+      <span class="fixed">No.</span>
+      <input type="text" name="case_number" data-field="case_number" class="cf-inline-input" style="flex:1; min-width:140px;" placeholder="e.g. Spl. Civil Suit No. 123" />
+      <span class="fixed">of</span>
+      <input type="text" name="case_type" data-field="case_type" class="cf-inline-input" style="width:170px;" placeholder="Civil Suit / Misc. Application" />
+      <span class="fixed">20</span>
+      <input type="text" name="year" data-field="year" class="cf-inline-input text-center" style="width:55px;" placeholder="24" maxlength="4" />
+    </div>
+  </div>
+
+  <div class="court-line">
+    In the Court of the Civil Judge, <input type="text" name="court_division" data-field="court_division" class="cf-inline-input text-center" style="min-width:280px; font-weight:bold;" placeholder="Senior / Junior Division at [City / Court]" /> Division
+  </div>
+
+  <div class="party-row">
+    <span class="lbl">Plaintiff / Applicant:</span>
+    <input type="text" name="plaintiff_name" data-field="plaintiff_name" class="cf-inline-input" style="flex:1;" placeholder="Full Name of Plaintiff(s) / Applicant(s)" />
+  </div>
+  <div class="versus">— Versus —</div>
+  <div class="party-row">
+    <span class="lbl">Defendant / Non-Applicant:</span>
+    <input type="text" name="defendant_name" data-field="defendant_name" class="cf-inline-input" style="flex:1;" placeholder="Full Name of Defendant(s) / Non-Applicant(s)" />
+  </div>
+
+  <div class="body-text">
+    Notice is hereby given that you do produce in Court, for our inspection, the documents or
+    papers specified below, mentioned / referred to in the plaint, application, written statement,
+    or affidavit dated <input type="text" name="plaint_date" data-field="plaint_date" class="cf-inline-input text-center" style="width:130px;" placeholder="DD/MM/YYYY" />.
+  </div>
+
+  <table class="doc-table">
+    <thead>
+      <tr>
+        <th style="width:45px;">Sr.<br>No.</th>
+        <th>Description of Document or Paper</th>
+        <th style="width:120px;">Date</th>
+        <th style="width:140px;">Remark</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="sno"><input type="text" name="doc_sno_0" data-field="doc_sno_0" class="cf-table-input text-center" value="1" placeholder="1" /></td>
+        <td class="desc"><textarea name="doc_desc_0" data-field="doc_desc_0" class="cf-table-textarea" rows="2" placeholder="e.g. Original Registered Sale Deed dated 12/04/2021"></textarea></td>
+        <td class="date"><input type="text" name="doc_date_0" data-field="doc_date_0" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td class="remark"><input type="text" name="doc_remarks_0" data-field="doc_remarks_0" class="cf-table-input" placeholder="In defendant possession" /></td>
+      </tr>
+      <tr>
+        <td class="sno"><input type="text" name="doc_sno_1" data-field="doc_sno_1" class="cf-table-input text-center" value="2" placeholder="2" /></td>
+        <td class="desc"><textarea name="doc_desc_1" data-field="doc_desc_1" class="cf-table-textarea" rows="2" placeholder="e.g. Agreement to Sell / Promissory Note / Cheque counterfoil"></textarea></td>
+        <td class="date"><input type="text" name="doc_date_1" data-field="doc_date_1" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td class="remark"><input type="text" name="doc_remarks_1" data-field="doc_remarks_1" class="cf-table-input" placeholder="Original / Copy" /></td>
+      </tr>
+      <tr>
+        <td class="sno"><input type="text" name="doc_sno_2" data-field="doc_sno_2" class="cf-table-input text-center" value="3" placeholder="3" /></td>
+        <td class="desc"><textarea name="doc_desc_2" data-field="doc_desc_2" class="cf-table-textarea" rows="2" placeholder="Description of Document or Paper"></textarea></td>
+        <td class="date"><input type="text" name="doc_date_2" data-field="doc_date_2" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td class="remark"><input type="text" name="doc_remarks_2" data-field="doc_remarks_2" class="cf-table-input" placeholder="Remarks" /></td>
+      </tr>
+      <tr>
+        <td class="sno"><input type="text" name="doc_sno_3" data-field="doc_sno_3" class="cf-table-input text-center" value="4" placeholder="4" /></td>
+        <td class="desc"><textarea name="doc_desc_3" data-field="doc_desc_3" class="cf-table-textarea" rows="2" placeholder="Description of Document or Paper"></textarea></td>
+        <td class="date"><input type="text" name="doc_date_3" data-field="doc_date_3" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td class="remark"><input type="text" name="doc_remarks_3" data-field="doc_remarks_3" class="cf-table-input" placeholder="Remarks" /></td>
+      </tr>
+      <tr>
+        <td class="sno"><input type="text" name="doc_sno_4" data-field="doc_sno_4" class="cf-table-input text-center" value="5" placeholder="5" /></td>
+        <td class="desc"><textarea name="doc_desc_4" data-field="doc_desc_4" class="cf-table-textarea" rows="2" placeholder="Description of Document or Paper"></textarea></td>
+        <td class="date"><input type="text" name="doc_date_4" data-field="doc_date_4" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td class="remark"><input type="text" name="doc_remarks_4" data-field="doc_remarks_4" class="cf-table-input" placeholder="Remarks" /></td>
+      </tr>
+      <tr>
+        <td class="sno"><input type="text" name="doc_sno_5" data-field="doc_sno_5" class="cf-table-input text-center" value="6" placeholder="6" /></td>
+        <td class="desc"><textarea name="doc_desc_5" data-field="doc_desc_5" class="cf-table-textarea" rows="2" placeholder="Description of Document or Paper"></textarea></td>
+        <td class="date"><input type="text" name="doc_date_5" data-field="doc_date_5" class="cf-table-input text-center" placeholder="DD/MM/YYYY" /></td>
+        <td class="remark"><input type="text" name="doc_remarks_5" data-field="doc_remarks_5" class="cf-table-input" placeholder="Remarks" /></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="receipt-block">
+    <div class="row">
+      <span class="fixed">Copy of this notice received on Date:</span>
+      <input type="text" name="notice_received_date" data-field="notice_received_date" class="cf-inline-input" style="flex:1;" placeholder="DD/MM/YYYY (Received by Advocate / Opposite Party)" />
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <span class="fixed">Date:</span>
+      <input type="text" name="notice_date" data-field="notice_date" class="cf-inline-input text-center" style="width:140px;" placeholder="DD/MM/YYYY" />
+      <span class="fixed" style="margin-left:24px;">Place:</span>
+      <input type="text" name="notice_place" data-field="notice_place" class="cf-inline-input" style="flex:1;" placeholder="City / Court Station (e.g. Pune / New Delhi)" />
+    </div>
+  </div>
+
+  <div class="sign-row">
+    <div class="sign-box">
+      <div class="sig-space" style="height:55px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:4px;">
+        <span style="font-size:11px; color:#94a3b8; font-style:italic;">(Advocate for Plaintiff Signature)</span>
+      </div>
+      <div class="sign-label">For Plaintiff / Advocate</div>
+    </div>
+    <div class="sign-box">
+      <div class="sig-space" style="height:55px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:4px;">
+        <span style="font-size:11px; color:#94a3b8; font-style:italic;">(Advocate for Defendant / Receiver)</span>
+      </div>
+      <div class="sign-label">For Defendant / Advocate</div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -2,7 +2,7 @@
 Serializers for PDF-style court form templates
 """
 from rest_framework import serializers
-from .models_templates import CourtFormTemplate, FilledCourtForm
+from .models_templates import CourtFormTemplate, FilledCourtForm, CaseSignature
 
 
 class CourtFormTemplateSerializer(serializers.ModelSerializer):
@@ -108,3 +108,33 @@ class FilledCourtFormCreateSerializer(serializers.ModelSerializer):
             return str(obj) if obj else None
         except:
             return None
+
+
+class CaseSignatureSerializer(serializers.ModelSerializer):
+    """Serializer for saved case signatures (isolated per case)"""
+    image_url = serializers.SerializerMethodField()
+    case_id = serializers.UUIDField(source='case.id', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+
+    class Meta:
+        model = CaseSignature
+        fields = [
+            'id',
+            'case',
+            'case_id',
+            'name',
+            'signature_type',
+            'image',
+            'image_url',
+            'created_by',
+            'created_by_name',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'image_url', 'created_by_name']
+
+    def get_image_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
+

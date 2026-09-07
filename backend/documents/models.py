@@ -249,7 +249,7 @@ class UserDocument(models.Model):
 
 
 # Import PDF-style court form templates and version models
-from .models_templates import CourtFormTemplate, FilledCourtForm
+from .models_templates import CourtFormTemplate, FilledCourtForm, CaseSignature
 from .models_versions import CaseDraftVersion
 
-__all__ = ['UserDocument', 'CourtFormTemplate', 'FilledCourtForm', 'CaseDraftVersion']
+__all__ = ['UserDocument', 'CourtFormTemplate', 'FilledCourtForm', 'CaseDraftVersion', 'CaseSignature']

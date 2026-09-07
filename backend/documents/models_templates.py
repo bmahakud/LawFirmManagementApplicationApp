@@ -340,3 +340,59 @@ class FilledTemplate(models.Model):
     
     def __str__(self):
         return f"{self.template.name} - {self.case.case_number}"
+
+
+class CaseSignature(models.Model):
+    """
+    Saved signature or stamp image associated with a specific case.
+    Scoped strictly to that case so different cases have isolated signatures.
+    """
+    SIGNATURE_TYPE_CHOICES = [
+        ('advocate', 'Advocate Signature'),
+        ('client', 'Client / Deponent Signature'),
+        ('witness', 'Witness Signature'),
+        ('co_counsel', 'Co-Counsel Signature'),
+        ('notary_seal', 'Notary / Seal Stamp'),
+        ('custom', 'Custom Signature / Stamp'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        'cases.Case',
+        on_delete=models.CASCADE,
+        related_name='case_signatures'
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="Name / Title of this signature (e.g. 'Advocate Primary', 'Client - Rahul', 'Official Notary Stamp')"
+    )
+    signature_type = models.CharField(
+        max_length=50,
+        choices=SIGNATURE_TYPE_CHOICES,
+        default='advocate'
+    )
+    image = models.ImageField(
+        upload_to='signatures/cases/',
+        help_text="Signature / Stamp image file uploaded to CDN / backend storage"
+    )
+    created_by = models.ForeignKey(
+        'accounts.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_case_signatures'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Case Signature'
+        verbose_name_plural = 'Case Signatures'
+        indexes = [
+            models.Index(fields=['case', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} - Case {self.case_id}"
+

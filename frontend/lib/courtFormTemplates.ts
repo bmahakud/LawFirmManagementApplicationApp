@@ -197,7 +197,18 @@ export const DEFAULT_COURT_FORM_TEMPLATES: CourtFormTemplate[] = [
       "margins": { "top": 50, "left": 50, "right": 50, "bottom": 50 },
       "sections": []
     },
-    "default_field_mappings": {},
+    "default_field_mappings": {
+      "litigant_name": "client.full_name",
+      "phone_no": "client.phone_number",
+      "mobile_no": "client.phone_number",
+      "ecourt_fee_amount": "case.court_fee",
+      "receipt_litigant_name": "client.full_name",
+      "receipt_phone_no": "client.phone_number",
+      "receipt_mobile_no": "client.phone_number",
+      "receipt_amount": "case.court_fee",
+      "payment_date": "case.filing_date",
+      "receipt_date": "case.filing_date"
+    },
     "is_active": true
   },
   {
@@ -398,7 +409,7 @@ export const DEFAULT_COURT_FORM_TEMPLATES: CourtFormTemplate[] = [
     "sequence": 18,
     "content_structure": {
       "template_type": "html_overlay",
-      "html_filename": "forms_Notice to produce documents.html",
+      "html_filename": "notice_to_produce_document.html",
       "page_size": "A4",
       "margins": { "top": 50, "left": 50, "right": 50, "bottom": 50 },
       "sections": []
@@ -445,7 +456,7 @@ export const DEFAULT_COURT_FORM_TEMPLATES: CourtFormTemplate[] = [
     "sequence": 20,
     "content_structure": {
       "template_type": "html_overlay",
-      "html_filename": "forms_Process fee form.html",
+      "html_filename": "process_fee_form_2.html",
       "page_size": "A4",
       "margins": { "top": 50, "left": 50, "right": 50, "bottom": 50 },
       "sections": []
@@ -468,7 +479,7 @@ export const DEFAULT_COURT_FORM_TEMPLATES: CourtFormTemplate[] = [
     "sequence": 21,
     "content_structure": {
       "template_type": "html_overlay",
-      "html_filename": "forms_Process fee.html",
+      "html_filename": "process_fee_form_1.html",
       "page_size": "A4",
       "margins": { "top": 50, "left": 50, "right": 50, "bottom": 50 },
       "sections": []

@@ -10,11 +10,12 @@ from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.utils import timezone
 
-from .models_templates import CourtFormTemplate, FilledCourtForm
+from .models_templates import CourtFormTemplate, FilledCourtForm, CaseSignature
 from .serializers_templates import (
     CourtFormTemplateSerializer,
     FilledCourtFormSerializer,
-    FilledCourtFormCreateSerializer
+    FilledCourtFormCreateSerializer,
+    CaseSignatureSerializer
 )
 from cases.models import Case
 from clients.models import Client
@@ -131,6 +132,13 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
         data = {}
         if 'field_values' in request.data:
             data['field_values'] = request.data['field_values']
+            placed_sigs = request.data['field_values'].get('placed_signatures') if isinstance(request.data['field_values'], dict) else None
+            if isinstance(placed_sigs, list):
+                has_adv = any(ps.get('type') == 'advocate' and ps.get('image_url') for ps in placed_sigs if isinstance(ps, dict))
+                if has_adv and not instance.advocate_signed:
+                    instance.advocate_signed = True
+                    instance.advocate_signature_date = timezone.now()
+                    instance.save(update_fields=['advocate_signed', 'advocate_signature_date'])
         if 'status' in request.data:
             data['status'] = request.data['status']
         
@@ -414,6 +422,12 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
 
             rendered_html = render_form_html(tpl_name, field_values=field_values, is_edit_mode=True, form_obj=filled_form)
             if not rendered_html:
+                cs = getattr(filled_form, 'filled_content', None) or (getattr(template, 'content_structure', None) if template else None)
+                if cs and isinstance(cs, dict) and cs.get('sections'):
+                    from .services.court_form_html_engine import render_structured_form_html
+                    rendered_html = render_structured_form_html(cs, field_values=field_values, is_edit_mode=True, form_obj=filled_form)
+
+            if not rendered_html:
                 return Response({'error': f'Template HTML not found for {tpl_name}'}, status=status.HTTP_404_NOT_FOUND)
 
             response = HttpResponse(rendered_html, content_type='text/html; charset=utf-8')
@@ -604,3 +618,82 @@ class FilledTemplateViewSet(viewsets.ModelViewSet):
         filled_form.save()
         serializer = self.get_serializer(filled_form)
         return Response(serializer.data)
+
+
+class CaseSignatureViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing case-specific saved signatures.
+    Each signature belongs strictly to a case (case_id).
+    Supports uploading files or base64 data URLs, renaming, and deleting.
+    """
+    queryset = CaseSignature.objects.all()
+    serializer_class = CaseSignatureSerializer
+    pagination_class = None
+
+    def get_permissions(self):
+        if not self.request.user.is_authenticated:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        qp = getattr(self.request, 'query_params', None)
+        if qp is None:
+            qp = getattr(self.request, 'GET', {})
+        case_id = qp.get('case') or qp.get('case_id')
+
+        if self.action in ['retrieve', 'update', 'partial_update', 'destroy']:
+            if case_id:
+                return queryset.filter(case_id=case_id).select_related('case', 'created_by')
+            return queryset.select_related('case', 'created_by')
+
+        if case_id:
+            return queryset.filter(case_id=case_id).select_related('case', 'created_by')
+        # Strictly isolate signatures by case - never list signatures without case filter
+        return queryset.none()
+
+    def create(self, request, *args, **kwargs):
+        import base64
+        from django.core.files.base import ContentFile
+        import uuid
+
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+
+        # Allow case_id or case
+        case_id = data.get('case') or data.get('case_id')
+        if not case_id:
+            return Response({'error': 'case or case_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from cases.models import Case
+        try:
+            case_obj = Case.objects.get(id=case_id)
+        except (Case.DoesNotExist, ValueError, Exception):
+            return Response({'error': f'Case with id {case_id} not found'}, status=status.HTTP_404_NOT_FOUND)
+        data['case'] = case_obj.id
+
+        # Convert base64 data URL if provided in image, data_url, or image_data
+        raw_image = data.get('image') or data.get('data_url') or data.get('image_data')
+        if isinstance(raw_image, str) and raw_image.startswith('data:image'):
+            try:
+                format_part, imgstr = raw_image.split(';base64,')
+                ext = format_part.split('/')[-1].lower()
+                if ext == 'jpeg':
+                    ext = 'jpg'
+                elif ext.startswith('svg'):
+                    ext = 'svg'
+                elif not ext or ext not in ['png', 'jpg', 'webp']:
+                    ext = 'png'
+                file_name = f"sig_{uuid.uuid4().hex[:10]}.{ext}"
+                decoded_file = ContentFile(base64.b64decode(imgstr), name=file_name)
+                data['image'] = decoded_file
+            except Exception as e:
+                logger.error(f"Failed to decode base64 signature image: {e}")
+                return Response({'error': f'Invalid base64 image: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save(
+            created_by=request.user if request.user.is_authenticated else None
+        )
+        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+

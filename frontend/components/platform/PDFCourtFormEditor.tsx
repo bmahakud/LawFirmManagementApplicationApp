@@ -6,7 +6,8 @@ import { API, API_BASE_URL } from '@/lib/api';
 import {
   FileText, Plus, Search, X, Save, Loader2, Eye,
   Download, Share2, CheckCircle, Edit, ArrowLeft, RefreshCw,
-  GripVertical, Upload, Trash2, PenTool
+  GripVertical, Upload, Trash2, PenTool, AlertTriangle,
+  Check, Bookmark
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { motion } from 'framer-motion';
@@ -66,6 +67,18 @@ type PlacedSignature = {
   page?: number;
   width?: number;
   height?: number;
+};
+
+type SavedCaseSignature = {
+  id: string;
+  case: string;
+  case_id?: string;
+  name: string;
+  signature_type: 'advocate' | 'client' | 'witness' | 'co_counsel' | 'notary_seal' | 'custom';
+  image: string;
+  image_url: string;
+  created_by_name?: string;
+  created_at: string;
 };
 
 type Props = {
@@ -253,8 +266,8 @@ function DraftingArea({
 function getTemplateDimensions(templateName?: string | null): { width: number; height: number } {
   if (!templateName) return { width: 850, height: 1150 };
   const name = templateName.toLowerCase();
-  if (name.includes('ca form 7') || name.includes('c.a.i') || name.includes('ca_form_7')) {
-    return { width: 1090, height: 860 };
+  if (name.includes('ca form 7') || name.includes('c.a.i') || name.includes('ca_form_7') || name.includes('form ca i') || name.includes('form. c.a.i.')) {
+    return { width: 1160, height: 900 };
   }
   if (name.includes('vakalatnama form') || name.includes('vakalatnama_form')) {
     return { width: 850, height: 1390 };
@@ -270,7 +283,14 @@ function getTemplateDimensions(templateName?: string | null): { width: number; h
 
 export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#4a1c40', categoryFilter, initialFormId, newBlank }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [view, setView] = useState<'list' | 'templates' | 'edit' | 'preview'>('list');
+  const [view, setView] = useState<'list' | 'templates' | 'edit' | 'preview'>(() => {
+    if (typeof window !== 'undefined') {
+      const mode = new URL(window.location.href).searchParams.get('mode');
+      if (mode === 'edit') return 'edit';
+      if (mode === 'preview') return 'preview';
+    }
+    return 'list';
+  });
   const [templates, setTemplates] = useState<CourtFormTemplate[]>([]);
   const [filledForms, setFilledForms] = useState<FilledCourtForm[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<CourtFormTemplate | null>(null);
@@ -278,7 +298,6 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [signatureType, setSignatureType] = useState<'advocate' | 'client' | 'custom'>('advocate');
   const [activeSigTarget, setActiveSigTarget] = useState<{
     sigId?: string;
@@ -295,6 +314,15 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   const [addSigType, setAddSigType] = useState<'advocate' | 'client' | 'custom'>('advocate');
   const [customSigDrawing, setCustomSigDrawing] = useState(false);
 
+  // Saved case signatures (strictly isolated per case)
+  const [caseSignatures, setCaseSignatures] = useState<SavedCaseSignature[]>([]);
+  const [loadingCaseSignatures, setLoadingCaseSignatures] = useState(false);
+  const [newSigName, setNewSigName] = useState('');
+  const [saveToCaseSigs, setSaveToCaseSigs] = useState(true);
+  const [editingSigId, setEditingSigId] = useState<string | null>(null);
+  const [editingSigName, setEditingSigName] = useState('');
+  const [savingSig, setSavingSig] = useState(false);
+
   // Dynamic dimensions for the court form viewer
   const [dynamicDimensions, setDynamicDimensions] = useState<{ width: number; height: number } | null>(null);
 
@@ -302,6 +330,112 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   useEffect(() => {
     setDynamicDimensions(null);
   }, [selectedTemplate?.id, selectedForm?.id]);
+
+  // Unsaved changes & modal tracking
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isNewCreation, setIsNewCreation] = useState(false);
+  const isNewCreationRef = useRef(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+
+  // Share confirmation modal state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareTargetFormId, setShareTargetFormId] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+
+  const confirmShare = (formId: string) => {
+    setShareTargetFormId(formId);
+    setShowShareModal(true);
+  };
+
+  const executeShare = async () => {
+    if (!shareTargetFormId) return;
+    setSharing(true);
+    try {
+      const response = await customFetch(`/api/documents/filled-court-forms/${shareTargetFormId}/share_with_client/`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) throw new Error('Failed to share');
+
+      toast.success('Court form shared with client successfully!');
+      setShowShareModal(false);
+      setShareTargetFormId(null);
+      await fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to share court form');
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  // Delete confirmation modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTargetFormId, setDeleteTargetFormId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const confirmDelete = (formId: string) => {
+    setDeleteTargetFormId(formId);
+    setShowDeleteModal(true);
+  };
+
+  const executeDelete = async () => {
+    if (!deleteTargetFormId) return;
+    setDeleting(true);
+    try {
+      const response = await customFetch(`/api/documents/filled-court-forms/${deleteTargetFormId}/`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) throw new Error('Failed to delete');
+
+      toast.success('Court form deleted successfully');
+      setShowDeleteModal(false);
+      setDeleteTargetFormId(null);
+      await fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete court form');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Keyboard shortcut: Press Enter to confirm share/delete when modal is open
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showShareModal) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          executeShare();
+        } else if (e.key === 'Escape') {
+          setShowShareModal(false);
+          setShareTargetFormId(null);
+        }
+      } else if (showDeleteModal) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          executeDelete();
+        } else if (e.key === 'Escape') {
+          setShowDeleteModal(false);
+          setDeleteTargetFormId(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showShareModal, shareTargetFormId, sharing, showDeleteModal, deleteTargetFormId, deleting]);
+
+  // Warn on page reload or navigation if unsaved changes exist
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   // Loading States
   const [isLoading, setIsLoading] = useState(false);
@@ -328,67 +462,115 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
         if (fieldName) {
           fieldValuesRef.current = { ...fieldValuesRef.current, [fieldName]: value };
           setFieldValues((prev) => ({ ...prev, [fieldName]: value }));
+          setHasUnsavedChanges(true);
         }
+      } else if (event.data && event.data.type === 'COURT_FORM_DIRTY') {
+        setHasUnsavedChanges(true);
       } else if (event.data && event.data.type === 'COURT_FORM_PAGE_SIZE') {
         if (event.data.width && event.data.height) {
+          const isLandscape = event.data.width > event.data.height;
           setDynamicDimensions({
-            width: Math.max(Math.round(event.data.width) + 30, 830),
-            height: Math.max(Math.round(event.data.height) + 40, 850)
+            width: Math.max(Math.round(event.data.width) + (isLandscape ? 80 : 30), 830),
+            height: Math.max(Math.round(event.data.height) + (isLandscape ? 60 : 40), 850)
           });
         }
       } else if (event.data && event.data.type === 'OPEN_SIGNATURE_PAD') {
         const { sigId, sigName, sigLabel, sigType, page } = event.data;
         setActiveSigTarget({ sigId, sigName, sigLabel, sigType, page });
-        setSignatureType(sigType === 'client' ? 'client' : (sigType === 'custom' ? 'custom' : 'advocate'));
-        setShowSignaturePad(true);
+        const determinedType: 'advocate' | 'client' | 'custom' =
+          sigType === 'client' ? 'client' : (sigType === 'custom' ? 'custom' : 'advocate');
+        setSignatureType(determinedType);
+        setAddSigType(determinedType);
+        setAddSigLabel(sigLabel || (determinedType === 'client' ? 'Client Signature' : 'Advocate Signature'));
+        setNewSigName(sigLabel || '');
+        setCustomSigDrawing(false);
+        setEditingSigId(null);
+        setShowAddSigModal(true);
       } else if (event.data && event.data.type === 'COURT_FORM_SIGNATURE_MOVE') {
-        const { sigId, sigName, sigType, page, x, y } = event.data;
+        const { sigId, sigName, sigType, page, x, y, width, height } = event.data;
         const pageNum = typeof page === 'number' ? page : 0;
         setFieldValues((prev) => {
           const list = [...(prev.placed_signatures || [])];
-          const idx = list.findIndex((s: any) => 
-            (sigId && s.id === sigId) || 
-            (sigName && (s.name === sigName || s.id === sigName)) ||
-            (sigType && ['advocate', 'client'].includes(sigType) && (s.type === sigType || s.name === `${sigType}_signature` || s.id === `${sigType}_primary` || s.id === `${sigType}_signature`))
-          );
+          const isDynamic = (sigId && String(sigId).startsWith('sig_')) || (sigName && String(sigName).startsWith('sig_'));
+          const idx = list.findIndex((s: any) => {
+            if (sigId && (s.id === sigId || s.name === sigId)) return true;
+            if (sigName && (s.name === sigName || s.id === sigName)) return true;
+            if (!isDynamic && sigType && ['advocate', 'client'].includes(sigType)) {
+              return s.id === `${sigType}_signature` || s.name === `${sigType}_signature` || s.id === `${sigType}_primary`;
+            }
+            return false;
+          });
+          const widthVal = width || (idx >= 0 ? list[idx].width : undefined);
+          const heightVal = height || (idx >= 0 ? list[idx].height : undefined);
           if (idx >= 0) {
-            list[idx] = { 
-              ...list[idx], 
+            list[idx] = {
+              ...list[idx],
               id: sigId || list[idx].id,
               name: sigName || list[idx].name,
               type: sigType || list[idx].type,
-              x, 
-              y, 
-              page: pageNum 
+              x,
+              y,
+              ...(widthVal ? { width: widthVal } : {}),
+              ...(heightVal ? { height: heightVal } : {}),
+              page: pageNum
             };
           } else {
-            list.push({ 
-              id: sigId || (sigType ? `${sigType}_signature` : `sig_${Date.now()}`), 
-              name: sigName || (sigType ? `${sigType}_signature` : 'signature'), 
-              type: sigType || 'custom', 
-              x, 
-              y, 
-              page: pageNum 
+            list.push({
+              id: sigId || (sigType ? `${sigType}_signature` : `sig_${Date.now()}`),
+              name: sigName || (sigType ? `${sigType}_signature` : 'signature'),
+              type: sigType || 'custom',
+              x,
+              y,
+              ...(widthVal ? { width: widthVal } : {}),
+              ...(heightVal ? { height: heightVal } : {}),
+              page: pageNum
             });
           }
+          const offsetData: any = { x, y, page: pageNum };
+          if (widthVal) offsetData.width = widthVal;
+          if (heightVal) offsetData.height = heightVal;
+
           return {
             ...prev,
             placed_signatures: list,
             signature_offsets: {
               ...(prev.signature_offsets || {}),
-              [sigId]: { x, y, page: pageNum },
-              [sigName]: { x, y, page: pageNum },
-              ...(sigType ? { [sigType]: { x, y, page: pageNum } } : {})
+              ...(sigId ? { [sigId]: offsetData } : {}),
+              ...(sigName ? { [sigName]: offsetData } : {}),
+              ...(sigType ? { [sigType]: offsetData } : {})
             }
           };
         });
+        setHasUnsavedChanges(true);
       } else if (event.data && event.data.type === 'COURT_FORM_SIGNATURE_REMOVE') {
         const { sigId, sigName } = event.data;
         setFieldValues((prev) => ({
           ...prev,
-          placed_signatures: (prev.placed_signatures || []).filter((s: any) => s.id !== sigId && s.name !== sigName)
+          placed_signatures: (prev.placed_signatures || []).filter((s: any) =>
+            !(sigId && (s.id === sigId || s.name === sigId)) &&
+            !(sigName && (s.name === sigName || s.id === sigName))
+          ),
+          cleared_signatures: {
+            ...(prev.cleared_signatures || {}),
+            ...(sigId ? { [sigId]: true } : {}),
+            ...(sigName ? { [sigName]: true } : {})
+          }
         }));
-        toast.success('Signature cleared');
+        setSelectedForm((prev: any) => {
+          if (!prev) return prev;
+          const updated = { ...prev };
+          if (sigId === 'advocate_signature' || sigName === 'advocate_signature' || sigId === 'advocate_primary') {
+            updated.advocate_signature_image = null;
+            updated.is_signed_by_advocate = false;
+          }
+          if (sigId === 'client_signature' || sigName === 'client_signature' || sigId === 'client_primary') {
+            updated.client_signature_image = null;
+            updated.is_signed_by_client = false;
+          }
+          return updated;
+        });
+        setHasUnsavedChanges(true);
+        toast.success('Signature removed');
       }
     };
 
@@ -401,8 +583,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
     const list: PlacedSignature[] = (fieldValues.placed_signatures || []).map((s: any) => ({ ...s }));
     const result = [...list];
 
-    // If form has advocate_signature_image and not yet in list
-    if (selectedForm?.advocate_signature_image && !result.some(s => s.type === 'advocate' || s.id === 'advocate_primary' || s.name === 'advocate_signature' || s.id === 'advocate_signature')) {
+    // If form has advocate_signature_image and not yet in list and not cleared
+    if (selectedForm?.advocate_signature_image && !fieldValues.cleared_signatures?.advocate_signature && !result.some(s => s.type === 'advocate' || s.id === 'advocate_primary' || s.name === 'advocate_signature' || s.id === 'advocate_signature')) {
       const advOffset = fieldValues.signature_offsets?.advocate || fieldValues.signature_offsets?.advocate_signature || { x: 520, y: 640 };
       result.push({
         id: 'advocate_signature',
@@ -413,13 +595,13 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
         x: advOffset.x,
         y: advOffset.y,
         page: advOffset.page ?? 0,
-        width: 140,
-        height: 55
+        width: advOffset.width || 140,
+        height: advOffset.height || 55
       });
     }
 
-    // If form has client_signature_image and not yet in list
-    if (selectedForm?.client_signature_image && !result.some(s => s.type === 'client' || s.id === 'client_primary' || s.name === 'client_signature' || s.id === 'client_signature')) {
+    // If form has client_signature_image and not yet in list and not cleared
+    if (selectedForm?.client_signature_image && !fieldValues.cleared_signatures?.client_signature && !result.some(s => s.type === 'client' || s.id === 'client_primary' || s.name === 'client_signature' || s.id === 'client_signature')) {
       const cliOffset = fieldValues.signature_offsets?.client || fieldValues.signature_offsets?.client_signature || { x: 80, y: 640 };
       result.push({
         id: 'client_signature',
@@ -430,8 +612,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
         x: cliOffset.x,
         y: cliOffset.y,
         page: cliOffset.page ?? 0,
-        width: 140,
-        height: 55
+        width: cliOffset.width || 140,
+        height: cliOffset.height || 55
       });
     }
 
@@ -481,14 +663,74 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   };
 
   const handleAddPlacedSignature = (imageUrl: string, label: string, type: 'advocate' | 'client' | 'custom') => {
+    // If activeSigTarget is set (user clicked on an existing signature box/slot), update that exact slot!
+    if (activeSigTarget) {
+      const { sigId, sigName, sigLabel, sigType, page } = activeSigTarget;
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'UPDATE_SIGNATURE_IMAGE',
+          sigId: sigId,
+          sigName: sigName,
+          imageUrl: imageUrl
+        }, '*');
+      }
+
+      setFieldValues((prev) => {
+        const list = [...(prev.placed_signatures || [])];
+        const isDynamic = (sigId && String(sigId).startsWith('sig_')) || (sigName && String(sigName).startsWith('sig_'));
+        const idx = list.findIndex((s: any) => {
+          if (sigId && (s.id === sigId || s.name === sigId)) return true;
+          if (sigName && (s.name === sigName || s.id === sigName)) return true;
+          if (!isDynamic && sigType && ['advocate', 'client'].includes(sigType)) {
+            return s.id === `${sigType}_signature` || s.name === `${sigType}_signature` || s.id === `${sigType}_primary`;
+          }
+          return false;
+        });
+
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], image_url: imageUrl };
+        } else {
+          list.push({
+            id: sigId || `sig_${Date.now()}`,
+            name: sigName || 'signature',
+            label: label || sigLabel || (sigType === 'client' ? 'Client Signature' : 'Advocate Signature'),
+            type: (sigType as any) || type || 'custom',
+            image_url: imageUrl,
+            page: page ?? 0
+          });
+        }
+        return {
+          ...prev,
+          placed_signatures: list
+        };
+      });
+
+      setHasUnsavedChanges(true);
+      setShowAddSigModal(false);
+      setCustomSigDrawing(false);
+      setActiveSigTarget(null);
+      toast.success(`${label || sigLabel || 'Signature'} applied to form!`);
+      return;
+    }
+
+    const existingList = Array.isArray(fieldValues?.placed_signatures)
+      ? fieldValues.placed_signatures
+      : placedSignatures;
+    const offsetIndex = existingList.length;
+    const posX = 420;
+    const posY = 650 + (offsetIndex * 60) % 240;
+
     const newSigId = `sig_${Date.now()}`;
+    const sigLabel = label || (type === 'advocate' ? 'Advocate Signature' : type === 'client' ? 'Client Signature' : 'Signature');
     const newSig: PlacedSignature = {
       id: newSigId,
+      name: newSigId,
       type,
-      label,
+      label: sigLabel,
       image_url: imageUrl,
-      x: 450,
-      y: 650,
+      x: posX,
+      y: posY,
+      page: 0,
       width: 160,
       height: 50
     };
@@ -499,24 +741,156 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
         type: 'ADD_NEW_SIGNATURE',
         id: newSigId,
         name: newSigId,
-        label: label || 'Signature',
+        label: sigLabel,
         sigType: type,
         imageUrl: imageUrl,
-        x: 450,
-        y: 650,
+        x: posX,
+        y: posY,
         page: 0
       }, '*');
     }
 
-    const updated = [...placedSignatures, newSig];
+    const updated = [...existingList, newSig];
     setFieldValues(prev => ({
       ...prev,
       placed_signatures: updated
     }));
 
+    setHasUnsavedChanges(true);
     setShowAddSigModal(false);
     setCustomSigDrawing(false);
-    toast.success(`${label} added! Drag it anywhere on the form.`);
+    setActiveSigTarget(null);
+    toast.success(
+      type === 'advocate'
+        ? 'Advocate signature added! Drag it anywhere on the form.'
+        : type === 'client'
+          ? 'Client signature added! Drag it anywhere on the form.'
+          : `${sigLabel} added! Drag it anywhere on the form.`
+    );
+  };
+
+  const fetchCaseSignatures = async () => {
+    if (!caseId) {
+      setCaseSignatures([]);
+      return;
+    }
+    try {
+      setLoadingCaseSignatures(true);
+      const res = await customFetch(`/api/documents/case-signatures/?case=${encodeURIComponent(caseId)}`);
+      if (res && res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data.results || [];
+        // Strictly guarantee case-level isolation: only keep signatures for this case
+        setCaseSignatures(list.filter((s: SavedCaseSignature) => String(s.case || s.case_id) === String(caseId)));
+      } else {
+        setCaseSignatures([]);
+      }
+    } catch (err) {
+      console.error('Failed to load case signatures:', err);
+      setCaseSignatures([]);
+    } finally {
+      setLoadingCaseSignatures(false);
+    }
+  };
+
+  // Re-fetch case signatures whenever the signature modal is opened to ensure fresh case-only data
+  useEffect(() => {
+    if (showAddSigModal && caseId) {
+      fetchCaseSignatures();
+    }
+  }, [showAddSigModal, caseId]);
+
+  const handleSaveAndUploadSignature = async (
+    imageData: string,
+    label: string,
+    type: 'advocate' | 'client' | 'custom'
+  ) => {
+    const finalName = newSigName.trim() || label || (type === 'advocate' ? 'Advocate Signature' : type === 'client' ? 'Client Signature' : 'Signature');
+    let finalUrl = imageData;
+
+    if (saveToCaseSigs && caseId) {
+      try {
+        setSavingSig(true);
+        const res = await customFetch('/api/documents/case-signatures/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            case_id: caseId,
+            name: finalName,
+            signature_type: type,
+            image: imageData
+          })
+        });
+
+        if (res && res.ok) {
+          const saved: SavedCaseSignature = await res.json();
+          if (saved.image_url) {
+            finalUrl = saved.image_url;
+          }
+          setCaseSignatures(prev => [saved, ...prev.filter(s => s.id !== saved.id)]);
+          toast.success(`Saved "${finalName}" to My Signatures for this case!`);
+        } else {
+          toast.error('Could not save to case signatures, adding to form anyway.');
+        }
+      } catch (err) {
+        console.error('Failed to save signature to case CDN:', err);
+      } finally {
+        setSavingSig(false);
+      }
+    }
+
+    handleAddPlacedSignature(finalUrl, finalName, type);
+    setNewSigName('');
+  };
+
+  const handleRenameCaseSignature = async (id: string, name: string) => {
+    if (!name.trim()) return;
+    try {
+      const res = await customFetch(`/api/documents/case-signatures/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() })
+      });
+      if (res && res.ok) {
+        const updated = await res.json();
+        setCaseSignatures(prev => prev.map(s => s.id === id ? { ...s, name: updated.name } : s));
+        setEditingSigId(null);
+        setEditingSigName('');
+        toast.success('Signature name updated');
+      } else {
+        toast.error('Failed to update signature name');
+      }
+    } catch (err) {
+      toast.error('Error updating signature');
+    }
+  };
+
+  const handleDeleteCaseSignature = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Are you sure you want to remove this saved signature from this case?')) return;
+    try {
+      const res = await customFetch(`/api/documents/case-signatures/${id}/`, {
+        method: 'DELETE'
+      });
+      if (res && (res.ok || res.status === 204)) {
+        setCaseSignatures(prev => prev.filter(s => s.id !== id));
+        toast.success('Signature removed from this case');
+      } else {
+        toast.error('Failed to delete signature');
+      }
+    } catch (err) {
+      toast.error('Error deleting signature');
+    }
+  };
+
+  const handleSelectCaseSignature = (sig: SavedCaseSignature) => {
+    const sigType: 'advocate' | 'client' | 'custom' =
+      sig.signature_type === 'client' ? 'client' : sig.signature_type === 'advocate' ? 'advocate' : 'custom';
+    handleAddPlacedSignature(
+      sig.image_url || sig.image,
+      sig.name,
+      sigType
+    );
   };
 
   const isAdvocateRole = role === 'advocate' || role === 'super-admin' || role === 'firm-admin';
@@ -524,6 +898,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
 
   useEffect(() => {
     fetchData();
+    fetchCaseSignatures();
   }, [caseId, initialFormId]);
 
   const formatSignatureUrl = (url: string) => {
@@ -574,8 +949,11 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
 
         // Auto-open form if initialFormId is provided
         if (initialFormId) {
+          if (isNewCreationRef.current) {
+            return;
+          }
           let formToOpen = fetchedForms.find((f: any) => String(f.id) === String(initialFormId));
-          
+
           // If not in list, fetch directly by ID
           if (!formToOpen) {
             try {
@@ -589,6 +967,9 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           }
 
           if (formToOpen) {
+            if (isNewCreationRef.current) {
+              return;
+            }
             setSelectedForm(formToOpen);
             setFieldValues(formToOpen.field_values || {});
 
@@ -610,7 +991,18 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
             }
 
             setSelectedTemplate(templateObj);
-            setView('edit');
+            const currentMode = typeof window !== 'undefined' ? new URL(window.location.href).searchParams.get('mode') : null;
+            if (currentMode === 'edit') {
+              setView('edit');
+              setIsNewCreation(false);
+              setHasUnsavedChanges(false);
+              setIsSaved(true);
+            } else {
+              setView('preview');
+              setIsNewCreation(false);
+              setHasUnsavedChanges(false);
+              setIsSaved(true);
+            }
             return; // Stop here if we've opened a form
           }
         }
@@ -632,38 +1024,176 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
     }
   };
 
-  const handleCloseForm = () => {
+  const performClose = () => {
+    isNewCreationRef.current = false;
     setView('list');
     setSelectedTemplate(null);
     setSelectedForm(null);
     setFieldValues({});
+    setHasUnsavedChanges(false);
+    setIsNewCreation(false);
+    setIsSaved(false);
+    setShowUnsavedModal(false);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.delete('formId');
+      url.searchParams.delete('mode');
       url.searchParams.delete('newBlank');
       window.history.replaceState({}, '', url.toString());
     }
   };
 
-  const handleOpenForm = (form: FilledCourtForm, targetView: 'edit' | 'preview' = 'edit') => {
+  const deleteDraftForm = async (formId: string | number) => {
+    try {
+      await customFetch(`/api/documents/filled-court-forms/${formId}/`, {
+        method: 'DELETE'
+      });
+      setFilledForms((prev) => prev.filter((f) => String(f.id) !== String(formId)));
+    } catch (e) {
+      console.warn('Error discarding draft form:', e);
+    }
+  };
+
+  const handleCloseForm = async () => {
+    // When exiting from the editor, always show the confirmation modal to ask if the user wants to save or discard
+    if (view === 'edit' || hasUnsavedChanges || (isNewCreation && !isSaved)) {
+      setShowUnsavedModal(true);
+      return;
+    }
+
+    performClose();
+  };
+
+  const handleSaveAndClose = async () => {
+    const success = await handleSave();
+    if (success) {
+      performClose();
+    }
+  };
+
+  const handleDiscardAndClose = async () => {
+    if (selectedForm) {
+      // If the form is currently in draft status or was newly created without completion, delete it completely!
+      if (selectedForm.status === 'draft' || isNewCreation || !isSaved) {
+        await deleteDraftForm(selectedForm.id);
+      }
+    }
+    performClose();
+    await fetchData();
+    toast('Changes discarded (not saved in draft)', { icon: 'ℹ️' });
+  };
+
+  const handleSaveDraft = async (andClose: boolean = false): Promise<boolean> => {
+    if (!selectedTemplate) return false;
+
+    setSaving(true);
+    try {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({ type: 'GET_COURT_FORM_VALUES' }, '*');
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const valuesToSave = { ...fieldValues, ...fieldValuesRef.current };
+
+      let currentFormId = selectedForm?.id;
+
+      if (!currentFormId) {
+        const createRes = await customFetch('/api/documents/filled-court-forms/create_from_template/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template_id: selectedTemplate.id,
+            case_id: caseId
+          })
+        });
+        if (!createRes.ok) throw new Error('Failed to create draft');
+        const newForm = await createRes.json();
+        currentFormId = newForm.id;
+      }
+
+      const updateResponse = await customFetch(`/api/documents/filled-court-forms/${currentFormId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          field_values: valuesToSave,
+          status: 'draft'
+        })
+      });
+
+      if (!updateResponse.ok) throw new Error('Failed to save draft');
+      const updatedForm = await updateResponse.json();
+
+      setSelectedForm(updatedForm);
+      setFieldValues(valuesToSave);
+      setHasUnsavedChanges(false);
+      isNewCreationRef.current = false;
+      setIsNewCreation(false);
+      setIsSaved(true);
+      toast.success('Form saved as draft successfully!');
+      await fetchData();
+
+      if (andClose) {
+        performClose();
+      }
+      return true;
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save draft');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleOpenForm = (form: FilledCourtForm, targetView: 'edit' | 'preview' = 'preview') => {
+    isNewCreationRef.current = false;
     let templateObj = templates.find(
       (t) => String(t.id) === String(form.template) || t.name === form.template_name
     ) || DEFAULT_COURT_FORM_TEMPLATES[0];
     setSelectedForm(form);
     setSelectedTemplate(templateObj);
     setFieldValues(form.field_values || {});
+    setIsNewCreation(false);
+    setHasUnsavedChanges(false);
+    setIsSaved(true);
     setView(targetView);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.set('formId', form.id);
+      url.searchParams.set('mode', targetView);
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
+
+  const handleSwitchToEdit = () => {
+    setView('edit');
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('mode', 'edit');
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
+
+  const handleSwitchToPreview = async () => {
+    if (hasUnsavedChanges) {
+      await handleSaveDraft(false);
+    }
+    setView('preview');
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('mode', 'preview');
       window.history.replaceState({}, '', url.toString());
     }
   };
 
   const handleSelectTemplate = async (template: CourtFormTemplate) => {
+    isNewCreationRef.current = true;
     setSelectedTemplate(template);
     setFieldValues({});
+    setIsNewCreation(true);
+    setHasUnsavedChanges(false);
+    setIsSaved(false);
     setSaving(true);
+    setView('edit');
     try {
       // Auto-create a FilledCourtForm so it gets an ID to render the exact HTML template iframe
       const response = await customFetch('/api/documents/filled-court-forms/create_from_template/', {
@@ -681,6 +1211,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
         if (typeof window !== 'undefined') {
           const url = new URL(window.location.href);
           url.searchParams.set('formId', newForm.id);
+          url.searchParams.set('mode', 'edit');
           window.history.replaceState({}, '', url.toString());
         }
       } else {
@@ -695,8 +1226,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
     }
   };
 
-  const handleSave = async () => {
-    if (!selectedTemplate) return;
+  const handleSave = async (andClose: boolean = false): Promise<boolean> => {
+    if (!selectedTemplate) return false;
 
     setSaving(true);
     try {
@@ -747,11 +1278,22 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
 
       setSelectedForm(updatedForm);
       setFieldValues(valuesToSave);
+      setHasUnsavedChanges(false);
+      isNewCreationRef.current = false;
+      setIsNewCreation(false);
+      setIsSaved(true);
       toast.success('Form saved and PDF generated successfully!');
-      setView('preview');
       await fetchData();
+
+      if (andClose) {
+        performClose();
+      } else {
+        setView('preview');
+      }
+      return true;
     } catch (err: any) {
       toast.error(err.message || 'Failed to save form');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -801,7 +1343,6 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
       }
 
       toast.success('Form signed successfully');
-      setShowSignaturePad(false);
       await fetchData();
 
       // Refresh the selected form
@@ -818,13 +1359,19 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   };
 
   const openSignaturePad = (type: 'advocate' | 'client') => {
+    const label = type === 'advocate' ? 'Advocate Signature' : 'Client Signature';
     setActiveSigTarget({
       sigName: type === 'advocate' ? 'advocate_signature' : 'client_signature',
-      sigLabel: type === 'advocate' ? 'Advocate Signature' : 'Client Signature',
+      sigLabel: label,
       sigType: type
     });
     setSignatureType(type);
-    setShowSignaturePad(true);
+    setAddSigType(type);
+    setAddSigLabel(label);
+    setNewSigName(label);
+    setCustomSigDrawing(false);
+    setEditingSigId(null);
+    setShowAddSigModal(true);
   };
 
   const handleSaveSignature = (signatureData: string) => {
@@ -859,28 +1406,13 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           placed_signatures: list
         };
       });
-    }
-
-    if (selectedForm) {
-      handleSign(selectedForm.id, signatureData);
+      setHasUnsavedChanges(true);
+      toast.success(`${sigLabel || 'Signature'} updated!`);
     }
   };
 
-  const handleDeleteForm = async (formId: string) => {
-    if (!confirm('Are you sure you want to delete this form?')) return;
-
-    try {
-      const response = await customFetch(`/api/documents/filled-court-forms/${formId}/`, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok) throw new Error('Failed to delete');
-
-      toast.success('Form deleted successfully');
-      await fetchData();
-    } catch (err: any) {
-      toast.error(err.message);
-    }
+  const handleDeleteForm = (formId: string) => {
+    confirmDelete(formId);
   };
 
   const renderField = (fieldName: string, placeholder: string) => {
@@ -891,9 +1423,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
         value={fieldValues[fieldName] || ''}
         onChange={(e) => setFieldValues({ ...fieldValues, [fieldName]: e.target.value })}
         placeholder={placeholder}
-        className={`inline-block border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 min-w-[200px] font-semibold text-base transition-colors ${
-          isEditing ? 'text-red-600' : 'text-gray-900'
-        }`}
+        className={`inline-block border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 min-w-[200px] font-semibold text-base transition-colors ${isEditing ? 'text-red-600' : 'text-gray-900'
+          }`}
         style={{ fontSize: '14px' }}
       />
     );
@@ -951,13 +1482,13 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           <div key={index} className="mb-4">
             {pSigImg && (
               <div className={style.align === 'center' ? 'flex justify-center' : style.align === 'right' ? 'flex justify-end' : 'flex justify-start'}>
-                <motion.img 
+                <motion.img
                   drag={view === 'edit' || view === 'preview'}
                   dragMomentum={false}
                   initial={{ x: pInitPos.x, y: pInitPos.y }}
                   onDragEnd={(e, info) => handleSignatureDragEnd(pSigType, info)}
-                  src={formatSignatureUrl(pSigImg)} 
-                  alt="Signature" 
+                  src={formatSignatureUrl(pSigImg)}
+                  alt="Signature"
                   className={`h-14 object-contain mb-[-10px] relative z-20 ${(view === 'edit' || view === 'preview') ? 'cursor-grab active:cursor-grabbing hover:scale-105 transition-transform' : ''}`}
                 />
               </div>
@@ -988,9 +1519,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                     type="date"
                     value={fieldValues[field.name] || ''}
                     onChange={(e) => setFieldValues({ ...fieldValues, [field.name]: e.target.value })}
-                    className={`border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 font-semibold text-base transition-colors ${
-                      view === 'edit' ? 'text-red-600' : 'text-gray-900'
-                    }`}
+                    className={`border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 font-semibold text-base transition-colors ${view === 'edit' ? 'text-red-600' : 'text-gray-900'
+                      }`}
                     style={{ fontSize: '14px' }}
                   />
                 ) : (
@@ -998,9 +1528,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                     type="text"
                     value={fieldValues[field.name] || ''}
                     onChange={(e) => setFieldValues({ ...fieldValues, [field.name]: e.target.value })}
-                    className={`border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 min-w-[150px] font-semibold text-base transition-colors ${
-                      view === 'edit' ? 'text-red-600' : 'text-gray-900'
-                    }`}
+                    className={`border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 min-w-[150px] font-semibold text-base transition-colors ${view === 'edit' ? 'text-red-600' : 'text-gray-900'
+                      }`}
                     style={{ fontSize: '14px' }}
                   />
                 )}
@@ -1021,13 +1550,13 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           <div key={index} className={styleClasses + " my-4"}>
             <div className="flex flex-col items-center">
               {sigImg ? (
-                <motion.img 
+                <motion.img
                   drag={view === 'edit' || view === 'preview'}
                   dragMomentum={false}
                   initial={{ x: sInitPos.x, y: sInitPos.y }}
                   onDragEnd={(e, info) => handleSignatureDragEnd(sType, info)}
-                  src={formatSignatureUrl(sigImg)} 
-                  alt="Signature" 
+                  src={formatSignatureUrl(sigImg)}
+                  alt="Signature"
                   className={`h-16 object-contain mb-1 relative z-20 ${(view === 'edit' || view === 'preview') ? 'cursor-grab active:cursor-grabbing hover:scale-105 transition-transform' : ''}`}
                 />
               ) : (
@@ -1061,9 +1590,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                               const fieldName = cell.content.replace(/[{}]/g, '');
                               setFieldValues({ ...fieldValues, [fieldName]: e.target.value });
                             }}
-                            className={`border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 font-bold text-base min-w-[150px] transition-colors ${
-                              view === 'edit' ? 'text-red-600' : 'text-gray-900'
-                            }`}
+                            className={`border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 font-bold text-base min-w-[150px] transition-colors ${view === 'edit' ? 'text-red-600' : 'text-gray-900'
+                              }`}
                             style={{ fontSize: '16px' }}
                           />
                         ) : (
@@ -1101,9 +1629,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                               type="text"
                               value={fieldValues[fieldName] || rightValue}
                               onChange={(e) => setFieldValues({ ...fieldValues, [fieldName]: e.target.value })}
-                              className={`border-b-2 border-gray-900 focus:border-red-600 outline-none bg-transparent px-1 font-bold min-w-[200px] transition-colors ${
-                                view === 'edit' ? 'text-red-600' : 'text-gray-900'
-                              }`}
+                              className={`border-b-2 border-gray-900 focus:border-red-600 outline-none bg-transparent px-1 font-bold min-w-[200px] transition-colors ${view === 'edit' ? 'text-red-600' : 'text-gray-900'
+                                }`}
                               style={{ fontSize: tableSize }}
                             />
                           ) : (
@@ -1131,9 +1658,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
               type="text"
               value={fieldValues[fieldName] || ''}
               onChange={(e) => setFieldValues({ ...fieldValues, [fieldName]: e.target.value })}
-              className={`flex-1 border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 font-semibold transition-colors ${
-                view === 'edit' ? 'text-red-600' : 'text-gray-900'
-              }`}
+              className={`flex-1 border-b-2 border-gray-800 focus:border-red-600 outline-none bg-transparent px-1 font-semibold transition-colors ${view === 'edit' ? 'text-red-600' : 'text-gray-900'
+                }`}
               style={{ fontSize: editLineSize }}
             />
           </div>
@@ -1157,13 +1683,13 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                   alignItems: col.align === 'center' ? 'center' : col.align === 'right' ? 'flex-end' : 'flex-start'
                 }}>
                   {colSigImg && (
-                    <motion.img 
+                    <motion.img
                       drag={view === 'edit' || view === 'preview'}
                       dragMomentum={false}
                       initial={{ x: colSInitPos.x, y: colSInitPos.y }}
                       onDragEnd={(e, info) => handleSignatureDragEnd(colSType, info)}
-                      src={formatSignatureUrl(colSigImg)} 
-                      alt="Signature" 
+                      src={formatSignatureUrl(colSigImg)}
+                      alt="Signature"
                       className={`h-12 object-contain mb-[-8px] relative z-20 ${(view === 'edit' || view === 'preview') ? 'cursor-grab active:cursor-grabbing hover:scale-105 transition-transform' : ''}`}
                     />
                   )}
@@ -1208,9 +1734,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                           <textarea
                             value={fieldValues[fName] || ''}
                             onChange={(e) => setFieldValues({ ...fieldValues, [fName]: e.target.value })}
-                            className={`w-full h-full p-2 outline-none bg-transparent text-sm resize-none font-bold transition-colors ${
-                              view === 'edit' ? 'text-red-600' : 'text-black'
-                            }`}
+                            className={`w-full h-full p-2 outline-none bg-transparent text-sm resize-none font-bold transition-colors ${view === 'edit' ? 'text-red-600' : 'text-black'
+                              }`}
                           />
                         </td>
                       );
@@ -1241,9 +1766,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                       <input
                         type="text"
                         placeholder={cell.placeholder}
-                        className={`flex-1 outline-none bg-transparent text-[11px] font-bold transition-colors ${
-                          view === 'edit' ? 'text-red-600' : 'text-black'
-                        }`}
+                        className={`flex-1 outline-none bg-transparent text-[11px] font-bold transition-colors ${view === 'edit' ? 'text-red-600' : 'text-black'
+                          }`}
                         value={fieldValues[cell.field] || ''}
                         onChange={(e) => setFieldValues({ ...fieldValues, [cell.field]: e.target.value })}
                       />
@@ -1270,9 +1794,8 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                   <input
                     type="text"
                     maxLength={1}
-                    className={`w-full h-full text-center text-xs outline-none bg-transparent font-bold uppercase transition-colors ${
-                      view === 'edit' ? 'text-red-600' : 'text-black'
-                    }`}
+                    className={`w-full h-full text-center text-xs outline-none bg-transparent font-bold uppercase transition-colors ${view === 'edit' ? 'text-red-600' : 'text-black'
+                      }`}
                     value={fieldValues[`${section.field}_${i}`] || ''}
                     onChange={(e) => {
                       const val = e.target.value.slice(-1).toUpperCase();
@@ -1425,53 +1948,53 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
         <div className="space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <h3 className="text-lg font-bold text-gray-900">{selectedTemplate.name}</h3>
-              <p className="text-sm text-gray-500 mt-1">Preview Mode - Read Only (Signatures can be dragged/positioned)</p>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="text-lg font-bold text-gray-900">{selectedTemplate.name}</h3>
+                {selectedForm && (
+                  <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${selectedForm.status === 'draft' ? 'bg-gray-100 text-gray-700 border border-gray-200' :
+                      selectedForm.status === 'completed' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                        selectedForm.status === 'signed' ? 'bg-green-100 text-green-700 border border-green-200' :
+                          'bg-purple-100 text-purple-700 border border-purple-200'
+                    }`}>
+                    {selectedForm.status_display || (selectedForm.status === 'draft' ? 'Draft' : selectedForm.status === 'completed' ? 'Completed' : selectedForm.status)}
+                  </span>
+                )}
+                {selectedForm?.advocate_signed && (
+                  <span className="text-xs text-blue-600 font-semibold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Advocate Signed
+                  </span>
+                )}
+                {selectedForm?.client_signed && (
+                  <span className="text-xs text-green-600 font-semibold flex items-center gap-1 bg-green-50 px-2 py-0.5 rounded-md border border-green-200">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Client Signed
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-500 mt-1">Preview Mode - Read Only</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {isAdvocateRole && (
                 <>
                   <button
-                    onClick={() => setView('edit')}
+                    onClick={handleSwitchToEdit}
                     className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2 transition-all active:scale-95"
                   >
                     <Edit className="w-4 h-4" />
                     Edit
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddSigModal(true)}
-                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Signature
-                  </button>
-                  <button
-                    onClick={() => openSignaturePad('advocate')}
-                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 flex items-center gap-2 transition-all active:scale-95"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    {selectedForm.advocate_signed ? 'Change Signature' : 'Sign as Advocate'}
-                  </button>
-                  {!selectedForm.is_shared_with_client && (
+                  {(!isNewCreation || isSaved) && (selectedForm.status === 'draft' || selectedForm.status === 'completed') && !selectedForm.is_shared_with_client && (
                     <button
-                      onClick={() => handleShareWithClient(selectedForm.id)}
-                      className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 flex items-center gap-2 transition-all active:scale-95"
+                      type="button"
+                      onClick={() => confirmShare(selectedForm.id)}
+                      className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 flex items-center gap-2 transition-all active:scale-95 shadow-xs"
                     >
                       <Share2 className="w-4 h-4" />
-                      Share with Client
+                      Share
                     </button>
                   )}
                 </>
-              )}
-              {isClientRole && !selectedForm.client_signed && (
-                <button
-                  onClick={() => openSignaturePad('client')}
-                  className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 flex items-center gap-2 transition-all active:scale-95"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  Sign Form
-                </button>
               )}
               <button
                 onClick={handleCloseForm}
@@ -1561,7 +2084,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                       alt={sig.label}
                       className="w-full h-full object-contain pointer-events-none"
                     />
-                    
+
                     {/* Floating Action Badge on Hover */}
                     <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-lg pointer-events-auto whitespace-nowrap">
                       <GripVertical className="w-3 h-3 text-purple-300" />
@@ -1598,17 +2121,51 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
         <div className="space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <h3 className="text-lg font-bold text-gray-900">{selectedTemplate.name}</h3>
-              <p className="text-sm text-gray-500 mt-1">{selectedTemplate.description}</p>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="text-lg font-bold text-gray-900">{selectedTemplate.name}</h3>
+                {selectedForm && (
+                  <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${selectedForm.status === 'draft' ? 'bg-gray-100 text-gray-700 border border-gray-200' :
+                      selectedForm.status === 'completed' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                        selectedForm.status === 'signed' ? 'bg-green-100 text-green-700 border border-green-200' :
+                          'bg-purple-100 text-purple-700 border border-purple-200'
+                    }`}>
+                    {selectedForm.status_display || (selectedForm.status === 'draft' ? 'Draft' : selectedForm.status === 'completed' ? 'Completed' : selectedForm.status)}
+                  </span>
+                )}
+                {selectedForm?.advocate_signed && (
+                  <span className="text-xs text-blue-600 font-semibold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Advocate Signed
+                  </span>
+                )}
+                {selectedForm?.client_signed && (
+                  <span className="text-xs text-green-600 font-semibold flex items-center gap-1 bg-green-50 px-2 py-0.5 rounded-md border border-green-200">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Client Signed
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-500 mt-1">{isNewCreation ? 'Create Mode - Fill in form details below' : (selectedTemplate.description || 'Edit Mode')}</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={handleSave}
+                type="button"
+                onClick={() => handleSaveDraft(false)}
                 disabled={saving}
-                className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2 transition-all active:scale-95"
+                className="px-3.5 py-2 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs"
+                title="Save as Draft in database"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-amber-600" />}
+                Save as Draft
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSave(false)}
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2 transition-all active:scale-95 shadow-xs"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Save
+                Save & Complete
               </button>
               <button
                 type="button"
@@ -1618,26 +2175,18 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                 <Plus className="w-4 h-4" />
                 Add Signature
               </button>
-              {selectedForm && isAdvocateRole && (
-                <>
-                  <button
-                    onClick={() => handleShareWithClient(selectedForm.id)}
-                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 flex items-center gap-2 transition-all active:scale-95"
-                  >
-                    <Share2 className="w-4 h-4" />
-                    Share
-                  </button>
-                  <button
-                    onClick={() => openSignaturePad('advocate')}
-                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 flex items-center gap-2 transition-all active:scale-95"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    {selectedForm.advocate_signed ? 'Change Signature' : 'Sign'}
-                  </button>
-                </>
+              {selectedForm && isAdvocateRole && (!isNewCreation || isSaved) && (selectedForm.status === 'draft' || selectedForm.status === 'completed') && !selectedForm.is_shared_with_client && (
+                <button
+                  type="button"
+                  onClick={() => confirmShare(selectedForm.id)}
+                  className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 flex items-center gap-2 transition-all active:scale-95 shadow-xs"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Share
+                </button>
               )}
               <button
-                onClick={() => setView('preview')}
+                onClick={handleSwitchToPreview}
                 className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-900 hover:bg-gray-50 flex items-center gap-2 transition-all active:scale-95"
               >
                 <Eye className="w-4 h-4" />
@@ -1730,7 +2279,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                       alt={sig.label}
                       className="w-full h-full object-contain pointer-events-none"
                     />
-                    
+
                     {/* Floating Action Badge on Hover */}
                     <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-lg pointer-events-auto whitespace-nowrap">
                       <GripVertical className="w-3 h-3 text-purple-300" />
@@ -1795,7 +2344,12 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                       <FileText className="w-5 h-5 text-purple-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-bold text-gray-900 truncate">{form.template_name}</h4>
+                      <h4
+                        onClick={() => handleOpenForm(form, 'preview')}
+                        className="text-sm font-bold text-gray-900 truncate cursor-pointer hover:text-purple-600 transition-colors"
+                      >
+                        {form.template_name}
+                      </h4>
                       <p className="text-xs text-gray-500 mt-0.5">
                         Created {new Date(form.created_at).toLocaleDateString()}
                       </p>
@@ -1825,26 +2379,17 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                     )}
 
                     <button
-                      onClick={() => handleOpenForm(form, 'edit')}
-                      className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
-                      title="Edit Form"
-                    >
-                      <Edit className="w-3.5 h-3.5" />
-                      Edit
-                    </button>
-
-                    <button
                       onClick={() => handleOpenForm(form, 'preview')}
-                      className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-xs font-semibold hover:bg-gray-50 flex items-center gap-1.5 transition-all active:scale-95"
-                      title="Preview Form"
+                      className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                      title="Open Form"
                     >
-                      <Eye className="w-3.5 h-3.5 text-gray-500" />
-                      Preview
+                      <Eye className="w-3.5 h-3.5" />
+                      Open
                     </button>
 
-                    {isAdvocateRole && form.status === 'draft' && (
+                    {isAdvocateRole && (form.status === 'draft' || form.status === 'completed') && !form.is_shared_with_client && (
                       <button
-                        onClick={() => handleShareWithClient(form.id)}
+                        onClick={() => confirmShare(form.id)}
                         className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 flex items-center gap-1.5 transition-all active:scale-95"
                         title="Share with Client"
                       >
@@ -1890,103 +2435,291 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
     <div className="relative">
       {renderActiveView()}
 
-      {/* Signature Pad Modal - Rendered at top level to ensure visibility */}
-      {showSignaturePad && (
-        <div className="fixed inset-0 z-[9999] overflow-y-auto">
-          <SignaturePad
-            onSave={handleSaveSignature}
-            onCancel={() => setShowSignaturePad(false)}
-            title={activeSigTarget?.sigLabel ? `Sign: ${activeSigTarget.sigLabel}` : (signatureType === 'advocate' ? 'Sign as Advocate' : (signatureType === 'client' ? 'Sign as Client' : 'Add Signature'))}
-            saving={saving}
-          />
-        </div>
-      )}
-
-      {/* Add Additional Signature Modal */}
+      {/* Add / Apply Signature Modal with Case Saved Signatures */}
       {showAddSigModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl max-w-md w-full p-6 space-y-5">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <PenTool className="w-5 h-5 text-indigo-600" />
-                Add Signature to Form
-              </h3>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl max-w-xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b pb-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
+                  <PenTool className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 leading-none">
+                    {activeSigTarget?.sigLabel ? `Apply Signature: ${activeSigTarget.sigLabel}` : 'Add Signature to Form'}
+                  </h3>
+                  <p className="text-[11px] text-gray-500 mt-1">Saved signatures are strictly isolated to this case</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   setShowAddSigModal(false);
                   setCustomSigDrawing(false);
+                  setEditingSigId(null);
+                  setActiveSigTarget(null);
                 }}
-                className="text-gray-400 hover:text-gray-600 p-1"
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {customSigDrawing ? (
-              <div>
+              <div className="space-y-3 shrink-0">
+                <div className="flex items-center justify-between bg-indigo-50/70 border border-indigo-100 rounded-xl px-3.5 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setCustomSigDrawing(false)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900 transition-colors"
+                  >
+                    ← Back to Saved Signatures
+                  </button>
+                  <span className="text-[11px] font-medium text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-100">
+                    {addSigType === 'advocate' ? 'Advocate' : addSigType === 'client' ? 'Client' : 'Custom'}
+                  </span>
+                </div>
                 <SignaturePad
+                  inline={true}
+                  hideHeader={true}
+                  hideModeSelector={true}
+                  defaultMode="draw"
                   onSave={(dataUrl) => {
-                    handleAddPlacedSignature(dataUrl, addSigLabel, addSigType);
+                    handleSaveAndUploadSignature(dataUrl, newSigName || addSigLabel, addSigType);
                   }}
                   onCancel={() => setCustomSigDrawing(false)}
-                  title={`Draw ${addSigLabel}`}
-                  saving={false}
+                  title={`Draw ${newSigName || addSigLabel}`}
+                  saving={savingSig}
                 />
               </div>
             ) : (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1.5">
-                    Signature Role / Label
-                  </label>
-                  <select
-                    value={addSigLabel}
-                    onChange={(e) => {
-                      setAddSigLabel(e.target.value);
-                      if (e.target.value.includes('Advocate')) setAddSigType('advocate');
-                      else if (e.target.value.includes('Client') || e.target.value.includes('Deponent')) setAddSigType('client');
-                      else setAddSigType('custom');
-                    }}
-                    className="w-full h-11 px-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-bold text-gray-900 outline-none focus:border-indigo-600"
-                  >
-                    <option value="Advocate Signature">👨‍⚖️ Advocate Signature</option>
-                    <option value="Client Signature">👤 Client / Deponent Signature</option>
-                    <option value="Witness Signature">✍️ Witness Signature</option>
-                    <option value="Co-Counsel Signature">💼 Co-Counsel Signature</option>
-                    <option value="Notary / Seal">🔖 Notary / Seal Stamp</option>
-                  </select>
+              <div className="overflow-y-auto pr-1 space-y-4 max-h-[calc(85vh-110px)]">
+                {/* Role & Name inputs */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                      Signature Role / Label
+                    </label>
+                    <select
+                      value={addSigLabel}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAddSigLabel(val);
+                        if (val.includes('Advocate')) setAddSigType('advocate');
+                        else if (val.includes('Client') || val.includes('Deponent')) setAddSigType('client');
+                        else setAddSigType('custom');
+                        if (!newSigName) setNewSigName(val);
+                      }}
+                      className="w-full h-10 px-3 rounded-xl border border-gray-300 bg-white text-xs font-bold text-black outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-500 transition-all shadow-2xs"
+                      style={{ color: '#000000' }}
+                    >
+                      <option value="Advocate Signature">👨‍⚖️ Advocate Signature</option>
+                      <option value="Client Signature">👤 Client / Deponent Signature</option>
+                      <option value="Witness Signature">✍️ Witness Signature</option>
+                      <option value="Co-Counsel Signature">💼 Co-Counsel Signature</option>
+                      <option value="Notary / Seal">🔖 Notary / Seal Stamp</option>
+                      <option value="Custom Signature">✒️ Custom Signature</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                      Signature Name / Title (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={newSigName}
+                      onChange={(e) => setNewSigName(e.target.value)}
+                      placeholder={addSigLabel}
+                      className="w-full h-10 px-3 rounded-xl border border-gray-300 bg-white text-xs font-bold text-black outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-500 transition-all shadow-2xs placeholder:text-gray-400"
+                      style={{ color: '#000000' }}
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <span className="block text-xs font-bold uppercase tracking-wider text-gray-500">
-                    How would you like to provide the signature?
-                  </span>
-                  
+                {/* MY SIGNATURES (Saved for this Case) SECTION */}
+                <div className="space-y-2.5 pt-1">
+                  <div className="flex items-center justify-between border-b pb-1.5">
+                    <div className="flex items-center gap-2">
+                      <Bookmark className="w-4 h-4 text-indigo-600" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-gray-700">
+                        My Signatures (Saved for this Case)
+                      </span>
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+                        {caseSignatures.length}
+                      </span>
+                    </div>
+                    {loadingCaseSignatures && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                    )}
+                  </div>
+
+                  {loadingCaseSignatures && caseSignatures.length === 0 ? (
+                    <div className="py-6 flex flex-col items-center justify-center gap-2 text-gray-400">
+                      <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                      <span className="text-xs font-medium">Loading saved case signatures...</span>
+                    </div>
+                  ) : caseSignatures.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-52 overflow-y-auto p-1">
+                      {caseSignatures.map((sig) => (
+                        <div
+                          key={sig.id}
+                          className="group relative flex flex-col justify-between p-3 rounded-xl border border-gray-200 bg-gray-50/70 hover:bg-indigo-50/50 hover:border-indigo-300 transition-all shadow-2xs hover:shadow-xs"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              {editingSigId === sig.id ? (
+                                <div className="flex items-center gap-1.5 w-full">
+                                  <input
+                                    type="text"
+                                    value={editingSigName}
+                                    onChange={(e) => setEditingSigName(e.target.value)}
+                                    className="h-7 px-2 text-xs font-bold text-black border-2 border-indigo-600 rounded-md bg-white w-full outline-none focus:ring-1 focus:ring-indigo-600 shadow-inner"
+                                    style={{ color: '#000000' }}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleRenameCaseSignature(sig.id, editingSigName);
+                                      if (e.key === 'Escape') setEditingSigId(null);
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRenameCaseSignature(sig.id, editingSigName)}
+                                    className="p-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 shrink-0 shadow-xs"
+                                    title="Save Name"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingSigId(null)}
+                                    className="p-1.5 rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 shrink-0"
+                                    title="Cancel"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className="text-xs font-bold text-black truncate block"
+                                    style={{ color: '#000000' }}
+                                  >
+                                    {sig.name}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingSigId(sig.id);
+                                      setEditingSigName(sig.name);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-indigo-600 transition-opacity"
+                                    title="Edit name"
+                                  >
+                                    <Edit className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+                              <span className="text-[10px] font-semibold text-gray-500 uppercase">
+                                {sig.signature_type}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteCaseSignature(sig.id, e)}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all shrink-0"
+                              title="Delete from case"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Signature image preview */}
+                          <div
+                            onClick={() => handleSelectCaseSignature(sig)}
+                            className="mt-2 h-14 rounded-lg bg-white border border-gray-200/80 flex items-center justify-center p-1 cursor-pointer hover:border-indigo-400 transition-all shadow-inner"
+                            title="Click to place on form"
+                          >
+                            <img
+                              src={formatSignatureUrl(sig.image_url || sig.image)}
+                              alt={sig.name}
+                              className="h-full w-auto object-contain max-w-full"
+                            />
+                          </div>
+
+                          {/* Click to place button */}
+                          <button
+                            type="button"
+                            onClick={() => handleSelectCaseSignature(sig)}
+                            className="mt-2 w-full py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white text-[11px] font-bold flex items-center justify-center gap-1 transition-all shadow-2xs"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            Place on Form
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl border border-dashed border-gray-300 bg-gray-50/60 text-center">
+                      <Bookmark className="w-5 h-5 text-gray-400 mx-auto mb-1" />
+                      <p className="text-xs font-medium text-gray-600">
+                        No saved signatures for this case yet.
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        Draw or upload below to save it to this case and reuse with 1-click anytime.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* CREATE NEW SIGNATURE SECTION */}
+                <div className="space-y-3 pt-3 border-t">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-700">
+                      Create / Upload New Signature
+                    </span>
+                    <label className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={saveToCaseSigs}
+                        onChange={(e) => setSaveToCaseSigs(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      Save Sign to Case
+                    </label>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
+                      disabled={savingSig}
                       onClick={() => setCustomSigDrawing(true)}
-                      className="p-4 rounded-xl border-2 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 flex flex-col items-center gap-2 text-indigo-950 font-bold text-xs transition-all active:scale-95 shadow-xs"
+                      className="p-3.5 rounded-xl border-2 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 flex flex-col items-center gap-2 text-indigo-950 font-bold text-xs transition-all active:scale-95 shadow-xs disabled:opacity-50"
                     >
-                      <PenTool className="w-6 h-6 text-indigo-600" />
+                      <PenTool className="w-5 h-5 text-indigo-600" />
                       <span>Draw Signature</span>
                     </button>
 
-                    <label className="p-4 rounded-xl border-2 border-gray-200 bg-gray-50 hover:bg-gray-100 flex flex-col items-center gap-2 text-gray-800 font-bold text-xs cursor-pointer transition-all active:scale-95 shadow-xs">
-                      <Upload className="w-6 h-6 text-gray-600" />
-                      <span>Upload Image</span>
+                    <label className="p-3.5 rounded-xl border-2 border-gray-200 bg-gray-50 hover:bg-gray-100 flex flex-col items-center gap-2 text-gray-800 font-bold text-xs cursor-pointer transition-all active:scale-95 shadow-xs">
+                      {savingSig ? (
+                        <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                      ) : (
+                        <Upload className="w-5 h-5 text-gray-600" />
+                      )}
+                      <span>{savingSig ? 'Saving to CDN...' : 'Upload Image'}</span>
                       <input
                         type="file"
                         accept="image/png, image/jpeg, image/webp"
                         className="hidden"
+                        disabled={savingSig}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
                             const reader = new FileReader();
                             reader.onload = (evt) => {
                               if (evt.target?.result) {
-                                handleAddPlacedSignature(evt.target.result as string, addSigLabel, addSigType);
+                                handleSaveAndUploadSignature(evt.target.result as string, addSigLabel, addSigType);
                               }
                             };
                             reader.readAsDataURL(file);
@@ -2014,6 +2747,175 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved Changes Confirmation Modal (Formal Doc Editor Style) */}
+      {showUnsavedModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl max-w-md w-full p-6 space-y-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-600">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-gray-900">
+                  Do you want to save changes?
+                </h3>
+                <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+                  You have unsaved changes in this court form. Your changes will be lost if you don't save them.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowUnsavedModal(false)}
+                className="px-3.5 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardAndClose}
+                className="px-3.5 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 text-sm font-semibold transition-all active:scale-95"
+                title="Discard all changes without saving anything into draft"
+              >
+                Don't Save
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => handleSaveDraft(true)}
+                className="px-3.5 py-2 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-sm font-semibold transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-amber-600" />}
+                Save as Draft
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => handleSave(true)}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save & Complete'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share Confirmation Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl max-w-md w-full p-6 space-y-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600">
+                <Share2 className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-gray-900">
+                  Do you want to share this court form?
+                </h3>
+                <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+                  The client will be notified and will be able to view and sign this document in their portal. Press <kbd className="px-1.5 py-0.5 text-xs bg-gray-100 border border-gray-300 rounded font-semibold text-gray-700">Enter</kbd> to confirm.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowShareModal(false);
+                  setShareTargetFormId(null);
+                }}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={sharing}
+                onClick={executeShare}
+                autoFocus
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-sm transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+              >
+                {sharing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Sharing...
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-4 h-4" />
+                    Share
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl max-w-md w-full p-6 space-y-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 text-red-600">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-gray-900">
+                  Are you sure you want to delete this form?
+                </h3>
+                <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+                  This action cannot be undone. The form and all associated details will be permanently removed. Press <kbd className="px-1.5 py-0.5 text-xs bg-gray-100 border border-gray-300 rounded font-semibold text-gray-700">Enter</kbd> to delete.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteTargetFormId(null);
+                }}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={executeDelete}
+                autoFocus
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-sm transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

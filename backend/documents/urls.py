@@ -5,7 +5,8 @@ from .views_templates import (
     DocumentTemplateViewSet, 
     FilledTemplateViewSet,
     CourtFormTemplateViewSet,
-    FilledCourtFormViewSet
+    FilledCourtFormViewSet,
+    CaseSignatureViewSet
 )
 from .views_versions import CaseDraftVersionViewSet
 
@@ -15,6 +16,7 @@ router.register(r'templates', DocumentTemplateViewSet, basename='template')
 router.register(r'filled-templates', FilledTemplateViewSet, basename='filled-template')
 router.register(r'court-form-templates', CourtFormTemplateViewSet, basename='court-form-template')
 router.register(r'filled-court-forms', FilledCourtFormViewSet, basename='filled-court-form')
+router.register(r'case-signatures', CaseSignatureViewSet, basename='case-signature')
 router.register(r'draft-versions', CaseDraftVersionViewSet, basename='draft-version')
 router.register(r'', UserDocumentViewSet, basename='document')
 
