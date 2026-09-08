@@ -242,10 +242,26 @@ DEFAULT_FROM_EMAIL = 'Exam Flow System <diracai.info@gmail.com>'
 # Default primary key field type
 
 # CORS Configuration
-CORS_ALLOWED_ORIGINS = os.getenv(
-    'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002'
-).split(',')
+CORS_ALLOWED_ORIGINS = list(set([
+    origin.strip()
+    for origin in os.getenv(
+        'CORS_ALLOWED_ORIGINS',
+        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002'
+    ).split(',') if origin.strip()
+] + [
+    'https://mindmap.diracai.com',
+    'https://antlegal.anthemgt.com',
+    'http://localhost:3000',
+    'http://localhost:3001',
+]))
+
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.diracai\.com$",
+    r"^https://.*\.anthemgt\.com$",
+    r"^http://localhost:\d+$",
+    r"^http://127\.0\.0\.1:\d+$",
+]
+
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -260,10 +276,18 @@ CORS_ALLOW_HEADERS = [
 ]
 
 # CSRF Trusted Origins
-CSRF_TRUSTED_ORIGINS = os.getenv(
-    'CSRF_TRUSTED_ORIGINS',
-    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002'
-).split(',')
+CSRF_TRUSTED_ORIGINS = list(set([
+    origin.strip()
+    for origin in os.getenv(
+        'CSRF_TRUSTED_ORIGINS',
+        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002'
+    ).split(',') if origin.strip()
+] + [
+    'https://mindmap.diracai.com',
+    'https://antlegal.anthemgt.com',
+    'https://*.diracai.com',
+    'https://*.anthemgt.com',
+]))
 
 # Allow iframes for media files (for document viewer)
 X_FRAME_OPTIONS = 'SAMEORIGIN'

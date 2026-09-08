@@ -404,6 +404,44 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
       if (type === 'DOCU_MIND_EXPORT' && blob) {
         // Direct exports are client-side only
       }
+
+      // Handle byte fetching requests from DocuMind iframe to bypass CORS
+      if (type === 'DOCU_MIND_FETCH_FILE_BYTES' && event.data?.url) {
+        const { requestId, url } = event.data;
+        try {
+          let fetchUrl = url;
+          if (fetchUrl.startsWith('/')) {
+            fetchUrl = `${window.location.origin}${fetchUrl}`;
+          } else if (typeof window !== 'undefined' && window.location.protocol === 'https:' && fetchUrl.startsWith('http:')) {
+            fetchUrl = fetchUrl.replace(/^http:/, 'https:');
+          }
+          const resp = await fetch(fetchUrl);
+          if (resp.ok) {
+            const blob = await resp.blob();
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'DOCU_MIND_FILE_BYTES_RESPONSE',
+              requestId,
+              success: true,
+              blob,
+            }, '*');
+          } else {
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'DOCU_MIND_FILE_BYTES_RESPONSE',
+              requestId,
+              success: false,
+              error: `HTTP ${resp.status}`,
+            }, '*');
+          }
+        } catch (e: any) {
+          console.error('Error fetching file bytes for DocuMind iframe:', e);
+          iframeRef.current?.contentWindow?.postMessage({
+            type: 'DOCU_MIND_FILE_BYTES_RESPONSE',
+            requestId,
+            success: false,
+            error: e?.message || 'Fetch failed',
+          }, '*');
+        }
+      }
     };
 
     window.addEventListener('message', handleMessage);
