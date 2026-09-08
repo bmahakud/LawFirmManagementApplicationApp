@@ -1,6 +1,7 @@
 import os
 import io
 import tempfile
+import threading
 from PIL import Image
 import pypdf
 from reportlab.lib.pagesizes import letter, A4, landscape
@@ -641,19 +642,32 @@ def generate_cover_and_index_pdf(case_obj, document_summary_list):
     ]))
     
     elements.append(t_index)
-    elements.append(PageBreak())
 
     doc.build(elements, canvasmaker=NumberedCanvas)
     buffer.seek(0)
     return buffer.getvalue()
 
 
+_case_compile_locks = {}
+_case_compile_mutex = threading.Lock()
+
+def _get_case_lock(case_id):
+    with _case_compile_mutex:
+        if case_id not in _case_compile_locks:
+            _case_compile_locks[case_id] = threading.Lock()
+        return _case_compile_locks[case_id]
+
+
 def generate_merged_case_filing_pdf(case_id, user=None):
     """
-    Main Compilation Function:
-    Fetches all PDFs, Images/Photos, and Filled Court Forms for a case and merges them
-    into a single Master Case Filing Pack PDF document with rich auto-bookmarks.
+    Main Compilation Function (Thread-Safe):
+    Acquires a per-case lock and delegates to compilation.
     """
+    with _get_case_lock(str(case_id)):
+        return _generate_merged_case_filing_pdf_locked(case_id, user)
+
+
+def _generate_merged_case_filing_pdf_locked(case_id, user=None):
     from pypdf import PdfReader, PdfWriter
 
     case_obj = Case.objects.get(id=case_id)
@@ -664,6 +678,7 @@ def generate_merged_case_filing_pdf(case_id, user=None):
     ).order_by('created_at')
 
     # 2. Fetch Case Documents (PDFs and Evidence Photos)
+    # Exclude master doc, .ltproj drafting project files, and unverified client requests
     documents = UserDocument.objects.filter(
         case_id=case_id,
         is_deleted=False,
@@ -674,6 +689,8 @@ def generate_merged_case_filing_pdf(case_id, user=None):
         document_title__icontains=".ltproj"
     ).exclude(
         document_file__icontains=".ltproj"
+    ).exclude(
+        fulfills_request__status__in=['pending', 'uploaded', 'rejected']
     ).order_by('uploaded_at')
 
     court_form_entries = []
@@ -703,7 +720,7 @@ def generate_merged_case_filing_pdf(case_id, user=None):
                 'title': form_title,
                 'type_display': 'Court Form',
                 'format': 'FORM',
-                'sequence': getattr(form, 'custom_sequence', 0) or 0,
+                'sequence': int(getattr(form, 'custom_sequence', 0) or 0),
                 'created_sort_key': form.created_at.isoformat() if hasattr(form, 'created_at') and form.created_at else '',
                 'date': form.created_at.strftime('%Y-%m-%d') if hasattr(form, 'created_at') and form.created_at else 'N/A',
                 'pdf_bytes': pdf_bytes,
@@ -756,7 +773,7 @@ def generate_merged_case_filing_pdf(case_id, user=None):
                 'title': doc.document_title,
                 'type_display': doc.get_document_type_display() if hasattr(doc, 'get_document_type_display') else doc.document_type,
                 'format': item_type,
-                'sequence': getattr(doc, 'custom_sequence', 0) or 0,
+                'sequence': int(getattr(doc, 'custom_sequence', 0) or 0),
                 'created_sort_key': doc.uploaded_at.isoformat() if doc.uploaded_at else '',
                 'date': doc.uploaded_at.strftime('%Y-%m-%d') if doc.uploaded_at else 'N/A',
                 'pdf_bytes': pdf_bytes,
@@ -766,14 +783,14 @@ def generate_merged_case_filing_pdf(case_id, user=None):
     # Sort all items by custom sequence if specified, else fallback to creation time
     all_raw_items = court_form_entries + document_entries
     
-    # Check if any custom sequence exists
-    has_custom_ordering = any(item.get('sequence', 0) > 0 for item in all_raw_items)
+    # Check if any custom sequence exists (> 0)
+    has_custom_ordering = any(int(item.get('sequence', 0) or 0) > 0 for item in all_raw_items)
     
     if has_custom_ordering:
         summary_list = sorted(
             all_raw_items,
             key=lambda x: (
-                x.get('sequence') if x.get('sequence', 0) > 0 else 999990,
+                int(x.get('sequence') or 0) if int(x.get('sequence') or 0) > 0 else 999990,
                 x.get('created_sort_key', '')
             )
         )
@@ -781,20 +798,30 @@ def generate_merged_case_filing_pdf(case_id, user=None):
         # Default order: Court Forms first, then Evidence Documents
         summary_list = court_form_entries + document_entries
 
-    # Estimate Cover & Table of Contents page count (1 or 2 pages based on item count)
+    # Dynamic 2-Pass Cover & Table of Contents Calculation:
+    # Pass 1: Estimate cover page count based on items
     total_items = len(summary_list)
-    cover_page_count = 1 if total_items <= 12 else 2
+    cover_page_count = 1 if total_items <= 10 else (2 if total_items <= 25 else 3)
 
-    # Calculate exact start page for each sub-document (1-indexed for reader display)
     current_page_counter = cover_page_count + 1
     for item in summary_list:
         item['start_page'] = current_page_counter
         current_page_counter += item['page_count']
 
-    # Generate Cover Page & Index PDF
     cover_pdf_bytes = generate_cover_and_index_pdf(case_obj, summary_list)
+    actual_cover_pages = len(PdfReader(io.BytesIO(cover_pdf_bytes)).pages)
 
-    # Use PyPDF Writer to assemble final PDF with rich bookmarks
+    # Pass 2: If actual cover pages differ, re-index and re-generate cover so
+    # the printed Table of Contents matches physical pages with 100% precision.
+    if actual_cover_pages != cover_page_count:
+        cover_page_count = actual_cover_pages
+        current_page_counter = cover_page_count + 1
+        for item in summary_list:
+            item['start_page'] = current_page_counter
+            current_page_counter += item['page_count']
+        cover_pdf_bytes = generate_cover_and_index_pdf(case_obj, summary_list)
+
+    # Use PyPDF Writer to assemble final PDF with rich, synchronized bookmarks
     writer = PdfWriter()
     
     # Enable automatic Bookmarks/Outlines panel opening in all PDF viewers
@@ -802,20 +829,28 @@ def generate_merged_case_filing_pdf(case_id, user=None):
     
     # 1. Append Cover Page & Table of Contents
     cover_reader = PdfReader(io.BytesIO(cover_pdf_bytes))
-    cover_start_page = len(writer.pages)
-    writer.append(cover_reader)
-    writer.add_outline_item("📑 Case Overview & Table of Contents", cover_start_page)
+    writer.append(cover_reader, import_outline=False)
+    writer.add_outline_item("📑 Case Overview & Table of Contents", writer.pages[0])
 
     # 2. Append All Items in Custom Sorted Sequence with Outlines
-    filing_parent = writer.add_outline_item("📁 Case Filings & Evidence Pack", len(writer.pages))
-    for item in summary_list:
+    filing_parent = None
+    for idx, item in enumerate(summary_list, 1):
         try:
             reader = PdfReader(io.BytesIO(item['pdf_bytes']))
             start_page = len(writer.pages)
-            writer.append(reader)
+            # import_outline=False prevents rogue sub-PDF bookmarks from polluting master outline
+            writer.append(reader, import_outline=False)
+            
+            if filing_parent is None:
+                filing_parent = writer.add_outline_item(
+                    "📁 Case Filings & Evidence Pack", 
+                    writer.pages[start_page],
+                    is_open=True
+                )
+                
             badge_icon = "🏛️" if item['format'] == 'FORM' else ("🖼️" if item['format'] == 'PHOTO' else "📄")
-            bookmark_title = f"{badge_icon} {item['title']} (Page {start_page + 1})"
-            writer.add_outline_item(bookmark_title, start_page, parent=filing_parent)
+            bookmark_title = f"{idx}. {badge_icon} {item['title']} (Page {start_page + 1})"
+            writer.add_outline_item(bookmark_title, writer.pages[start_page], parent=filing_parent)
         except Exception as e:
             print(f"Error appending item {item['title']}: {e}")
 

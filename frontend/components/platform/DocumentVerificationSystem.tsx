@@ -611,15 +611,7 @@ export default function DocumentVerificationSystem({ caseId, clientId, role, acc
                           </td>
                           <td className="py-4 px-6 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              {document && (request.status === 'uploaded' || request.status === 'verified') && (
-                                <Link
-                                  href={`${viewBase || '/advocate'}/documents/${typeof document === 'object' ? document.id : document}${caseId ? `?fromCase=${caseId}&subtab=client` : ''}`}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 text-xs font-bold hover:bg-gray-50 transition-all"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                  View
-                                </Link>
-                              )}
+
 
                               {isAdvocateRole && request.status === 'uploaded' && (
                                 <button

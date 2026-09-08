@@ -687,7 +687,10 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             if not item_id:
                 continue
 
-            target_seq = item.get('sequence', seq) if isinstance(item, dict) else seq
+            try:
+                target_seq = int(item.get('sequence', seq) if isinstance(item, dict) else seq)
+            except (ValueError, TypeError):
+                target_seq = seq
 
             if item_type == 'court_form':
                 FilledCourtForm.objects.filter(id=item_id, case_id=case_id).update(custom_sequence=target_seq)

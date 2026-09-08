@@ -462,41 +462,10 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
     >
       {/* Sleek Modern Header Control Bar - Advocate Plum Theme */}
       <div className="bg-[#1c0517]/95 backdrop-blur-xl border-b border-[#3b0e31]/80 px-5 py-3 flex flex-wrap items-center justify-between gap-3 z-[60] shadow-md">
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Main Action Button: Compile & Merge PDF */}
-          <button
-            type="button"
-            onClick={handleGenerateMergedPdf}
-            disabled={isMerging}
-            className="group relative inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-[#2d0b25] via-[#5c134d] to-[#831843] hover:from-[#3d0e32] hover:to-[#9f1239] text-white text-xs font-bold shadow-lg shadow-[#2d0b25]/50 border border-[#be185d]/30 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-            title="Compile all PDFs, Photos and Forms into one Master Filing PDF"
-          >
-            {isMerging ? (
-              <Loader2 className="w-4 h-4 animate-spin text-white" />
-            ) : (
-              <Zap className="w-4 h-4 text-amber-300 fill-amber-300 transition-transform group-hover:scale-110" />
-            )}
-            <span>{isMerging ? 'Compiling Master PDF...' : 'Compile & Merge All Documents (PDF + Photos)'}</span>
-          </button>
-
-          {/* Quick Load Master PDF pill if generated */}
-          {masterDoc && (
-            <button
-              type="button"
-              onClick={() =>
-                loadDocumentIntoEditor(
-                  masterDoc.file_url || masterDoc.document_file,
-                  masterDoc.document_title || 'Master Case Filing Pack',
-                  'pdf'
-                )
-              }
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/90 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm"
-              title="Load Master Case Filing PDF into editor"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Load Master PDF</span>
-            </button>
-          )}
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs font-semibold text-pink-200/90 tracking-wide uppercase">
+            Document & Drafting Workspace
+          </span>
         </div>
 
         {/* Right Header Controls */}

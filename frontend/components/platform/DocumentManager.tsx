@@ -51,6 +51,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   const [documents, setDocuments] = useState<Document[]>(userDocuments || []);
   const [loading, setLoading] = useState(!userDocuments);
   const [uploading, setUploading] = useState(false);
+  const [uploadStepText, setUploadStepText] = useState('');
   const [reordering, setReordering] = useState(false);
   const [error, setError] = useState('');
   const [showUploadForm, setShowUploadForm] = useState(false);
@@ -59,6 +60,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   const [moving, setMoving] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -200,11 +202,16 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
 
         if (res.ok) {
           toast.success('Master PDF recompiled with new document order!');
+          await fetchDocuments();
           if (onDocumentVerified) onDocumentVerified();
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || 'Failed to update filing sequence');
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error saving reordered items:', err);
-        toast.error('Failed to update filing sequence.');
+        toast.error(err.message || 'Failed to update filing sequence.');
+        await fetchDocuments();
       } finally {
         setReordering(false);
       }
@@ -347,7 +354,9 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
     }
 
     setUploading(true);
+    setUploadStepText('Uploading document...');
     setError('');
+    toast.loading('Uploading document...', { id: 'doc-upload-progress' });
 
     try {
       const formData = new FormData();
@@ -372,6 +381,40 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
         throw new Error(data.detail || Object.values(data).flat().join(', ') || 'Failed to upload document');
       }
 
+      const newDoc = await response.json();
+
+      // Automatically organize in order and recompile Master PDF via /api/documents/reorder-filing-pack/
+      if (caseId && section === 'all') {
+        setUploadStepText('Arranging in filing sequence & compiling Master PDF...');
+        toast.loading('Arranging sequence & merging into Master PDF...', { id: 'doc-upload-progress' });
+
+        const nonMasterList = documents.filter(d => !d.document_title?.toLowerCase().includes('master case filing pack'));
+        const alreadyInList = nonMasterList.some(d => d.id === newDoc.id);
+        const updatedList = alreadyInList ? nonMasterList : [...nonMasterList, newDoc];
+
+        const payload = {
+          case_id: caseId,
+          ordered_items: updatedList.map((item, idx) => ({
+            id: item.id,
+            type: item.is_court_form || item.document_type === 'court_form' ? 'court_form' : 'document',
+            sequence: idx + 1
+          }))
+        };
+
+        const reorderRes = await customFetch(API.DOCUMENTS.REORDER_FILING_PACK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!reorderRes.ok) {
+          const reorderData = await reorderRes.json().catch(() => ({}));
+          console.warn('Reorder compilation warning:', reorderData);
+        }
+      }
+
+      toast.success('Document uploaded and merged into Master PDF in sequence!', { id: 'doc-upload-progress' });
+
       setShowUploadForm(false);
       setUploadData({
         document_type: 'other',
@@ -385,8 +428,10 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
       if (onDocumentVerified) onDocumentVerified();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || 'Failed to upload document', { id: 'doc-upload-progress' });
     } finally {
       setUploading(false);
+      setUploadStepText('');
     }
   };
 
@@ -555,7 +600,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
             {uploading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Uploading...
+                {uploadStepText || 'Uploading & Compiling...'}
               </>
             ) : (
               <>
@@ -693,14 +738,34 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                       return (
                         <tr 
                           key={doc.id}
-                          draggable={isReorderingEnabled && !isMaster}
-                          onDragStart={() => setDraggedIdx(nonMasterIdx)}
+                          draggable={isReorderingEnabled && !isMaster && !reordering}
+                          onDragStart={(e) => {
+                            setDraggedIdx(nonMasterIdx);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
                           onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            if (dragOverIdx !== nonMasterIdx) {
+                              setDragOverIdx(nonMasterIdx);
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverIdx === nonMasterIdx) {
+                              setDragOverIdx(null);
+                            }
+                          }}
+                          onDrop={(e) => {
                             e.preventDefault();
                             if (draggedIdx !== null && draggedIdx !== nonMasterIdx && nonMasterIdx >= 0) {
                               handleReorderRow(draggedIdx, nonMasterIdx);
-                              setDraggedIdx(nonMasterIdx);
                             }
+                            setDraggedIdx(null);
+                            setDragOverIdx(null);
+                          }}
+                          onDragEnd={() => {
+                            setDraggedIdx(null);
+                            setDragOverIdx(null);
                           }}
                           className={`transition-all duration-150 ${
                             isMaster 
@@ -708,6 +773,10 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                               : isCourtForm
                                 ? "bg-violet-50/75 hover:bg-violet-100/80 border-l-4 border-l-violet-600"
                                 : "bg-white hover:bg-slate-50/80 border-l-4 border-l-transparent"
+                          } ${
+                            draggedIdx === nonMasterIdx ? "opacity-35 bg-slate-100 ring-2 ring-indigo-400" : ""
+                          } ${
+                            dragOverIdx === nonMasterIdx && draggedIdx !== nonMasterIdx ? "border-t-2 border-t-indigo-600 bg-indigo-50/70 shadow-inner" : ""
                           }`}
                         >
                           {/* Sequence / Sl. No Column */}
@@ -953,6 +1022,28 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
           </div>
         );
       })()}
+
+      {/* Full-screen Loading Animation Overlay during Upload & Auto-Merge / Drag & Reorder */}
+      {(uploading || reordering) && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="flex flex-col items-center gap-4 bg-white p-8 rounded-2xl shadow-2xl border border-gray-100 max-w-sm w-full mx-4 text-center">
+            <div className="relative flex items-center justify-center">
+              <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+              <Sparkles className="w-5 h-5 text-amber-500 absolute" />
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-gray-900">
+                {uploading ? (uploadStepText || 'Uploading & Compiling...') : 'Reordering Filing Pack...'}
+              </h4>
+              <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                {uploading
+                  ? 'Saving new file, assigning filing sequence, and automatically compiling Master PDF. Please wait...'
+                  : 'Updating document sequence and regenerating Master PDF with synchronized bookmarks. Please wait...'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
