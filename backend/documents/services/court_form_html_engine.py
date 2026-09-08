@@ -4,7 +4,7 @@ import re
 import html as html_lib
 import ctypes.util
 
-# Automatic macOS Homebrew library resolver for weasyprint / gobject
+# Automatic library resolver for weasyprint / gobject across macOS and Linux
 if sys.platform == 'darwin':
     _orig_find_library = ctypes.util.find_library
     def _patched_find_library(name):
@@ -31,6 +31,44 @@ if sys.platform == 'darwin':
         cffi.FFI.dlopen = _patched_dlopen
     except Exception:
         pass
+elif sys.platform.startswith('linux'):
+    _orig_find_library = ctypes.util.find_library
+    _linux_search_dirs = [
+        '/usr/lib/x86_64-linux-gnu',
+        '/usr/lib/aarch64-linux-gnu',
+        '/usr/lib',
+        '/usr/local/lib',
+        '/lib/x86_64-linux-gnu',
+        '/lib',
+    ]
+    def _patched_find_library_linux(name):
+        res = _orig_find_library(name)
+        if res:
+            return res
+        clean_name = name[3:] if name.startswith('lib') else name
+        for d in _linux_search_dirs:
+            if not os.path.isdir(d):
+                continue
+            for ext in ['.so', '.so.0', '.so.1', '.so.2', '-1.0.so.0', '-2.0.so.0']:
+                for candidate in [f'lib{name}{ext}', f'lib{clean_name}{ext}', f'{name}{ext}']:
+                    p = os.path.join(d, candidate)
+                    if os.path.exists(p):
+                        return p
+        return None
+    ctypes.util.find_library = _patched_find_library_linux
+
+    try:
+        import cffi
+        _orig_dlopen = cffi.FFI.dlopen
+        def _patched_dlopen_linux(self, name, flags=0):
+            if isinstance(name, str) and not os.path.isabs(name):
+                found = _patched_find_library_linux(name)
+                if found:
+                    name = found
+            return _orig_dlopen(self, name, flags)
+        cffi.FFI.dlopen = _patched_dlopen_linux
+    except Exception:
+        pass
 
 try:
     import weasyprint
@@ -44,6 +82,7 @@ _candidates = [
     os.path.abspath(os.path.join(str(settings.BASE_DIR), '..', 'Court Forms')),
     os.path.abspath(os.path.join(str(settings.BASE_DIR), 'Court Forms')),
     os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'Court Forms')),
+    '/home/sammy/LawFirmManagementApplicationApp/Court Forms',
     '/Users/diracai/Desktop/Projects DiracAI/AntLegal/LawFirmManagementApplicationApp/Court Forms',
 ]
 COURT_FORMS_DIR = next((d for d in _candidates if os.path.isdir(d)), _candidates[0])
@@ -3357,13 +3396,16 @@ def generate_pdf_from_html_template(form_obj):
     """
     Generates a pixel-perfect court-ready PDF from the official HTML template.
     """
-    os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = '/opt/homebrew/lib'
+    if sys.platform == 'darwin':
+        os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = '/opt/homebrew/lib'
+
     template = getattr(form_obj, 'template', None)
     tpl_name = template.name if template else ''
     field_values = getattr(form_obj, 'field_values', {}) or {}
 
     rendered_html = render_form_html(tpl_name, field_values=field_values, is_edit_mode=False, form_obj=form_obj)
     if not rendered_html:
+        print(f"[court_form_html_engine] Could not render HTML for template: '{tpl_name}' (COURT_FORMS_DIR: '{COURT_FORMS_DIR}')")
         return None
 
     try:
@@ -3373,7 +3415,7 @@ def generate_pdf_from_html_template(form_obj):
         pdf_bytes = wp.HTML(string=rendered_html).write_pdf()
         return pdf_bytes
     except Exception as ex:
-        print(f"Error generating PDF from HTML template: {ex}")
+        print(f"[court_form_html_engine] Error generating PDF from HTML template '{tpl_name}' with WeasyPrint: {ex}")
         import traceback
         traceback.print_exc()
         return None

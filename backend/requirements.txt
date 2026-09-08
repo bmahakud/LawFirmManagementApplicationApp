@@ -12,3 +12,4 @@ Pillow==10.2.0
 xhtml2pdf>=0.2.15
 pypdf>=4.0.0
 reportlab>=4.0.0
+weasyprint>=60.0
