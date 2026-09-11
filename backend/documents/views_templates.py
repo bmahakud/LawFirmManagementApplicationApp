@@ -466,6 +466,9 @@ class FilledCourtFormViewSet(viewsets.ModelViewSet):
         if pdf_bytes:
             filename = f"form_{filled_form.id}.pdf"
             filled_form.generated_pdf.save(filename, ContentFile(pdf_bytes), save=True)
+            if filled_form.case_id:
+                from .services.pdf_merger import trigger_auto_recompile_master_pack
+                trigger_auto_recompile_master_pack(str(filled_form.case_id), request.user)
             return Response({
                 'message': 'PDF generated successfully',
                 'pdf_url': filled_form.generated_pdf.url if filled_form.generated_pdf else None,

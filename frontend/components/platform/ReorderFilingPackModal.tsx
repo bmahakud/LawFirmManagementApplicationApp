@@ -14,12 +14,36 @@ export type FilingItem = {
   type: 'court_form' | 'document';
   title: string;
   type_display: string;
-  format: 'FORM' | 'PDF' | 'PHOTO' | 'DOC';
+  format: 'FORM' | 'PDF' | 'PHOTO' | 'DOC' | string;
   sequence: number;
   created_at: string;
   date?: string;
   order_index?: number;
+  page_count?: number;
+  start_page?: number;
+  end_page?: number;
 };
+
+export function computeRunningPageRanges(rawItems: FilingItem[]): FilingItem[] {
+  const totalItems = rawItems.length;
+  // Matching backend dynamic cover page calculation in pdf_merger.py
+  const coverPageCount = totalItems <= 10 ? 1 : (totalItems <= 25 ? 2 : 3);
+  let currentPage = coverPageCount + 1;
+
+  return rawItems.map((item, index) => {
+    const pCount = Math.max(1, item.page_count || 1);
+    const start = currentPage;
+    const end = start + pCount - 1;
+    currentPage += pCount;
+    return {
+      ...item,
+      order_index: index + 1,
+      page_count: pCount,
+      start_page: start,
+      end_page: end,
+    };
+  });
+}
 
 interface ReorderFilingPackModalProps {
   isOpen: boolean;
@@ -55,7 +79,8 @@ export default function ReorderFilingPackModal({
       const res = await customFetch(API.DOCUMENTS.FILING_PACK_ITEMS(caseId));
       if (res.ok) {
         const data = await res.json();
-        setItems(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : [];
+        setItems(computeRunningPageRanges(list));
       } else {
         toast.error('Failed to load case filing items.');
       }
@@ -72,7 +97,7 @@ export default function ReorderFilingPackModal({
     const updated = [...items];
     const [moved] = updated.splice(fromIndex, 1);
     updated.splice(toIndex, 0, moved);
-    setItems(updated);
+    setItems(computeRunningPageRanges(updated));
   };
 
   const handleDragStart = (idx: number) => {
@@ -106,11 +131,35 @@ export default function ReorderFilingPackModal({
       });
 
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const masterDoc = data.master_document;
+        const oldManifest = data.old_manifest || [];
+        const newManifest = data.new_manifest || [];
+        const masterUrl = masterDoc?.file_url || null;
+        const updatedAt = data.updated_at || masterDoc?.updated_at || new Date().toISOString();
+
+        // Dispatch window event so DocuMind / LiquidText receives immediate notification
+        if (typeof window !== 'undefined') {
+          const detail = {
+            caseId,
+            oldManifest,
+            newManifest,
+            masterUrl,
+            updatedAt,
+            timestamp: Date.now()
+          };
+          window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail }));
+          try {
+            localStorage.setItem(`filing_pack_reordered_${caseId}`, JSON.stringify(detail));
+            localStorage.setItem(`documind_last_master_updated_${caseId}`, updatedAt);
+          } catch {}
+        }
+
         toast.success('Filing index reordered and Master PDF recompiled!');
         if (onReordered) onReordered();
         onClose();
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         toast.error(data.detail || 'Failed to save reordered filing pack.');
       }
     } catch (err) {
@@ -125,7 +174,7 @@ export default function ReorderFilingPackModal({
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
         
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/50">
@@ -158,7 +207,7 @@ export default function ReorderFilingPackModal({
           <div className="bg-amber-50/80 border border-amber-200/60 rounded-2xl p-4 flex items-start gap-3 text-xs text-amber-900 leading-relaxed">
             <span className="font-bold text-amber-600 shrink-0 text-sm">💡</span>
             <div>
-              <span className="font-bold">How to move:</span> Use the <span className="font-semibold underline">dropdown position number</span> (e.g. change 4 to 2), click the <span className="font-semibold">⬆️ / ⬇️ arrow buttons</span>, or drag the handle to adjust sequence. The compiled Master PDF will regenerate with this exact Table of Contents.
+              <span className="font-bold">How to move:</span> Use the <span className="font-semibold underline">dropdown position number</span> (e.g. change 4 to 2), click the <span className="font-semibold">⬆️ / ⬇️ arrow buttons</span>, or drag the handle to adjust sequence. Continuous <span className="font-bold text-amber-950 underline">page numbers</span> (e.g. Pages 3 – 4) dynamically update beside each file and match the compiled Master PDF Table of Contents.
             </div>
           </div>
 
@@ -238,6 +287,23 @@ export default function ReorderFilingPackModal({
                           </span>
                         )}
                       </div>
+                    </div>
+
+                    {/* From how many to how many pages this file contains */}
+                    <div className="flex items-center gap-2 shrink-0 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 shadow-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pages:</span>
+                        <span className="text-xs font-black text-slate-900 tracking-tight font-mono">
+                          {item.start_page === item.end_page ? (
+                            `Page ${item.start_page}`
+                          ) : (
+                            `Pages ${item.start_page} – ${item.end_page}`
+                          )}
+                        </span>
+                      </div>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/70">
+                        {item.page_count} {item.page_count === 1 ? 'page' : 'pages'}
+                      </span>
                     </div>
 
                     {/* Move Up / Down Buttons */}

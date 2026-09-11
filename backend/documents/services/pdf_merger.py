@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import tempfile
 import threading
 from PIL import Image
@@ -904,6 +905,20 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
     filename = f"Master_Filing_Pack_{case_obj.case_number or case_id[:8]}.pdf"
     master_title = f"Master Case Filing Pack ({case_obj.case_title})"
 
+    # Build structured filing pack manifest for document-aware annotation remapping
+    manifest = [
+        {
+            'id': str(item['id']),
+            'title': item['title'],
+            'item_type': item['item_type'],
+            'start_page': item['start_page'],
+            'page_count': item['page_count'],
+            'end_page': item['start_page'] + item['page_count'] - 1
+        }
+        for item in summary_list
+    ]
+    manifest_json = json.dumps(manifest)
+
     # Update existing or create new master document
     uploader = user or case_obj.assigned_advocate or case_obj.solo_advocate
     master_doc, created = UserDocument.objects.update_or_create(
@@ -914,6 +929,7 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
             'document_category': 'case_filing_pack',
             'uploaded_by': uploader,
             'verification_status': 'verified',
+            'verification_notes': manifest_json,
             'is_in_all_documents': True,
             'is_in_other_documents': False,
             'is_deleted': False,

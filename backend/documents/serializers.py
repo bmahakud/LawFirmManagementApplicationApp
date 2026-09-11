@@ -23,15 +23,32 @@ class UserDocumentSerializer(serializers.ModelSerializer):
             'verified_by_name', 'verification_notes', 'verified_at',
             'is_in_all_documents', 'is_in_other_documents', 'is_copied',
             'is_deleted', 'deleted_at', 'deleted_by', 'deleted_by_name',
-            'version', 'custom_sequence', 'parent_document', 'uploaded_at', 'updated_at'
+            'version', 'custom_sequence', 'parent_document', 'uploaded_at', 'updated_at',
+            'filing_pack_manifest'
         ]
         read_only_fields = [
             'id', 'uploaded_by', 'uploaded_by_name', 'firm', 'uploaded_at', 
             'updated_at', 'verified_at', 'verified_by', 'verified_by_name',
             'is_deleted', 'deleted_at', 'deleted_by', 'deleted_by_name',
-            'file_url', 'document_type_display', 'client_name', 'case_title'
+            'file_url', 'document_type_display', 'client_name', 'case_title',
+            'filing_pack_manifest'
         ]
     
+    filing_pack_manifest = serializers.SerializerMethodField()
+
+    def get_filing_pack_manifest(self, obj):
+        if obj.verification_notes and obj.document_title and 'master case filing pack' in obj.document_title.lower():
+            try:
+                import json
+                parsed = json.loads(obj.verification_notes)
+                if isinstance(parsed, list):
+                    return parsed
+                elif isinstance(parsed, dict):
+                    return parsed.get('manifest_json', parsed.get('manifest', []))
+            except Exception:
+                return []
+        return []
+
     def get_file_url(self, obj):
         if obj.document_file:
             request = self.context.get('request')
@@ -48,6 +65,7 @@ class UserDocumentListSerializer(serializers.ModelSerializer):
     case_title = serializers.CharField(source='case.case_title', read_only=True)
     document_type_display = serializers.CharField(source='get_document_type_display', read_only=True)
     file_url = serializers.SerializerMethodField()
+    filing_pack_manifest = serializers.SerializerMethodField()
     
     class Meta:
         model = UserDocument
@@ -55,9 +73,23 @@ class UserDocumentListSerializer(serializers.ModelSerializer):
             'id', 'document_title', 'document_type', 'document_type_display',
             'document_category', 'uploaded_by_name', 'client_name', 'case_title',
             'verification_status', 'is_in_all_documents', 'is_in_other_documents', 'is_copied',
-            'uploaded_at', 'is_deleted', 'version', 'custom_sequence', 'file_url'
+            'uploaded_at', 'is_deleted', 'version', 'custom_sequence', 'file_url',
+            'filing_pack_manifest'
         ]
     
+    def get_filing_pack_manifest(self, obj):
+        if obj.verification_notes and obj.document_title and 'master case filing pack' in obj.document_title.lower():
+            try:
+                import json
+                parsed = json.loads(obj.verification_notes)
+                if isinstance(parsed, list):
+                    return parsed
+                elif isinstance(parsed, dict):
+                    return parsed.get('manifest_json', parsed.get('manifest', []))
+            except Exception:
+                return []
+        return []
+
     def get_file_url(self, obj):
         if obj.document_file:
             request = self.context.get('request')

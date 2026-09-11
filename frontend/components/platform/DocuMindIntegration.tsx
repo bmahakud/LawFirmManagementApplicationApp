@@ -97,6 +97,7 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
   }, []);
 
   const prevDocsCountRef = useRef<number>(0);
+  const prevMasterUpdatedAtRef = useRef<string | null>(null);
 
   // Fetch case documents and filled court forms
   const fetchCaseFiles = useCallback(async () => {
@@ -132,32 +133,124 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
 
       const backendBase = process.env.NEXT_PUBLIC_API_BASE_URL || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://127.0.0.1:8000' : window.location.origin);
 
+      let masterManifest: any[] = [];
+      if (foundMaster?.filing_pack_manifest && Array.isArray(foundMaster.filing_pack_manifest)) {
+        masterManifest = foundMaster.filing_pack_manifest;
+      } else if (foundMaster?.verification_notes) {
+        try {
+          const parsed = typeof foundMaster.verification_notes === 'string' ? JSON.parse(foundMaster.verification_notes) : foundMaster.verification_notes;
+          if (Array.isArray(parsed)) {
+            masterManifest = parsed;
+          } else if (Array.isArray(parsed?.manifest_json)) {
+            masterManifest = parsed.manifest_json;
+          } else if (Array.isArray(parsed?.manifest)) {
+            masterManifest = parsed.manifest;
+          }
+        } catch {}
+      }
+
       // Sync Master PDF and actual case documents to DocuMind
       if (iframeRef.current && iframeRef.current.contentWindow) {
         iframeRef.current.contentWindow.postMessage({
           type: 'DOCU_MIND_SYNC_CASE_FILES',
           backendBaseUrl: backendBase,
           caseDocuments: docs,
+          masterManifest,
+          masterUpdatedAt: foundMaster?.updated_at || null,
         }, '*');
 
-        // Check if new documents were added during this session
-        if (prevDocsCountRef.current > 0 && docs.length > prevDocsCountRef.current) {
-          const diff = docs.length - prevDocsCountRef.current;
+        const storedUpdatedAt = typeof window !== 'undefined' ? localStorage.getItem(`documind_last_master_updated_${caseId}`) : null;
+        const isCountChanged = prevDocsCountRef.current > 0 && docs.length !== prevDocsCountRef.current;
+        const isMasterUpdated = Boolean(
+          foundMaster?.updated_at &&
+          ((prevMasterUpdatedAtRef.current && prevMasterUpdatedAtRef.current !== foundMaster.updated_at) ||
+           (storedUpdatedAt && storedUpdatedAt !== foundMaster.updated_at))
+        );
+
+        // Check if documents were added or filing pack was reordered/recompiled
+        if (isCountChanged || isMasterUpdated) {
+          const diff = Math.max(1, Math.abs(docs.length - (prevDocsCountRef.current || docs.length)));
           iframeRef.current.contentWindow.postMessage({
             type: 'DOCU_MIND_NEW_FILES_AVAILABLE',
             count: diff,
+            isReordered: isMasterUpdated,
             masterUrl: foundMaster?.file_url || null,
+            masterManifest,
+            updatedAt: foundMaster?.updated_at || null,
+            forceReload: isMasterUpdated,
           }, '*');
+
+          if (isMasterUpdated) {
+            iframeRef.current.contentWindow.postMessage({
+              type: 'DOCU_MIND_FILING_PACK_REORDERED',
+              caseId,
+              masterUrl: foundMaster?.file_url || null,
+              newManifest: masterManifest,
+              updatedAt: foundMaster?.updated_at || null,
+              forceReload: true,
+            }, '*');
+          }
         }
       }
       prevDocsCountRef.current = docs.length;
+      if (foundMaster?.updated_at) {
+        prevMasterUpdatedAtRef.current = foundMaster.updated_at;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`documind_last_master_updated_${caseId}`, foundMaster.updated_at);
+        }
+      }
     } catch (err) {
       console.error('Error fetching case documents:', err);
     }
   }, [caseId]);
 
+  // Listen for filing pack reorder events from ReorderFilingPackModal
+  useEffect(() => {
+    const handleReorder = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const detail = customEvent.detail;
+      if (!detail || detail.caseId !== caseId) return;
+
+      if (iframeRef.current && iframeRef.current.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'DOCU_MIND_FILING_PACK_REORDERED',
+          caseId,
+          oldManifest: detail.oldManifest || [],
+          newManifest: detail.newManifest || [],
+          masterUrl: detail.masterUrl,
+          updatedAt: detail.updatedAt,
+          forceReload: true,
+        }, '*');
+
+        iframeRef.current.contentWindow.postMessage({
+          type: 'DOCU_MIND_NEW_FILES_AVAILABLE',
+          count: 1,
+          isReordered: true,
+          masterUrl: detail.masterUrl,
+          masterManifest: detail.newManifest || [],
+          updatedAt: detail.updatedAt,
+          forceReload: true,
+        }, '*');
+      }
+
+      fetchCaseFiles();
+    };
+
+    window.addEventListener('documind:filing-pack-reordered', handleReorder);
+    return () => {
+      window.removeEventListener('documind:filing-pack-reordered', handleReorder);
+    };
+  }, [caseId, fetchCaseFiles]);
+
   useEffect(() => {
     fetchCaseFiles();
+    const interval = setInterval(fetchCaseFiles, 12000);
+    const onFocus = () => fetchCaseFiles();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [fetchCaseFiles]);
 
   const loadDocumentIntoEditor = async (fileUrl: string, title: string, format: string = 'pdf') => {
