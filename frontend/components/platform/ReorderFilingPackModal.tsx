@@ -135,6 +135,8 @@ export default function ReorderFilingPackModal({
         const masterDoc = data.master_document;
         const oldManifest = data.old_manifest || [];
         const newManifest = data.new_manifest || [];
+        const pageMapping = data.page_mapping || {};
+        const pageMappingId = data.page_mapping_id || null;
         const masterUrl = masterDoc?.file_url || null;
         const updatedAt = data.updated_at || masterDoc?.updated_at || new Date().toISOString();
 
@@ -144,6 +146,8 @@ export default function ReorderFilingPackModal({
             caseId,
             oldManifest,
             newManifest,
+            pageMapping,
+            pageMappingId,
             masterUrl,
             updatedAt,
             timestamp: Date.now()

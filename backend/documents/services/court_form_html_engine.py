@@ -3392,13 +3392,19 @@ body {{
 
     return final_html
 
+def _weasyprint_worker(html_string, result_queue):
+    try:
+        import weasyprint as wp
+        pdf_bytes = wp.HTML(string=html_string).write_pdf()
+        result_queue.put(('success', pdf_bytes))
+    except Exception as e:
+        import traceback
+        result_queue.put(('error', traceback.format_exc()))
+
 def generate_pdf_from_html_template(form_obj):
     """
     Generates a pixel-perfect court-ready PDF from the official HTML template.
     """
-    if sys.platform == 'darwin':
-        os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = '/opt/homebrew/lib'
-
     template = getattr(form_obj, 'template', None)
     tpl_name = template.name if template else ''
     field_values = getattr(form_obj, 'field_values', {}) or {}
@@ -3409,13 +3415,30 @@ def generate_pdf_from_html_template(form_obj):
         return None
 
     try:
-        wp = weasyprint
-        if wp is None:
-            import weasyprint as wp
-        pdf_bytes = wp.HTML(string=rendered_html).write_pdf()
-        return pdf_bytes
-    except Exception as ex:
-        print(f"[court_form_html_engine] Error generating PDF from HTML template '{tpl_name}' with WeasyPrint: {ex}")
+        if sys.platform == 'darwin':
+            # Run WeasyPrint in an isolated subprocess on macOS to prevent Pango GC segfaults
+            import multiprocessing
+            ctx = multiprocessing.get_context('spawn')
+            q = ctx.Queue()
+            p = ctx.Process(target=_weasyprint_worker, args=(rendered_html, q))
+            p.start()
+            p.join()
+            
+            if not q.empty():
+                status, data = q.get()
+                if status == 'success':
+                    return data
+                else:
+                    print(f"WeasyPrint subprocess error: {data}")
+            return None
+        else:
+            wp = weasyprint
+            if wp is None:
+                import weasyprint as wp
+            pdf_bytes = wp.HTML(string=rendered_html).write_pdf()
+            return pdf_bytes
+    except Exception as e:
         import traceback
         traceback.print_exc()
+        print(f"Could not generate HTML PDF via WeasyPrint: {e}")
         return None

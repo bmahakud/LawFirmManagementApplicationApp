@@ -217,6 +217,8 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
           caseId,
           oldManifest: detail.oldManifest || [],
           newManifest: detail.newManifest || [],
+          pageMapping: detail.pageMapping || {},
+          pageMappingId: detail.pageMappingId || null,
           masterUrl: detail.masterUrl,
           updatedAt: detail.updatedAt,
           forceReload: true,
@@ -228,6 +230,8 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
           isReordered: true,
           masterUrl: detail.masterUrl,
           masterManifest: detail.newManifest || [],
+          pageMapping: detail.pageMapping || {},
+          pageMappingId: detail.pageMappingId || null,
           updatedAt: detail.updatedAt,
           forceReload: true,
         }, '*');

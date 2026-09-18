@@ -812,29 +812,59 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
 
                 # Phase 3: Single source of truth for the offset mapping
                 page_mapping = {}
+                page_mapping_id = None
                 if old_manifest and new_manifest:
                     for doc in old_manifest:
                         start = doc.get('start_page', 1)
                         end = doc.get('end_page', 1)
                         doc_id = str(doc.get('id', ''))
                         doc_title = doc.get('title', '').strip().lower()
-                        new_doc = next((nd for nd in new_manifest if (nd.get('id') and str(nd.get('id')) == doc_id) or (nd.get('title') and nd.get('title').strip().lower() == doc_title)), None)
+
+                        # Identity must be resolved by stable ID before title.
+                        # A filing pack can contain two forms with the same title;
+                        # matching either of them to the first title match maps
+                        # annotations to the wrong pages (for example 16 -> 14).
+                        new_doc = next(
+                            (nd for nd in new_manifest if nd.get('id') and str(nd.get('id')) == doc_id),
+                            None
+                        )
+                        if not new_doc and doc_title:
+                            title_matches = [
+                                nd for nd in new_manifest
+                                if nd.get('title') and nd.get('title').strip().lower() == doc_title
+                            ]
+                            new_doc = title_matches[0] if len(title_matches) == 1 else None
                         
                         for op in range(start, end + 1):
                             if new_doc:
                                 offset = op - start
-                                safe_offset = min(offset, max(0, new_doc.get('page_count', 1) - 1))
-                                page_mapping[str(op)] = new_doc.get('start_page', 1) + safe_offset
+                                new_page_count = max(0, int(new_doc.get('page_count', 0) or 0))
+                                # A shortened replacement has no equivalent for
+                                # its trailing old pages. Mark them orphaned;
+                                # never clamp them onto the final new page.
+                                page_mapping[str(op)] = (
+                                    new_doc.get('start_page', 1) + offset
+                                    if offset < new_page_count else None
+                                )
                             else:
                                 page_mapping[str(op)] = None
+
+                    # This ID identifies this exact old-to-new compilation.
+                    # Store it in every migrated snapshot as well as the master
+                    # record, so a restored snapshot knows whether its page
+                    # coordinates already include this migration.
+                    import uuid
+                    page_mapping_id = str(uuid.uuid4())
 
                     try:
                         from .models_versions import CaseDraftVersion
                         
                         def apply_mapping(field):
                             if isinstance(field, int):
-                                new_p = page_mapping.get(str(field))
-                                return new_p if new_p is not None else field
+                                if str(field) not in page_mapping:
+                                    return field
+                                new_p = page_mapping[str(field)]
+                                return new_p if new_p is not None else -1
                             return field
 
                         doc_ident = f"doc-master-{case_id}"
@@ -843,6 +873,13 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                         for ver in all_versions:
                             snap = ver.snapshot_data or {}
                             changed = False
+
+                            applied_mapping_ids = snap.get('appliedFilingPackMappingIds', [])
+                            if not isinstance(applied_mapping_ids, list):
+                                applied_mapping_ids = []
+                            if page_mapping_id not in applied_mapping_ids:
+                                snap['appliedFilingPackMappingIds'] = [*applied_mapping_ids, page_mapping_id]
+                                changed = True
 
                             for a in snap.get('anchors', []):
                                 op = a.get('pageNumber')
@@ -929,6 +966,18 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     except Exception as snap_err:
                         print(f"Non-fatal error remapping snapshot versions: {snap_err}")
 
+                    # Keep the authoritative mapping with the master record so
+                    # DocuMind can apply it on a later visit. A browser event is
+                    # transient when the filing pack is reordered outside the
+                    # Drafting iframe.
+                    import json
+                    master_doc.verification_notes = json.dumps({
+                        'manifest': new_manifest,
+                        'last_page_mapping': page_mapping,
+                        'last_page_mapping_id': page_mapping_id,
+                    })
+                    master_doc.save(update_fields=['verification_notes', 'updated_at'])
+
                 from .serializers import UserDocumentSerializer
                 serializer = UserDocumentSerializer(master_doc, context={'request': request})
                 return Response({
@@ -937,6 +986,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     "old_manifest": old_manifest,
                     "new_manifest": new_manifest,
                     "page_mapping": page_mapping,
+                    "page_mapping_id": page_mapping_id,
                     "updated_at": master_doc.updated_at.isoformat() if master_doc.updated_at else None
                 }, status=status.HTTP_200_OK)
         except Exception as e:
@@ -975,6 +1025,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
 
         import json
         manifest = []
+        page_mapping = {}
+        page_mapping_id = None
         if master_doc.verification_notes:
             try:
                 parsed = json.loads(master_doc.verification_notes)
@@ -982,6 +1034,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     manifest = parsed
                 elif isinstance(parsed, dict):
                     manifest = parsed.get('manifest_json', parsed.get('manifest', []))
+                    page_mapping = parsed.get('last_page_mapping', {})
+                    page_mapping_id = parsed.get('last_page_mapping_id')
             except Exception:
                 manifest = []
 
@@ -997,7 +1051,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             "master_document_id": str(master_doc.id),
             "master_url": master_url,
             "manifest": manifest,
+            "page_mapping": page_mapping,
+            "page_mapping_id": page_mapping_id,
             "updated_at": master_doc.updated_at.isoformat() if master_doc.updated_at else None
         }, status=status.HTTP_200_OK)
-
-
