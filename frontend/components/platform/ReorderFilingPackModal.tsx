@@ -51,7 +51,7 @@ interface ReorderFilingPackModalProps {
   caseId: string;
   caseTitle?: string;
   accent?: string;
-  onReordered?: () => void;
+  onReordered?: (masterDoc?: any) => void;
 }
 
 export default function ReorderFilingPackModal({
@@ -160,7 +160,7 @@ export default function ReorderFilingPackModal({
         }
 
         toast.success('Filing index reordered and Master PDF recompiled!');
-        if (onReordered) onReordered();
+        if (onReordered) onReordered(masterDoc);
         onClose();
       } else {
         const data = await res.json().catch(() => ({}));

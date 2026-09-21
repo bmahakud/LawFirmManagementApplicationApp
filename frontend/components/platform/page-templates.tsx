@@ -2432,26 +2432,19 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
 
   const [isRecompiling, setIsRecompiling] = useState(false);
 
-  const handleReordered = async () => {
+  const handleReordered = async (updatedMasterDoc?: any) => {
+    if (updatedMasterDoc && (updatedMasterDoc.file_url || updatedMasterDoc.id)) {
+      setDoc({ ...updatedMasterDoc, _cacheBust: Date.now() });
+      toast.success('Master PDF Table of Contents updated!');
+      return;
+    }
     const toastId = toast.loading('Recompiling Master PDF Table of Contents...');
     setIsRecompiling(true);
     try {
-      const initialUpdatedAt = doc?.updated_at;
-      let freshDoc = null;
-      for (let attempt = 0; attempt < 10; attempt++) {
-        await new Promise(r => setTimeout(r, 800));
-        const response = await customFetch(API.DOCUMENTS.DETAIL(documentId));
-        if (response.ok) {
-          const data = await response.json();
-          if (data.updated_at && data.updated_at !== initialUpdatedAt) {
-            freshDoc = data;
-            break;
-          }
-          freshDoc = data;
-        }
-      }
-      if (freshDoc) {
-        setDoc({ ...freshDoc, _cacheBust: Date.now() });
+      const response = await customFetch(API.DOCUMENTS.DETAIL(documentId));
+      if (response.ok) {
+        const data = await response.json();
+        setDoc({ ...data, _cacheBust: Date.now() });
       }
       toast.success('Master PDF Table of Contents updated!', { id: toastId });
     } catch (err) {

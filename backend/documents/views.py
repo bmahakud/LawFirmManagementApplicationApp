@@ -1060,9 +1060,16 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 master_doc.updated_at = now
                 master_doc.save(update_fields=['verification_notes', 'updated_at'])
 
-            # Asynchronously compile physical merged Master PDF in background without blocking HTTP response
-            from .services.pdf_merger import trigger_auto_recompile_master_pack
-            trigger_auto_recompile_master_pack(str(case_id), request.user)
+            # Fast synchronous compilation (single-pass stamping takes ~1-3s) outside atomic transaction
+            try:
+                from .services.pdf_merger import generate_merged_case_filing_pdf
+                fresh_master = generate_merged_case_filing_pdf(str(case_id), request.user)
+                if fresh_master:
+                    master_doc = fresh_master
+            except Exception as comp_err:
+                print(f"[Reorder] Error in immediate PDF compilation, triggering async fallback: {comp_err}")
+                from .services.pdf_merger import trigger_auto_recompile_master_pack
+                trigger_auto_recompile_master_pack(str(case_id), request.user)
 
             from .serializers import UserDocumentSerializer
             serializer = UserDocumentSerializer(master_doc, context={'request': request})
