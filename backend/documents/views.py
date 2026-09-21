@@ -752,8 +752,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         try:
             with transaction.atomic():
                 from cases.models import Case
-                # Phase 5: Transactionality & concurrent-reorder protection
-                case_obj = Case.objects.select_for_update().get(id=case_id)
+                case_obj = Case.objects.get(id=case_id)
 
                 for seq, item in enumerate(ordered_items, 1):
                     item_id = item.get('id') if isinstance(item, dict) else item
