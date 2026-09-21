@@ -179,17 +179,6 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
             updatedAt: foundMaster?.updated_at || null,
             forceReload: isMasterUpdated,
           }, '*');
-
-          if (isMasterUpdated) {
-            iframeRef.current.contentWindow.postMessage({
-              type: 'DOCU_MIND_FILING_PACK_REORDERED',
-              caseId,
-              masterUrl: foundMaster?.file_url || null,
-              newManifest: masterManifest,
-              updatedAt: foundMaster?.updated_at || null,
-              forceReload: true,
-            }, '*');
-          }
         }
       }
       prevDocsCountRef.current = docs.length;

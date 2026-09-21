@@ -201,6 +201,33 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
         });
 
         if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const masterDocData = data.master_document;
+          const oldManifest = data.old_manifest || [];
+          const newManifest = data.new_manifest || [];
+          const pageMapping = data.page_mapping || {};
+          const pageMappingId = data.page_mapping_id || null;
+          const masterUrl = masterDocData?.file_url || null;
+          const updatedAt = data.updated_at || masterDocData?.updated_at || new Date().toISOString();
+
+          if (typeof window !== 'undefined') {
+            const detail = {
+              caseId,
+              oldManifest,
+              newManifest,
+              pageMapping,
+              pageMappingId,
+              masterUrl,
+              updatedAt,
+              timestamp: Date.now()
+            };
+            window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail }));
+            try {
+              localStorage.setItem(`filing_pack_reordered_${caseId}`, JSON.stringify(detail));
+              localStorage.setItem(`documind_last_master_updated_${caseId}`, updatedAt);
+            } catch {}
+          }
+
           toast.success('Master PDF recompiled with new document order!');
           await fetchDocuments();
           if (onDocumentVerified) onDocumentVerified();
