@@ -753,7 +753,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 from cases.models import Case
                 # Phase 5: Transactionality & concurrent-reorder protection
-                _ = Case.objects.select_for_update().get(id=case_id)
+                case_obj = Case.objects.select_for_update().get(id=case_id)
 
                 for seq, item in enumerate(ordered_items, 1):
                     item_id = item.get('id') if isinstance(item, dict) else item
@@ -775,7 +775,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                         if not c_cnt:
                             UserDocument.objects.filter(id=item_id, case_id=case_id).update(custom_sequence=target_seq)
 
-                # Capture old manifest before recompilation
+                # Capture old manifest before deriving new manifest
                 old_master = UserDocument.objects.filter(
                     case_id=case_id,
                     is_deleted=False,
@@ -794,21 +794,95 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     except Exception:
                         old_manifest = []
 
-                # Trigger immediate recompilation with updated order
-                from .services.pdf_merger import generate_merged_case_filing_pdf
-                master_doc = generate_merged_case_filing_pdf(case_id, user=request.user)
+                # Build lookup of known page counts from old manifest for instant resolution
+                manifest_page_counts = {str(m.get('id')): int(m.get('page_count') or 1) for m in old_manifest if m.get('id')}
+
+                # Fetch all filing pack forms and documents
+                filled_forms = list(FilledCourtForm.objects.filter(case_id=case_id).order_by('created_at'))
+                docs = list(UserDocument.objects.filter(
+                    case_id=case_id,
+                    is_deleted=False,
+                    is_in_all_documents=True
+                ).exclude(
+                    document_title__icontains="Master Case Filing Pack"
+                ).exclude(
+                    document_title__icontains=".ltproj"
+                ).exclude(
+                    document_file__icontains=".ltproj"
+                ).exclude(
+                    fulfills_request__status__in=['pending', 'uploaded', 'rejected']
+                ).order_by('uploaded_at'))
+
+                all_items = []
+                for f in filled_forms:
+                    form_title = getattr(f.template, 'name', f"Court Form #{str(f.id)[:8]}") if getattr(f, 'template', None) else f"Court Form #{str(f.id)[:8]}"
+                    p_count = manifest_page_counts.get(str(f.id))
+                    if p_count is None:
+                        p_count = 1
+                    all_items.append({
+                        'id': str(f.id),
+                        'title': form_title,
+                        'item_type': 'court_form',
+                        'sequence': int(getattr(f, 'custom_sequence', 0) or 0),
+                        'created_sort_key': f.created_at.isoformat() if hasattr(f, 'created_at') and f.created_at else '',
+                        'page_count': max(1, p_count)
+                    })
+
+                for d in docs:
+                    import os
+                    file_ext = os.path.splitext(d.document_file.name)[1].lower() if d.document_file else ''
+                    p_count = manifest_page_counts.get(str(d.id))
+                    if p_count is None:
+                        if file_ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']:
+                            p_count = 1
+                        elif file_ext in ['.pdf'] and d.document_file:
+                            try:
+                                from pypdf import PdfReader
+                                d.document_file.open('rb')
+                                r = PdfReader(d.document_file)
+                                p_count = len(r.pages)
+                                d.document_file.close()
+                            except Exception:
+                                p_count = 1
+                        else:
+                            p_count = 1
+                    all_items.append({
+                        'id': str(d.id),
+                        'title': d.document_title or 'Untitled Document',
+                        'item_type': 'document',
+                        'sequence': int(getattr(d, 'custom_sequence', 0) or 0),
+                        'created_sort_key': d.uploaded_at.isoformat() if d.uploaded_at else '',
+                        'page_count': max(1, p_count)
+                    })
+
+                has_custom = any(int(item.get('sequence', 0) or 0) > 0 for item in all_items)
+                if has_custom:
+                    sorted_items = sorted(
+                        all_items,
+                        key=lambda x: (
+                            int(x.get('sequence') or 0) if int(x.get('sequence') or 0) > 0 else 999990,
+                            x.get('created_sort_key', '')
+                        )
+                    )
+                else:
+                    sorted_items = all_items
+
+                total_items = len(sorted_items)
+                cover_page_count = 1 if total_items <= 10 else (2 if total_items <= 25 else 3)
+                current_page = cover_page_count + 1
 
                 new_manifest = []
-                if master_doc and master_doc.verification_notes:
-                    try:
-                        import json
-                        parsed = json.loads(master_doc.verification_notes)
-                        if isinstance(parsed, list):
-                            new_manifest = parsed
-                        elif isinstance(parsed, dict):
-                            new_manifest = parsed.get('manifest_json', parsed.get('manifest', []))
-                    except Exception:
-                        new_manifest = []
+                for itm in sorted_items:
+                    pc = itm['page_count']
+                    new_manifest.append({
+                        'id': str(itm['id']),
+                        'title': itm['title'],
+                        'item_type': itm['item_type'],
+                        'start_page': current_page,
+                        'page_count': pc,
+                        'end_page': current_page + pc - 1
+                    })
+                    current_page += pc
 
                 # Phase 3: Single source of truth for the offset mapping
                 page_mapping = {}
@@ -820,10 +894,6 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                         doc_id = str(doc.get('id', ''))
                         doc_title = doc.get('title', '').strip().lower()
 
-                        # Identity must be resolved by stable ID before title.
-                        # A filing pack can contain two forms with the same title;
-                        # matching either of them to the first title match maps
-                        # annotations to the wrong pages (for example 16 -> 14).
                         new_doc = next(
                             (nd for nd in new_manifest if nd.get('id') and str(nd.get('id')) == doc_id),
                             None
@@ -839,9 +909,6 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                             if new_doc:
                                 offset = op - start
                                 new_page_count = max(0, int(new_doc.get('page_count', 0) or 0))
-                                # A shortened replacement has no equivalent for
-                                # its trailing old pages. Mark them orphaned;
-                                # never clamp them onto the final new page.
                                 page_mapping[str(op)] = (
                                     new_doc.get('start_page', 1) + offset
                                     if offset < new_page_count else None
@@ -849,10 +916,6 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                             else:
                                 page_mapping[str(op)] = None
 
-                    # This ID identifies this exact old-to-new compilation.
-                    # Store it in every migrated snapshot as well as the master
-                    # record, so a restored snapshot knows whether its page
-                    # coordinates already include this migration.
                     import uuid
                     page_mapping_id = str(uuid.uuid4())
 
@@ -966,29 +1029,52 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     except Exception as snap_err:
                         print(f"Non-fatal error remapping snapshot versions: {snap_err}")
 
-                    # Keep the authoritative mapping with the master record so
-                    # DocuMind can apply it on a later visit. A browser event is
-                    # transient when the filing pack is reordered outside the
-                    # Drafting iframe.
-                    import json
-                    master_doc.verification_notes = json.dumps({
-                        'manifest': new_manifest,
-                        'last_page_mapping': page_mapping,
-                        'last_page_mapping_id': page_mapping_id,
-                    })
-                    master_doc.save(update_fields=['verification_notes', 'updated_at'])
+                from django.utils import timezone
+                now = timezone.now()
+                master_title = f"Master Case Filing Pack ({case_obj.case_title})"
+                uploader = request.user or case_obj.assigned_advocate or case_obj.solo_advocate
+                
+                master_doc = old_master
+                if not master_doc:
+                    master_doc, _ = UserDocument.objects.get_or_create(
+                        case_id=case_id,
+                        document_title=master_title,
+                        defaults={
+                            'document_type': 'drafting',
+                            'document_category': 'case_filing_pack',
+                            'uploaded_by': uploader,
+                            'verification_status': 'verified',
+                            'is_in_all_documents': True,
+                            'is_in_other_documents': False,
+                            'is_deleted': False
+                        }
+                    )
 
-                from .serializers import UserDocumentSerializer
-                serializer = UserDocumentSerializer(master_doc, context={'request': request})
-                return Response({
-                    "detail": "Filing pack reordered and recompiled successfully.",
-                    "master_document": serializer.data,
-                    "old_manifest": old_manifest,
-                    "new_manifest": new_manifest,
-                    "page_mapping": page_mapping,
-                    "page_mapping_id": page_mapping_id,
-                    "updated_at": master_doc.updated_at.isoformat() if master_doc.updated_at else None
-                }, status=status.HTTP_200_OK)
+                import json
+                master_doc.verification_notes = json.dumps({
+                    'manifest': new_manifest,
+                    'manifest_json': new_manifest,
+                    'last_page_mapping': page_mapping,
+                    'last_page_mapping_id': page_mapping_id,
+                })
+                master_doc.updated_at = now
+                master_doc.save(update_fields=['verification_notes', 'updated_at'])
+
+            # Asynchronously compile physical merged Master PDF in background without blocking HTTP response
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(case_id), request.user)
+
+            from .serializers import UserDocumentSerializer
+            serializer = UserDocumentSerializer(master_doc, context={'request': request})
+            return Response({
+                "detail": "Filing pack reordered and recompiled successfully.",
+                "master_document": serializer.data,
+                "old_manifest": old_manifest,
+                "new_manifest": new_manifest,
+                "page_mapping": page_mapping,
+                "page_mapping_id": page_mapping_id,
+                "updated_at": master_doc.updated_at.isoformat() if master_doc.updated_at else None
+            }, status=status.HTTP_200_OK)
         except Exception as e:
             print(f"Error recompiling merged PDF after reorder: {e}")
             import traceback

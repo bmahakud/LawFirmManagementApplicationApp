@@ -917,7 +917,30 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
         }
         for item in summary_list
     ]
-    manifest_json = json.dumps(manifest)
+    existing_master = UserDocument.objects.filter(
+        case_id=case_id,
+        document_title=master_title,
+        is_deleted=False
+    ).first()
+
+    last_mapping = None
+    last_mapping_id = None
+    if existing_master and existing_master.verification_notes:
+        try:
+            parsed = json.loads(existing_master.verification_notes)
+            if isinstance(parsed, dict):
+                last_mapping = parsed.get('last_page_mapping')
+                last_mapping_id = parsed.get('last_page_mapping_id')
+        except Exception:
+            pass
+
+    notes_dict = {
+        'manifest': manifest,
+        'manifest_json': manifest,
+        'last_page_mapping': last_mapping,
+        'last_page_mapping_id': last_mapping_id,
+    }
+    manifest_json = json.dumps(notes_dict)
 
     # Update existing or create new master document
     uploader = user or case_obj.assigned_advocate or case_obj.solo_advocate
