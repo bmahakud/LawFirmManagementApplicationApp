@@ -1056,26 +1056,24 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     'manifest_json': new_manifest,
                     'last_page_mapping': page_mapping,
                     'last_page_mapping_id': page_mapping_id,
+                    'is_recompiling': True,
                 })
                 master_doc.updated_at = now
                 master_doc.save(update_fields=['verification_notes', 'updated_at'])
 
-            # Fast synchronous compilation (single-pass stamping takes ~1-3s) outside atomic transaction
-            try:
-                from .services.pdf_merger import generate_merged_case_filing_pdf
-                fresh_master = generate_merged_case_filing_pdf(str(case_id), request.user)
-                if fresh_master:
-                    master_doc = fresh_master
-            except Exception as comp_err:
-                print(f"[Reorder] Error in immediate PDF compilation, triggering async fallback: {comp_err}")
-                from .services.pdf_merger import trigger_auto_recompile_master_pack
-                trigger_auto_recompile_master_pack(str(case_id), request.user)
+            # Trigger background recompile so HTTP request returns instantly and never times out (prevents 502 Bad Gateway)
+            from .services.pdf_merger import trigger_auto_recompile_master_pack
+            trigger_auto_recompile_master_pack(str(case_id), request.user)
 
             from .serializers import UserDocumentSerializer
             serializer = UserDocumentSerializer(master_doc, context={'request': request})
+            doc_data = serializer.data
+            doc_data['is_recompiling'] = True
+
             return Response({
-                "detail": "Filing pack reordered and recompiled successfully.",
-                "master_document": serializer.data,
+                "detail": "Filing pack reordered successfully. PDF recompilation in progress.",
+                "master_document": doc_data,
+                "is_recompiling": True,
                 "old_manifest": old_manifest,
                 "new_manifest": new_manifest,
                 "page_mapping": page_mapping,

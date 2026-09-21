@@ -10,6 +10,7 @@ EnvironmentFile=/home/sammy/LawFirmManagementApplicationApp/backend/.env
 ExecStart=/home/sammy/LawFirmManagementApplicationApp/backend/venv/bin/gunicorn \
           --access-logfile - \
           --workers 3 \
+          --timeout 180 \
           --bind unix:/home/sammy/LawFirmManagementApplicationApp/backend/gunicorn.sock \
           myproject.wsgi:application
 

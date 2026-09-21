@@ -665,7 +665,26 @@ def generate_merged_case_filing_pdf(case_id, user=None):
     Acquires a per-case lock and delegates to compilation.
     """
     with _get_case_lock(str(case_id)):
-        return _generate_merged_case_filing_pdf_locked(case_id, user)
+        try:
+            return _generate_merged_case_filing_pdf_locked(case_id, user)
+        except Exception as e:
+            try:
+                from cases.models import Case
+                from documents.models import UserDocument
+                import json
+                case_obj = Case.objects.filter(id=case_id).first()
+                if case_obj:
+                    master_title = f"Master Case Filing Pack ({case_obj.case_title})"
+                    m_doc = UserDocument.objects.filter(case_id=case_id, document_title=master_title, is_deleted=False).first()
+                    if m_doc and m_doc.verification_notes:
+                        p = json.loads(m_doc.verification_notes)
+                        if isinstance(p, dict) and p.get('is_recompiling'):
+                            p['is_recompiling'] = False
+                            m_doc.verification_notes = json.dumps(p)
+                            m_doc.save(update_fields=['verification_notes'])
+            except Exception:
+                pass
+            raise e
 
 
 def _generate_merged_case_filing_pdf_locked(case_id, user=None):
@@ -947,6 +966,7 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
         'manifest_json': manifest,
         'last_page_mapping': last_mapping,
         'last_page_mapping_id': last_mapping_id,
+        'is_recompiling': False,
     }
     manifest_json = json.dumps(notes_dict)
 

@@ -24,17 +24,29 @@ class UserDocumentSerializer(serializers.ModelSerializer):
             'is_in_all_documents', 'is_in_other_documents', 'is_copied',
             'is_deleted', 'deleted_at', 'deleted_by', 'deleted_by_name',
             'version', 'custom_sequence', 'parent_document', 'uploaded_at', 'updated_at',
-            'filing_pack_manifest'
+            'filing_pack_manifest', 'is_recompiling'
         ]
         read_only_fields = [
             'id', 'uploaded_by', 'uploaded_by_name', 'firm', 'uploaded_at', 
             'updated_at', 'verified_at', 'verified_by', 'verified_by_name',
             'is_deleted', 'deleted_at', 'deleted_by', 'deleted_by_name',
             'file_url', 'document_type_display', 'client_name', 'case_title',
-            'filing_pack_manifest'
+            'filing_pack_manifest', 'is_recompiling'
         ]
     
     filing_pack_manifest = serializers.SerializerMethodField()
+    is_recompiling = serializers.SerializerMethodField()
+
+    def get_is_recompiling(self, obj):
+        if obj.verification_notes and obj.document_title and 'master case filing pack' in obj.document_title.lower():
+            try:
+                import json
+                parsed = json.loads(obj.verification_notes)
+                if isinstance(parsed, dict):
+                    return bool(parsed.get('is_recompiling', False))
+            except Exception:
+                return False
+        return False
 
     def get_filing_pack_manifest(self, obj):
         if obj.verification_notes and obj.document_title and 'master case filing pack' in obj.document_title.lower():
