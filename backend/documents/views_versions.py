@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from cases.models import Case
 from .models_versions import CaseDraftVersion
@@ -151,7 +151,7 @@ class CaseDraftVersionViewSet(viewsets.ModelViewSet):
             snapshot_data=snapshot_data
         )
 
-    @action(detail=False, methods=['post'], url_path='upload-excerpt-image')
+    @action(detail=False, methods=['post'], url_path='upload-excerpt-image', permission_classes=[AllowAny])
     def upload_excerpt_image(self, request):
         """
         Directly uploads an excerpt image to DigitalOcean Spaces CDN / default_storage.

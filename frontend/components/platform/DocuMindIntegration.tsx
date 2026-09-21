@@ -212,18 +212,6 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
           updatedAt: detail.updatedAt,
           forceReload: true,
         }, '*');
-
-        iframeRef.current.contentWindow.postMessage({
-          type: 'DOCU_MIND_NEW_FILES_AVAILABLE',
-          count: 1,
-          isReordered: true,
-          masterUrl: detail.masterUrl,
-          masterManifest: detail.newManifest || [],
-          pageMapping: detail.pageMapping || {},
-          pageMappingId: detail.pageMappingId || null,
-          updatedAt: detail.updatedAt,
-          forceReload: true,
-        }, '*');
       }
 
       fetchCaseFiles();
@@ -389,6 +377,28 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
         } catch (err) {
           console.error('Error in DOCU_MIND_SAVE_VERSION:', err);
           toast.error('Network error saving milestone', { id: 'documind-version-save' });
+        }
+      }
+
+      if (type === 'DOCU_MIND_UPLOAD_EXCERPT_IMAGE' && event.data?.payload) {
+        try {
+          const res = await customFetch('/api/documents/draft-versions/upload-excerpt-image/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(event.data.payload)
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.image_url) {
+              iframeRef.current?.contentWindow?.postMessage({
+                type: 'DOCU_MIND_EXCERPT_IMAGE_UPLOADED',
+                originalUrl: event.data.payload.data_url,
+                cdnUrl: data.image_url
+              }, '*');
+            }
+          }
+        } catch (err) {
+          console.error('Error in DOCU_MIND_UPLOAD_EXCERPT_IMAGE:', err);
         }
       }
 
