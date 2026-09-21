@@ -2430,18 +2430,35 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
     fetchDoc();
   }, [documentId]);
 
+  const [isRecompiling, setIsRecompiling] = useState(false);
+
   const handleReordered = async () => {
+    const toastId = toast.loading('Recompiling Master PDF Table of Contents...');
+    setIsRecompiling(true);
     try {
-      setLoading(true);
-      const response = await customFetch(API.DOCUMENTS.DETAIL(documentId));
-      if (response.ok) {
-        const data = await response.json();
-        setDoc(data);
+      const initialUpdatedAt = doc?.updated_at;
+      let freshDoc = null;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise(r => setTimeout(r, 800));
+        const response = await customFetch(API.DOCUMENTS.DETAIL(documentId));
+        if (response.ok) {
+          const data = await response.json();
+          if (data.updated_at && data.updated_at !== initialUpdatedAt) {
+            freshDoc = data;
+            break;
+          }
+          freshDoc = data;
+        }
       }
+      if (freshDoc) {
+        setDoc({ ...freshDoc, _cacheBust: Date.now() });
+      }
+      toast.success('Master PDF Table of Contents updated!', { id: toastId });
     } catch (err) {
       console.error('Error refreshing document after reordering:', err);
+      toast.dismiss(toastId);
     } finally {
-      setLoading(false);
+      setIsRecompiling(false);
     }
   };
 
@@ -2468,7 +2485,10 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
     );
   }
 
-  const fileUrl = doc.file_url || doc.document_file;
+  const rawFileUrl = doc.file_url || doc.document_file || '';
+  const fileUrl = rawFileUrl
+    ? `${rawFileUrl}${rawFileUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(doc.updated_at || doc._cacheBust || Date.now())}`
+    : '';
 
   const handleDownload = async () => {
     try {
@@ -2534,8 +2554,15 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
         }
       />
 
-      <div className="animate-in fade-in zoom-in-95 duration-500 delay-150">
+      <div className="relative animate-in fade-in zoom-in-95 duration-500 delay-150">
+        {isRecompiling && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm rounded-2xl min-h-[400px]">
+            <Loader2 className="h-8 w-8 animate-spin text-indigo-600 mb-2" />
+            <p className="text-sm font-semibold text-gray-700">Refreshing Master PDF with updated filing index...</p>
+          </div>
+        )}
         <DocumentViewer
+          key={`${doc.id}-${doc.updated_at || ''}-${doc._cacheBust || ''}`}
           url={fileUrl}
           title={doc.document_title}
         />

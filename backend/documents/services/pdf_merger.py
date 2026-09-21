@@ -857,42 +857,50 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
 
     # 4. Stamp Running Continuous Page Numbers on ALL pages (Page X of Total)
     total_compiled_pages = len(writer.pages)
-    for i, page in enumerate(writer.pages, 1):
-        try:
+    short_case = (case_obj.case_title[:40] + '...') if len(case_obj.case_title) > 40 else case_obj.case_title
+    try:
+        stamp_packet = io.BytesIO()
+        first_page = writer.pages[0]
+        init_w = float(first_page.mediabox.width)
+        init_h = float(first_page.mediabox.height)
+        stamp_canvas = canvas.Canvas(stamp_packet, pagesize=(init_w, init_h))
+
+        for i, page in enumerate(writer.pages, 1):
             pw = float(page.mediabox.width)
             ph = float(page.mediabox.height)
-            stamp_packet = io.BytesIO()
-            stamp_canvas = canvas.Canvas(stamp_packet, pagesize=(pw, ph))
-            
+            stamp_canvas.setPageSize((pw, ph))
+
             # Semi-transparent white pill backdrop to ensure 100% legibility on any document scan
             stamp_canvas.setFillColor(colors.HexColor('#FFFFFF'))
             stamp_canvas.setFillAlpha(0.92)
             stamp_canvas.roundRect(24, 8, pw - 48, 22, 4, fill=1, stroke=0)
-            
+
             stamp_canvas.setFillAlpha(1.0)
             # Thin divider line above footer
             stamp_canvas.setStrokeColor(colors.HexColor('#CBD5E1'))
             stamp_canvas.setLineWidth(0.5)
             stamp_canvas.line(30, 26, pw - 30, 26)
-            
+
             # Left: Case Filing Pack title
             stamp_canvas.setFont('Helvetica', 7.5)
             stamp_canvas.setFillColor(colors.HexColor('#475569'))
-            short_case = (case_obj.case_title[:40] + '...') if len(case_obj.case_title) > 40 else case_obj.case_title
             stamp_canvas.drawString(32, 13, f"CASE FILING PACK • {short_case.upper()}")
-            
+
             # Right: Page X of Total
             stamp_canvas.setFont('Helvetica-Bold', 8.5)
             stamp_canvas.setFillColor(colors.HexColor('#0F172A'))
             stamp_canvas.drawRightString(pw - 32, 13, f"Page {i} of {total_compiled_pages}")
-            
-            stamp_canvas.save()
-            stamp_packet.seek(0)
-            
-            stamp_reader = PdfReader(stamp_packet)
-            page.merge_page(stamp_reader.pages[0])
-        except Exception as stamp_err:
-            print(f"Error stamping page {i}: {stamp_err}")
+
+            stamp_canvas.showPage()
+
+        stamp_canvas.save()
+        stamp_packet.seek(0)
+
+        stamp_reader = PdfReader(stamp_packet)
+        for i, page in enumerate(writer.pages):
+            page.merge_page(stamp_reader.pages[i])
+    except Exception as stamp_err:
+        print(f"Error stamping pages: {stamp_err}")
 
     # Write merged result to buffer
     output_buffer = io.BytesIO()
