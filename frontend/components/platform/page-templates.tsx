@@ -135,6 +135,7 @@ function DataTable({
   columns: TableColumn[];
   rows: TableRow[];
 }) {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -211,19 +212,31 @@ function DataTable({
                   {column.label}
                 </th>
               ))}
-              <th className="py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">ACTION</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {pagedRows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + 2} className="py-12 text-center text-slate-400 font-semibold text-sm">
+                <td colSpan={columns.length + 1} className="py-12 text-center text-slate-400 font-semibold text-sm">
                   {query ? 'No records match your search' : 'No records found'}
                 </td>
               </tr>
             ) : (
               pagedRows.map((row, index) => (
-                <tr key={`${row[columns[0].key]}-${index}`} className="hover:bg-slate-50/80 transition-colors group cursor-pointer">
+                <tr
+                  key={`${row[columns[0].key]}-${index}`}
+                  onClick={(e) => {
+                    if (!row.viewHref) return;
+                    const target = e.target as HTMLElement | null;
+                    if (target?.closest('button') || target?.closest('a') || target?.closest('input') || target?.closest('select')) {
+                      return;
+                    }
+                    router.push(row.viewHref);
+                  }}
+                  className={`hover:bg-slate-50/80 active:bg-slate-100/70 transition-colors group ${
+                    row.viewHref ? 'cursor-pointer' : ''
+                  }`}
+                >
                   <td className="py-4 px-6 text-sm font-semibold text-slate-500">
                     {(safePage - 1) * pageSize + index + 1}
                   </td>
@@ -276,22 +289,6 @@ function DataTable({
                       </td>
                     );
                   })}
-                  <td className="py-4 px-6 text-right">
-                    {row.viewHref ? (
-                      <Link
-                        href={row.viewHref}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-all"
-                      >
-                        View
-                        <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
-                      </Link>
-                    ) : (
-                      <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-all">
-                        View
-                        <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
-                      </button>
-                    )}
-                  </td>
                 </tr>
               ))
             )}

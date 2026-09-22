@@ -134,6 +134,9 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
       const backendBase = process.env.NEXT_PUBLIC_API_BASE_URL || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://127.0.0.1:8000' : window.location.origin);
 
       let masterManifest: any[] = [];
+      let allFilesReplaced = false;
+      let lastPageMapping: any = null;
+      let lastPageMappingId: string | null = null;
       if (foundMaster?.filing_pack_manifest && Array.isArray(foundMaster.filing_pack_manifest)) {
         masterManifest = foundMaster.filing_pack_manifest;
       } else if (foundMaster?.verification_notes) {
@@ -141,10 +144,11 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
           const parsed = typeof foundMaster.verification_notes === 'string' ? JSON.parse(foundMaster.verification_notes) : foundMaster.verification_notes;
           if (Array.isArray(parsed)) {
             masterManifest = parsed;
-          } else if (Array.isArray(parsed?.manifest_json)) {
-            masterManifest = parsed.manifest_json;
-          } else if (Array.isArray(parsed?.manifest)) {
-            masterManifest = parsed.manifest;
+          } else if (parsed && typeof parsed === 'object') {
+            masterManifest = parsed.manifest_json || parsed.manifest || [];
+            allFilesReplaced = Boolean(parsed.all_files_replaced);
+            lastPageMapping = parsed.last_page_mapping || null;
+            lastPageMappingId = parsed.last_page_mapping_id || null;
           }
         } catch {}
       }
@@ -157,6 +161,9 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
           caseDocuments: docs,
           masterManifest,
           masterUpdatedAt: foundMaster?.updated_at || null,
+          allFilesReplaced,
+          pageMapping: lastPageMapping,
+          pageMappingId: lastPageMappingId,
         }, '*');
 
         const storedUpdatedAt = typeof window !== 'undefined' ? localStorage.getItem(`documind_last_master_updated_${caseId}`) : null;
@@ -178,6 +185,9 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
             masterManifest,
             updatedAt: foundMaster?.updated_at || null,
             forceReload: isMasterUpdated,
+            allFilesReplaced,
+            pageMapping: lastPageMapping,
+            pageMappingId: lastPageMappingId,
           }, '*');
         }
       }

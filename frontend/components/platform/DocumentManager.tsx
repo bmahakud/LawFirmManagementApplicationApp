@@ -299,6 +299,9 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
       }
       toast.success('Document moved to Other Documents');
       await fetchDocuments();
+      if (typeof window !== 'undefined' && caseId) {
+        window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail: { caseId, timestamp: Date.now() } }));
+      }
       if (onDocumentVerified) onDocumentVerified();
     } catch (err: any) {
       toast.error(err.message || 'Failed to move document');
@@ -341,6 +344,9 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
       }
       toast.success('Document moved back to All Documents');
       await fetchDocuments();
+      if (typeof window !== 'undefined' && caseId) {
+        window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail: { caseId, timestamp: Date.now() } }));
+      }
       if (onDocumentVerified) onDocumentVerified();
     } catch (err: any) {
       toast.error(err.message || 'Failed to move document');

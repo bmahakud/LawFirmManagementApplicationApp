@@ -660,6 +660,42 @@ def _get_case_lock(case_id):
         return _case_compile_locks[case_id]
 
 
+def check_all_files_replaced(old_manifest, new_manifest):
+    """
+    Checks if all items from old_manifest were deleted and none match new_manifest.
+    Returns True only if both manifests have items and zero items match by ID or title.
+    """
+    if not old_manifest or not new_manifest:
+        return False
+
+    matched_indices = set()
+    matched_count = 0
+
+    for doc in old_manifest:
+        doc_id = str(doc.get('id', '') or '').strip()
+        doc_title = (doc.get('title') or '').strip().lower()
+
+        found = False
+        if doc_id:
+            for idx, nd in enumerate(new_manifest):
+                if idx not in matched_indices and str(nd.get('id', '') or '').strip() == doc_id:
+                    matched_indices.add(idx)
+                    found = True
+                    break
+
+        if not found and doc_title:
+            for idx, nd in enumerate(new_manifest):
+                if idx not in matched_indices and (nd.get('title') or '').strip().lower() == doc_title:
+                    matched_indices.add(idx)
+                    found = True
+                    break
+
+        if found:
+            matched_count += 1
+
+    return matched_count == 0
+
+
 def compute_filing_pack_page_mapping(old_manifest, new_manifest):
     """
     Authoritative computation of { str(old_page): new_page } mapping
@@ -721,12 +757,17 @@ def compute_filing_pack_page_mapping(old_manifest, new_manifest):
 
 def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
     """
-    Migrates stored CaseDraftVersion snapshot data in background thread
-    so saved versions match the newly compiled physical PDF page numbers.
+    Migrates stored CaseDraftVersion snapshot data in background thread.
+    - Preserves historical versions in Version Control intact.
+    - Archives current state into a named version BEFORE deleting/remapping annotations.
+    - On the latest working draft:
+        * Deletes annotations on deleted pages (new_page <= 0 or None).
+        * Remaps annotations on moved pages (e.g. page 1 -> 5).
     """
     if not page_mapping:
         return
 
+    import copy
     from django.db import close_old_connections
 
     def _run():
@@ -743,102 +784,219 @@ def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
                 return field
 
             doc_ident = f"doc-master-{case_id}"
-            all_versions = CaseDraftVersion.objects.filter(case_id=case_id, document_identifier=doc_ident).all()
-            for ver in all_versions:
-                snap = ver.snapshot_data or {}
-                changed = False
+            latest_ver = CaseDraftVersion.objects.filter(
+                case_id=case_id,
+                document_identifier=doc_ident
+            ).order_by('-version_number').first()
 
-                applied_mapping_ids = snap.get('appliedFilingPackMappingIds', [])
-                if not isinstance(applied_mapping_ids, list):
-                    applied_mapping_ids = []
-                if page_mapping_id and page_mapping_id not in applied_mapping_ids:
-                    snap['appliedFilingPackMappingIds'] = [*applied_mapping_ids, page_mapping_id]
-                    changed = True
+            if not latest_ver or not latest_ver.snapshot_data:
+                return
 
-                for a in snap.get('anchors', []):
-                    op = a.get('pageNumber')
-                    np = apply_mapping(op)
-                    if np != op:
-                        a['pageNumber'] = np
-                        changed = True
+            snap = latest_ver.snapshot_data or {}
+            applied_mapping_ids = snap.get('appliedFilingPackMappingIds', [])
+            if not isinstance(applied_mapping_ids, list):
+                applied_mapping_ids = []
+            if page_mapping_id and page_mapping_id in applied_mapping_ids:
+                return
 
-                for exc in snap.get('excerpts', []):
-                    op = exc.get('pageNumber')
-                    np = apply_mapping(op)
-                    if np != op:
-                        exc['pageNumber'] = np
-                        changed = True
+            total_ann = (
+                len(snap.get('anchors', [])) +
+                len(snap.get('excerpts', [])) +
+                len(snap.get('nodes', [])) +
+                len(snap.get('freeformHighlights', [])) +
+                len(snap.get('inkStrokes', []))
+            )
 
+            # Check if any pages are being deleted or moved
+            has_changes = False
+            for a in snap.get('anchors', []):
+                op = a.get('pageNumber')
+                if isinstance(op, int) and (apply_mapping(op) != op or apply_mapping(op) <= 0):
+                    has_changes = True
+                    break
+            if not has_changes:
                 for n in snap.get('nodes', []):
                     op = n.get('sourcePageNumber')
-                    if op is not None:
-                        np = apply_mapping(op)
-                        if np != op:
-                            n['sourcePageNumber'] = np
-                            changed = True
+                    if isinstance(op, int) and (apply_mapping(op) != op or apply_mapping(op) <= 0):
+                        has_changes = True
+                        break
 
-                for hl in snap.get('freeformHighlights', []):
-                    op = hl.get('pageNumber')
-                    np = apply_mapping(op)
-                    if np != op:
-                        hl['pageNumber'] = np
-                        changed = True
+            # 1. Archive prior state into Version Control before making modifications
+            archived_version_created = False
+            if total_ann > 0 and has_changes:
+                try:
+                    latest_ver.is_named = True
+                    latest_ver.version_name = f"Archived: Prior Document State ({total_ann} annotations)"
+                    latest_ver.summary = f"Archived milestone snapshot preserving {total_ann} annotations before document removal or reordering."
+                    latest_ver.save(update_fields=['is_named', 'version_name', 'summary'])
+                    archived_version_created = True
+                except Exception as arch_err:
+                    print(f"[pdf_merger] Error archiving milestone version: {arch_err}")
 
-                for st in snap.get('inkStrokes', []):
-                    op = st.get('pageNumber')
-                    np = apply_mapping(op)
-                    if np != op:
-                        st['pageNumber'] = np
-                        changed = True
+            # 2. Remap & cleanly prune deleted annotations from the active draft
+            deleted_anchor_ids = set()
+            deleted_excerpt_ids = set()
+            deleted_node_ids = set()
 
-                for tb in snap.get('sourceTextboxes', []):
-                    op = tb.get('pageNumber')
-                    np = apply_mapping(op)
-                    if np != op:
-                        tb['pageNumber'] = np
-                        changed = True
+            # Anchors
+            active_anchors = []
+            for a in snap.get('anchors', []):
+                op = a.get('pageNumber')
+                np = apply_mapping(op)
+                if np <= 0:
+                    deleted_anchor_ids.add(a.get('id'))
+                else:
+                    a['pageNumber'] = np
+                    if a.get('textQuote'):
+                        import re
+                        a['textQuote'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {np}]', a['textQuote'])
+                    active_anchors.append(a)
+            snap['anchors'] = active_anchors
 
-                for bm in snap.get('sourceBookmarks', []):
-                    op = bm.get('pageNumber')
-                    np = apply_mapping(op)
-                    if np != op:
-                        bm['pageNumber'] = np
-                        changed = True
+            active_anchor_ids = {a.get('id') for a in active_anchors if a.get('id')}
+            active_excerpt_ids = set()
 
-                for pe in snap.get('pageEdits', []):
-                    op = pe.get('pageNumber')
-                    np = apply_mapping(op)
-                    if np != op:
-                        pe['pageNumber'] = np
-                        changed = True
+            # Excerpts
+            active_excerpts = []
+            for exc in snap.get('excerpts', []):
+                op = exc.get('pageNumber')
+                np = apply_mapping(op)
+                if np <= 0 or (exc.get('anchorId') in deleted_anchor_ids) or (exc.get('anchorId') and exc.get('anchorId') not in active_anchor_ids):
+                    deleted_excerpt_ids.add(exc.get('id'))
+                else:
+                    exc['pageNumber'] = np
+                    if exc.get('extractedText'):
+                        import re
+                        exc['extractedText'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {np}]', exc['extractedText'])
+                    active_excerpts.append(exc)
+                    if exc.get('id'):
+                        active_excerpt_ids.add(exc.get('id'))
+            snap['excerpts'] = active_excerpts
 
-                v_state_by_doc = snap.get('viewerStateByDocument', {})
-                for doc_key, v_state in v_state_by_doc.items():
-                    if isinstance(v_state, dict):
-                        old_rotations = v_state.get('pageRotations', {})
-                        new_rotations = {}
-                        for p_str, rot in old_rotations.items():
-                            try:
-                                p_int = int(p_str)
-                                np = apply_mapping(p_int)
+            # Query removed / Other Documents to ensure no dangling excerpts or annotations survive
+            removed_keywords = set()
+            try:
+                from documents.models import UserDocument
+                for od in UserDocument.objects.filter(case_id=case_id, is_in_other_documents=True):
+                    if od.document_title:
+                        removed_keywords.add(od.document_title.strip().lower())
+            except Exception:
+                pass
+
+            # Nodes
+            active_nodes = []
+            for n in snap.get('nodes', []):
+                op = n.get('sourcePageNumber')
+                np = apply_mapping(op) if op is not None else None
+                node_text = (n.get('text') or '').lower()
+                node_title = (n.get('title') or '').lower()
+                has_removed_doc_ref = any(kw in node_text or kw in node_title for kw in removed_keywords if len(kw) > 3)
+                
+                is_orphan = (
+                    (np is not None and np <= 0) or
+                    (n.get('sourceAnchorId') in deleted_anchor_ids) or
+                    (n.get('sourceAnchorId') and n.get('sourceAnchorId') not in active_anchor_ids) or
+                    (n.get('excerptId') in deleted_excerpt_ids) or
+                    ('page -1' in node_title) or
+                    ('page -1' in node_text) or
+                    (has_removed_doc_ref and n.get('sourceAnchorId') not in active_anchor_ids)
+                )
+                if is_orphan:
+                    deleted_node_ids.add(n.get('id'))
+                else:
+                    if np is not None and np > 0:
+                        n['sourcePageNumber'] = np
+                    if n.get('text'):
+                        import re
+                        n['text'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {np}]', n['text'])
+                    active_nodes.append(n)
+            snap['nodes'] = active_nodes
+
+            # Canvas edges & Workspace links
+            snap['canvasEdges'] = [
+                e for e in snap.get('canvasEdges', [])
+                if e.get('sourceAnchorId') not in deleted_anchor_ids and e.get('targetNodeId') not in deleted_node_ids
+            ]
+            snap['workspaceLinks'] = [
+                l for l in snap.get('workspaceLinks', [])
+                if l.get('fromNodeId') not in deleted_node_ids and l.get('toNodeId') not in deleted_node_ids
+            ]
+
+            # Highlights & Strokes & Textboxes
+            snap['freeformHighlights'] = [
+                hl for hl in snap.get('freeformHighlights', [])
+                if (lambda np: np > 0 and (hl.update({'pageNumber': np}) or True))(apply_mapping(hl.get('pageNumber')))
+            ]
+            snap['inkStrokes'] = [
+                st for st in snap.get('inkStrokes', [])
+                if (lambda np: np > 0 and (st.update({'pageNumber': np}) or True))(apply_mapping(st.get('pageNumber')))
+            ]
+            snap['sourceTextboxes'] = [
+                tb for tb in snap.get('sourceTextboxes', [])
+                if (lambda np: np > 0 and (tb.update({'pageNumber': np}) or True))(apply_mapping(tb.get('pageNumber')))
+            ]
+            snap['sourceBookmarks'] = [
+                bm for bm in snap.get('sourceBookmarks', [])
+                if (lambda np: np > 0 and (bm.update({'pageNumber': np}) or True))(apply_mapping(bm.get('pageNumber')))
+            ]
+            snap['pageEdits'] = [
+                pe for pe in snap.get('pageEdits', [])
+                if (lambda np: np > 0 and (pe.update({'pageNumber': np}) or True))(apply_mapping(pe.get('pageNumber')))
+            ]
+
+            # Viewer state
+            v_state_by_doc = snap.get('viewerStateByDocument', {})
+            for doc_key, v_state in v_state_by_doc.items():
+                if isinstance(v_state, dict):
+                    old_rotations = v_state.get('pageRotations', {})
+                    new_rotations = {}
+                    for p_str, rot in old_rotations.items():
+                        try:
+                            p_int = int(p_str)
+                            np = apply_mapping(p_int)
+                            if np > 0:
                                 new_rotations[str(np)] = rot
-                                if np != p_int:
-                                    changed = True
-                            except ValueError:
-                                new_rotations[p_str] = rot
-                        v_state['pageRotations'] = new_rotations
+                        except ValueError:
+                            new_rotations[p_str] = rot
+                    v_state['pageRotations'] = new_rotations
 
-                        active_p = v_state.get('activePage')
-                        np = apply_mapping(active_p)
-                        if np != active_p:
-                            v_state['activePage'] = np
-                            changed = True
+                    active_p = v_state.get('activePage')
+                    np = apply_mapping(active_p)
+                    if np > 0:
+                        v_state['activePage'] = np
 
-                if changed:
-                    ver.snapshot_data = snap
-                    ver.save(update_fields=['snapshot_data'])
+            if page_mapping_id:
+                snap['appliedFilingPackMappingIds'] = [*applied_mapping_ids, page_mapping_id]
+
+            remaining_ann = (
+                len(snap.get('anchors', [])) +
+                len(snap.get('excerpts', [])) +
+                len(snap.get('nodes', [])) +
+                len(snap.get('freeformHighlights', [])) +
+                len(snap.get('inkStrokes', []))
+            )
+            if archived_version_created:
+                next_v_num = (latest_ver.version_number or 1) + 1
+                CaseDraftVersion.objects.create(
+                    case_id=case_id,
+                    document_identifier=doc_ident,
+                    version_name="Auto-saved Draft",
+                    page_count=latest_ver.page_count or 1,
+                    annotation_count=remaining_ann,
+                    summary=f"Working draft after document reorder/removal ({remaining_ann} annotations remaining).",
+                    snapshot_data=snap,
+                    is_named=False,
+                    version_number=next_v_num,
+                    created_by=latest_ver.created_by
+                )
+            else:
+                latest_ver.snapshot_data = snap
+                latest_ver.annotation_count = remaining_ann
+                latest_ver.save(update_fields=['snapshot_data', 'annotation_count'])
         except Exception as e:
-            print(f"[pdf_merger] Error migrating draft versions in background: {e}")
+            print(f"[pdf_merger] Error migrating draft version in background: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             close_old_connections()
 
@@ -1152,21 +1310,43 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
         except Exception:
             pass
 
+    # Check if all previous files were deleted and replaced
+    all_files_replaced = bool(old_manifest and manifest and check_all_files_replaced(old_manifest, manifest))
+
     # Authoritative page remapping computation:
-    # If old_manifest exists and differs from the newly compiled physical manifest,
-    # compute the authoritative page mapping and migrate server draft versions!
+    # If old_manifest exists and differs from the newly compiled physical manifest:
+    # - If files were reordered or updated, migrate server draft versions to new pages.
+    # - If all files were replaced, do NOT overwrite draft version pages to -1.
+    #   Instead, archive the latest draft version as a named milestone snapshot!
     if old_manifest and manifest and old_manifest != manifest:
-        computed_mapping = compute_filing_pack_page_mapping(old_manifest, manifest)
-        if computed_mapping:
-            last_mapping = computed_mapping
-            last_mapping_id = str(uuid.uuid4())
-            migrate_draft_versions_background(case_id, last_mapping, last_mapping_id)
+        if all_files_replaced:
+            try:
+                from documents.models_versions import CaseDraftVersion
+                doc_ident = f"doc-master-{case_id}"
+                latest_version = CaseDraftVersion.objects.filter(
+                    case_id=case_id,
+                    document_identifier=doc_ident
+                ).order_by('-version_number').first()
+                if latest_version and latest_version.annotation_count > 0 and not latest_version.is_named:
+                    latest_version.is_named = True
+                    latest_version.version_name = f"Archived: Previous Case Files ({latest_version.annotation_count} annotations)"
+                    latest_version.summary = f"Archived before all case documents were replaced with new files."
+                    latest_version.save(update_fields=['is_named', 'version_name', 'summary'])
+            except Exception as arch_err:
+                print(f"Error archiving draft version on file replacement: {arch_err}")
+        else:
+            computed_mapping = compute_filing_pack_page_mapping(old_manifest, manifest)
+            if computed_mapping:
+                last_mapping = computed_mapping
+                last_mapping_id = str(uuid.uuid4())
+                migrate_draft_versions_background(case_id, last_mapping, last_mapping_id)
 
     notes_dict = {
         'manifest': manifest,
         'manifest_json': manifest,
         'last_page_mapping': last_mapping,
         'last_page_mapping_id': last_mapping_id,
+        'all_files_replaced': all_files_replaced,
         'is_recompiling': False,
     }
     manifest_json = json.dumps(notes_dict)

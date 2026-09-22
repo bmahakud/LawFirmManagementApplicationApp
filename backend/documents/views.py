@@ -995,6 +995,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         manifest = []
         page_mapping = {}
         page_mapping_id = None
+        all_files_replaced = False
         if master_doc.verification_notes:
             try:
                 parsed = json.loads(master_doc.verification_notes)
@@ -1004,6 +1005,11 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     manifest = parsed.get('manifest_json', parsed.get('manifest', []))
                     page_mapping = parsed.get('last_page_mapping', {})
                     page_mapping_id = parsed.get('last_page_mapping_id')
+                    all_files_replaced = bool(parsed.get('all_files_replaced', False))
+                    if not all_files_replaced and page_mapping:
+                        non_cover_mappings = [v for k, v in page_mapping.items() if str(k) != '1']
+                        if non_cover_mappings and all(v is None or v == -1 for v in non_cover_mappings):
+                            all_files_replaced = True
             except Exception:
                 manifest = []
 
@@ -1021,5 +1027,6 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             "manifest": manifest,
             "page_mapping": page_mapping,
             "page_mapping_id": page_mapping_id,
+            "all_files_replaced": all_files_replaced,
             "updated_at": master_doc.updated_at.isoformat() if master_doc.updated_at else None
         }, status=status.HTTP_200_OK)
