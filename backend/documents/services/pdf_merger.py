@@ -1008,11 +1008,16 @@ def trigger_auto_recompile_master_pack(case_id, user=None):
     if not case_id:
         return
     import threading
+    from django.db import close_old_connections
+
     def _run():
+        close_old_connections()
         try:
             generate_merged_case_filing_pdf(str(case_id), user)
         except Exception as e:
             print(f"[AutoRecompile] Error compiling Master PDF for case {case_id}: {e}")
+        finally:
+            close_old_connections()
     
     t = threading.Thread(target=_run)
     t.daemon = True

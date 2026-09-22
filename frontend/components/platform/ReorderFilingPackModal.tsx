@@ -120,6 +120,7 @@ export default function ReorderFilingPackModal({
         ordered_items: items.map((item, index) => ({
           id: item.id,
           type: item.type,
+          page_count: item.page_count || 1,
           sequence: index + 1
         }))
       };
