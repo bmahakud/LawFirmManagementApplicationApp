@@ -740,125 +740,9 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
     def _migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
         if not page_mapping:
             return
-        import threading
-        from django.db import close_old_connections
+        from .services.pdf_merger import migrate_draft_versions_background
+        migrate_draft_versions_background(case_id, page_mapping, page_mapping_id)
 
-        def _run():
-            close_old_connections()
-            try:
-                from .models_versions import CaseDraftVersion
-
-                def apply_mapping(field):
-                    if isinstance(field, int):
-                        if str(field) not in page_mapping:
-                            return field
-                        new_p = page_mapping[str(field)]
-                        return new_p if new_p is not None else -1
-                    return field
-
-                doc_ident = f"doc-master-{case_id}"
-                all_versions = CaseDraftVersion.objects.filter(case_id=case_id, document_identifier=doc_ident).all()
-                for ver in all_versions:
-                    snap = ver.snapshot_data or {}
-                    changed = False
-
-                    applied_mapping_ids = snap.get('appliedFilingPackMappingIds', [])
-                    if not isinstance(applied_mapping_ids, list):
-                        applied_mapping_ids = []
-                    if page_mapping_id not in applied_mapping_ids:
-                        snap['appliedFilingPackMappingIds'] = [*applied_mapping_ids, page_mapping_id]
-                        changed = True
-
-                    for a in snap.get('anchors', []):
-                        op = a.get('pageNumber')
-                        np = apply_mapping(op)
-                        if np != op:
-                            a['pageNumber'] = np
-                            changed = True
-
-                    for exc in snap.get('excerpts', []):
-                        op = exc.get('pageNumber')
-                        np = apply_mapping(op)
-                        if np != op:
-                            exc['pageNumber'] = np
-                            changed = True
-
-                    for n in snap.get('nodes', []):
-                        op = n.get('sourcePageNumber')
-                        if op is not None:
-                            np = apply_mapping(op)
-                            if np != op:
-                                n['sourcePageNumber'] = np
-                                changed = True
-
-                    for hl in snap.get('freeformHighlights', []):
-                        op = hl.get('pageNumber')
-                        np = apply_mapping(op)
-                        if np != op:
-                            hl['pageNumber'] = np
-                            changed = True
-
-                    for st in snap.get('inkStrokes', []):
-                        op = st.get('pageNumber')
-                        np = apply_mapping(op)
-                        if np != op:
-                            st['pageNumber'] = np
-                            changed = True
-
-                    for tb in snap.get('sourceTextboxes', []):
-                        op = tb.get('pageNumber')
-                        np = apply_mapping(op)
-                        if np != op:
-                            tb['pageNumber'] = np
-                            changed = True
-
-                    for bm in snap.get('sourceBookmarks', []):
-                        op = bm.get('pageNumber')
-                        np = apply_mapping(op)
-                        if np != op:
-                            bm['pageNumber'] = np
-                            changed = True
-
-                    for pe in snap.get('pageEdits', []):
-                        op = pe.get('pageNumber')
-                        np = apply_mapping(op)
-                        if np != op:
-                            pe['pageNumber'] = np
-                            changed = True
-
-                    v_state_by_doc = snap.get('viewerStateByDocument', {})
-                    for doc_key, v_state in v_state_by_doc.items():
-                        if isinstance(v_state, dict):
-                            old_rotations = v_state.get('pageRotations', {})
-                            new_rotations = {}
-                            for p_str, rot in old_rotations.items():
-                                try:
-                                    p_int = int(p_str)
-                                    np = apply_mapping(p_int)
-                                    new_rotations[str(np)] = rot
-                                    if np != p_int:
-                                        changed = True
-                                except ValueError:
-                                    new_rotations[p_str] = rot
-                            v_state['pageRotations'] = new_rotations
-
-                            active_p = v_state.get('activePage')
-                            np = apply_mapping(active_p)
-                            if np != active_p:
-                                v_state['activePage'] = np
-                                changed = True
-
-                    if changed:
-                        ver.snapshot_data = snap
-                        ver.save(update_fields=['snapshot_data'])
-            except Exception as snap_err:
-                print(f"[BackgroundSnapshotMigration] Non-fatal error: {snap_err}")
-            finally:
-                close_old_connections()
-
-        t = threading.Thread(target=_run)
-        t.daemon = True
-        t.start()
 
     @action(detail=False, methods=['post'], url_path='reorder-filing-pack')
     def reorder_filing_pack(self, request):
@@ -1014,39 +898,10 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     current_page += pc
 
                 # Phase 3: Single source of truth for the offset mapping
-                page_mapping = {}
-                page_mapping_id = None
-                if old_manifest and new_manifest:
-                    for doc in old_manifest:
-                        start = doc.get('start_page', 1)
-                        end = doc.get('end_page', 1)
-                        doc_id = str(doc.get('id', ''))
-                        doc_title = doc.get('title', '').strip().lower()
-
-                        new_doc = next(
-                            (nd for nd in new_manifest if nd.get('id') and str(nd.get('id')) == doc_id),
-                            None
-                        )
-                        if not new_doc and doc_title:
-                            title_matches = [
-                                nd for nd in new_manifest
-                                if nd.get('title') and nd.get('title').strip().lower() == doc_title
-                            ]
-                            new_doc = title_matches[0] if len(title_matches) == 1 else None
-                        
-                        for op in range(start, end + 1):
-                            if new_doc:
-                                offset = op - start
-                                new_page_count = max(0, int(new_doc.get('page_count', 0) or 0))
-                                page_mapping[str(op)] = (
-                                    new_doc.get('start_page', 1) + offset
-                                    if offset < new_page_count else None
-                                )
-                            else:
-                                page_mapping[str(op)] = None
-
-                    import uuid
-                    page_mapping_id = str(uuid.uuid4())
+                from .services.pdf_merger import compute_filing_pack_page_mapping
+                page_mapping = compute_filing_pack_page_mapping(old_manifest, new_manifest)
+                import uuid
+                page_mapping_id = str(uuid.uuid4()) if page_mapping else None
 
                 from django.utils import timezone
                 now = timezone.now()

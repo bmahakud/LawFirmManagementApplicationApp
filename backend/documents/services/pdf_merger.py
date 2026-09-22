@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import uuid
 import tempfile
 import threading
 from PIL import Image
@@ -659,6 +660,192 @@ def _get_case_lock(case_id):
         return _case_compile_locks[case_id]
 
 
+def compute_filing_pack_page_mapping(old_manifest, new_manifest):
+    """
+    Authoritative computation of { str(old_page): new_page } mapping
+    comparing old_manifest with new_manifest.
+    - Matches items by 'id' first, then unique case-insensitive trimmed 'title'.
+    - Maps page offsets accurately.
+    - Maps cover page(s) 1 -> 1.
+    - Maps removed items/pages to None.
+    """
+    if not old_manifest or not new_manifest:
+        return {}
+
+    page_mapping = {}
+    matched_new_indices = set()
+
+    for doc in old_manifest:
+        start = int(doc.get('start_page', 1) or 1)
+        end = int(doc.get('end_page', 1) or 1)
+        doc_id = str(doc.get('id', '') or '').strip()
+        doc_title = (doc.get('title') or '').strip().lower()
+
+        new_doc = None
+        new_idx = None
+
+        if doc_id:
+            for idx, nd in enumerate(new_manifest):
+                if idx not in matched_new_indices and str(nd.get('id', '') or '').strip() == doc_id:
+                    new_doc = nd
+                    new_idx = idx
+                    break
+
+        if new_idx is None and doc_title:
+            candidates = [
+                (idx, nd) for idx, nd in enumerate(new_manifest)
+                if idx not in matched_new_indices and (nd.get('title') or '').strip().lower() == doc_title
+            ]
+            if len(candidates) == 1:
+                new_idx, new_doc = candidates[0]
+
+        if new_idx is not None:
+            matched_new_indices.add(new_idx)
+
+        for op in range(start, end + 1):
+            if new_doc:
+                offset = op - start
+                new_page_count = max(0, int(new_doc.get('page_count', 0) or 0))
+                page_mapping[str(op)] = (
+                    int(new_doc.get('start_page', 1) or 1) + offset
+                    if offset < new_page_count else None
+                )
+            else:
+                page_mapping[str(op)] = None
+
+    if '1' not in page_mapping:
+        page_mapping['1'] = 1
+
+    return page_mapping
+
+
+def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
+    """
+    Migrates stored CaseDraftVersion snapshot data in background thread
+    so saved versions match the newly compiled physical PDF page numbers.
+    """
+    if not page_mapping:
+        return
+
+    from django.db import close_old_connections
+
+    def _run():
+        close_old_connections()
+        try:
+            from documents.models_versions import CaseDraftVersion
+
+            def apply_mapping(field):
+                if isinstance(field, int):
+                    if str(field) not in page_mapping:
+                        return field
+                    new_p = page_mapping[str(field)]
+                    return new_p if new_p is not None else -1
+                return field
+
+            doc_ident = f"doc-master-{case_id}"
+            all_versions = CaseDraftVersion.objects.filter(case_id=case_id, document_identifier=doc_ident).all()
+            for ver in all_versions:
+                snap = ver.snapshot_data or {}
+                changed = False
+
+                applied_mapping_ids = snap.get('appliedFilingPackMappingIds', [])
+                if not isinstance(applied_mapping_ids, list):
+                    applied_mapping_ids = []
+                if page_mapping_id and page_mapping_id not in applied_mapping_ids:
+                    snap['appliedFilingPackMappingIds'] = [*applied_mapping_ids, page_mapping_id]
+                    changed = True
+
+                for a in snap.get('anchors', []):
+                    op = a.get('pageNumber')
+                    np = apply_mapping(op)
+                    if np != op:
+                        a['pageNumber'] = np
+                        changed = True
+
+                for exc in snap.get('excerpts', []):
+                    op = exc.get('pageNumber')
+                    np = apply_mapping(op)
+                    if np != op:
+                        exc['pageNumber'] = np
+                        changed = True
+
+                for n in snap.get('nodes', []):
+                    op = n.get('sourcePageNumber')
+                    if op is not None:
+                        np = apply_mapping(op)
+                        if np != op:
+                            n['sourcePageNumber'] = np
+                            changed = True
+
+                for hl in snap.get('freeformHighlights', []):
+                    op = hl.get('pageNumber')
+                    np = apply_mapping(op)
+                    if np != op:
+                        hl['pageNumber'] = np
+                        changed = True
+
+                for st in snap.get('inkStrokes', []):
+                    op = st.get('pageNumber')
+                    np = apply_mapping(op)
+                    if np != op:
+                        st['pageNumber'] = np
+                        changed = True
+
+                for tb in snap.get('sourceTextboxes', []):
+                    op = tb.get('pageNumber')
+                    np = apply_mapping(op)
+                    if np != op:
+                        tb['pageNumber'] = np
+                        changed = True
+
+                for bm in snap.get('sourceBookmarks', []):
+                    op = bm.get('pageNumber')
+                    np = apply_mapping(op)
+                    if np != op:
+                        bm['pageNumber'] = np
+                        changed = True
+
+                for pe in snap.get('pageEdits', []):
+                    op = pe.get('pageNumber')
+                    np = apply_mapping(op)
+                    if np != op:
+                        pe['pageNumber'] = np
+                        changed = True
+
+                v_state_by_doc = snap.get('viewerStateByDocument', {})
+                for doc_key, v_state in v_state_by_doc.items():
+                    if isinstance(v_state, dict):
+                        old_rotations = v_state.get('pageRotations', {})
+                        new_rotations = {}
+                        for p_str, rot in old_rotations.items():
+                            try:
+                                p_int = int(p_str)
+                                np = apply_mapping(p_int)
+                                new_rotations[str(np)] = rot
+                                if np != p_int:
+                                    changed = True
+                            except ValueError:
+                                new_rotations[p_str] = rot
+                        v_state['pageRotations'] = new_rotations
+
+                        active_p = v_state.get('activePage')
+                        np = apply_mapping(active_p)
+                        if np != active_p:
+                            v_state['activePage'] = np
+                            changed = True
+
+                if changed:
+                    ver.snapshot_data = snap
+                    ver.save(update_fields=['snapshot_data'])
+        except Exception as e:
+            print(f"[pdf_merger] Error migrating draft versions in background: {e}")
+        finally:
+            close_old_connections()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+
 def generate_merged_case_filing_pdf(case_id, user=None):
     """
     Main Compilation Function (Thread-Safe):
@@ -950,16 +1137,30 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
         is_deleted=False
     ).first()
 
+    old_manifest = []
     last_mapping = None
     last_mapping_id = None
     if existing_master and existing_master.verification_notes:
         try:
             parsed = json.loads(existing_master.verification_notes)
             if isinstance(parsed, dict):
+                old_manifest = parsed.get('manifest_json', parsed.get('manifest', []))
                 last_mapping = parsed.get('last_page_mapping')
                 last_mapping_id = parsed.get('last_page_mapping_id')
+            elif isinstance(parsed, list):
+                old_manifest = parsed
         except Exception:
             pass
+
+    # Authoritative page remapping computation:
+    # If old_manifest exists and differs from the newly compiled physical manifest,
+    # compute the authoritative page mapping and migrate server draft versions!
+    if old_manifest and manifest and old_manifest != manifest:
+        computed_mapping = compute_filing_pack_page_mapping(old_manifest, manifest)
+        if computed_mapping:
+            last_mapping = computed_mapping
+            last_mapping_id = str(uuid.uuid4())
+            migrate_draft_versions_background(case_id, last_mapping, last_mapping_id)
 
     notes_dict = {
         'manifest': manifest,
