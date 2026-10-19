@@ -14,6 +14,7 @@ const pageTitles = [
   { match: '/advocate/dashboard', title: 'Advocate Dashboard', sub: 'Manage your case files, drafts, and client meetings.' },
   { match: '/advocate/cases/new', title: 'Create New Case', sub: 'Register a new matter and assign it to your team' },
   { match: '/advocate/cases', title: 'Assigned Cases', sub: 'Review matter status, evidence, and next hearing tasks.' },
+  { match: '/advocate/documents', title: 'Case Document', sub: 'Review and manage case files, filings, and court forms.' },
   { match: '/advocate/drafting', title: 'Drafting', sub: 'Prepare petitions, arguments, and revision-ready drafts.' },
   { match: '/advocate/calendar', title: 'Calendar', sub: 'Track hearings, deadlines, and court preparation tasks.' },
   { match: '/advocate/chat', title: 'Client Chat', sub: 'Manage direct client communication and case follow-ups.' },

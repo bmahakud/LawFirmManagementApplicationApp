@@ -141,6 +141,7 @@ class FilledCourtForm(models.Model):
     
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     custom_sequence = models.IntegerField(default=0, help_text="Manual override for document ordering")
+    annexure = models.CharField(max_length=100, blank=True, default='', help_text="Court annexure label, e.g. '1', '2 series', '3', or blank")
     
     # Signatures
     advocate_signed = models.BooleanField(default=False)
@@ -395,4 +396,77 @@ class CaseSignature(models.Model):
 
     def __str__(self):
         return f"{self.name} - Case {self.case_id}"
+
+
+class PersonalizedTemplate(models.Model):
+    """
+    Customized / Personalized document templates created by users (Advocates/Admins).
+    Users can create templates of any type (Affidavit, Legal Notice, Petition, Agreement, or any custom type).
+    Content can be edited with rich text and variables, and optionally added directly to the case's All Documents tab.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('completed', 'Completed'),
+        ('added_to_documents', 'Added to All Documents'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        'cases.Case',
+        on_delete=models.CASCADE,
+        related_name='personalized_templates',
+        null=True,
+        blank=True
+    )
+    client = models.ForeignKey(
+        'clients.Client',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='personalized_templates'
+    )
+    firm = models.ForeignKey(
+        'firms.Firm',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='personalized_templates'
+    )
+    title = models.CharField(max_length=255, help_text="Template title, e.g. Special Power of Attorney")
+    template_type = models.CharField(max_length=100, default='custom', help_text="Category/Type or 'custom'")
+    custom_type_name = models.CharField(max_length=100, blank=True, default='', help_text="User-specified type if custom")
+    description = models.TextField(blank=True, default='')
+    content = models.TextField(blank=True, default='', help_text="Document HTML or text content")
+    fields = models.JSONField(default=list, blank=True, help_text="List of variable definitions")
+    field_values = models.JSONField(default=dict, blank=True, help_text="Filled variable values for this case")
+    status = models.CharField(max_length=30, default='draft', choices=STATUS_CHOICES)
+    is_added_to_all_docs = models.BooleanField(default=False, help_text="Flag indicating if added to case All Documents")
+    generated_document = models.ForeignKey(
+        'documents.UserDocument',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='source_personalized_templates'
+    )
+    created_by = models.ForeignKey(
+        'accounts.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_personalized_templates'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Personalized Template'
+        verbose_name_plural = 'Personalized Templates'
+        indexes = [
+            models.Index(fields=['case', 'created_at']),
+        ]
+
+    def __str__(self):
+        type_str = self.custom_type_name if self.template_type == 'custom' and self.custom_type_name else self.template_type
+        return f"{self.title} ({type_str})"
 

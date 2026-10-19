@@ -2,7 +2,7 @@
 Serializers for PDF-style court form templates
 """
 from rest_framework import serializers
-from .models_templates import CourtFormTemplate, FilledCourtForm, CaseSignature
+from .models_templates import CourtFormTemplate, FilledCourtForm, CaseSignature, PersonalizedTemplate
 
 
 class CourtFormTemplateSerializer(serializers.ModelSerializer):
@@ -37,7 +37,7 @@ class FilledCourtFormSerializer(serializers.ModelSerializer):
             'id', 'template', 'template_name', 'template_category',
             'case', 'case_number', 'client', 'client_name',
             'filled_content', 'field_values', 'status', 'status_display',
-            'custom_sequence',
+            'custom_sequence', 'annexure',
             'advocate_signed', 'advocate_signature_date', 'advocate_signature_image',
             'client_signed', 'client_signature_date', 'client_signature_image',
             'is_digitally_signed', 'digital_signature_details',
@@ -137,4 +137,82 @@ class CaseSignatureSerializer(serializers.ModelSerializer):
         if obj.image:
             return obj.image.url
         return None
+
+
+class PersonalizedTemplateSerializer(serializers.ModelSerializer):
+    """Serializer for Personalized Templates"""
+    case_number = serializers.CharField(source='case.case_number', read_only=True)
+    case_title = serializers.CharField(source='case.title', read_only=True)
+    client_name = serializers.CharField(source='client.full_name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    type_display = serializers.SerializerMethodField()
+    generated_document_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PersonalizedTemplate
+        fields = [
+            'id',
+            'case',
+            'case_number',
+            'case_title',
+            'client',
+            'client_name',
+            'firm',
+            'title',
+            'template_type',
+            'custom_type_name',
+            'type_display',
+            'description',
+            'content',
+            'fields',
+            'field_values',
+            'status',
+            'is_added_to_all_docs',
+            'generated_document',
+            'generated_document_url',
+            'created_by',
+            'created_by_name',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'case_number',
+            'case_title',
+            'client_name',
+            'created_by_name',
+            'type_display',
+            'generated_document_url',
+        ]
+        extra_kwargs = {
+            'case': {'required': False, 'allow_null': True},
+            'client': {'required': False, 'allow_null': True},
+            'firm': {'required': False, 'allow_null': True},
+        }
+
+    def get_type_display(self, obj):
+        if obj.template_type == 'custom' and obj.custom_type_name:
+            return obj.custom_type_name
+        TYPE_NAMES = {
+            'legal_notice': 'Legal Notice',
+            'affidavit': 'Affidavit',
+            'petition': 'Petition / Plaint',
+            'agreement': 'Agreement / Contract',
+            'power_of_attorney': 'Power of Attorney',
+            'vakalatnama': 'Vakalatnama',
+            'application': 'Application / Motion',
+            'written_statement': 'Written Statement',
+            'undertaking': 'Undertaking / Bond',
+            'memo': 'Memorandum',
+            'custom': 'Custom Template'
+        }
+        return TYPE_NAMES.get(obj.template_type, obj.template_type.replace('_', ' ').title())
+
+    def get_generated_document_url(self, obj):
+        if obj.generated_document and obj.generated_document.document_file:
+            return obj.generated_document.document_file.url
+        return None
+
 

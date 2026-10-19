@@ -2569,7 +2569,7 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
         }
       />
 
-      <div className="relative animate-in fade-in zoom-in-95 duration-500 delay-150">
+      <div className="relative animate-in fade-in zoom-in-95 duration-500 delay-150 h-[calc(100vh-140px)] min-h-[600px]">
         {isRecompiling && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm rounded-2xl min-h-[400px]">
             <Loader2 className="h-8 w-8 animate-spin text-indigo-600 mb-2" />
@@ -3047,6 +3047,11 @@ export function DraftsPage({ accent, roleTitle, approvalMode, viewBase, forceCas
                                   <span className={d.custom_sequence ? "text-purple-600" : "text-gray-400"}>
                                     Sequence: {index + 1}
                                   </span>
+                                  {d.annexure && (
+                                    <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                      Annexure {d.annexure}
+                                    </span>
+                                  )}
                                 </p>
                               </td>
                               <td className="px-4 py-4 text-sm text-gray-600 font-medium">{d.created_by_name}</td>

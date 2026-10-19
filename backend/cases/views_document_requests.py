@@ -258,6 +258,7 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
         # Set status to 'uploaded' (Under Review) so advocate can review it
         document_request.status = 'uploaded'
         document.verification_status = 'pending'
+        document.is_in_all_documents = False
         document.save()
             
         document_request.save()
@@ -303,13 +304,18 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
             )
         
         if action == 'verify':
-            # Update document verification status to 'verified'
+            # Update document verification status to 'verified' and add to All Documents
             document = document_request.uploaded_document
             if document:
                 document.verification_status = 'verified'
                 document.verified_by = user
                 document.verified_at = timezone.now()
+                document.is_in_all_documents = True
                 document.save()
+
+                if document.case_id:
+                    from documents.services.pdf_merger import trigger_auto_recompile_master_pack
+                    trigger_auto_recompile_master_pack(str(document.case_id), user)
             
             # Automatically delete the document request so it leaves Client Specific Documents and transfers to Case Documents
             document_request.delete()
@@ -335,6 +341,7 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
             if document:
                 document.verification_status = 'rejected'
                 document.verification_notes = rejection_reason
+                document.is_in_all_documents = False
                 document.verified_by = user
                 document.verified_at = timezone.now()
                 document.save()

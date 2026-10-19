@@ -8,7 +8,7 @@ import {
   Upload, FileText, Loader2, X, Eye, Download, Trash2, 
   CheckCircle, XCircle, Clock, Search, ChevronLeft, ChevronRight, 
   FolderOutput, FolderInput, Copy, MoreVertical, Layers, ArrowUp, ArrowDown, 
-  GripVertical, FileSpreadsheet, Sparkles
+  GripVertical, FileSpreadsheet, Sparkles, Edit2, Check, Tag
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -31,7 +31,9 @@ type Document = {
   is_copied?: boolean;
   is_court_form?: boolean;
   custom_sequence?: number;
+  annexure?: string;
   item_type?: 'court_form' | 'document';
+  is_personalized_document?: boolean;
 };
 
 type DocumentManagerProps = {
@@ -62,15 +64,30 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
+  // Inline Annexure editing state
+  const [editingAnnexureId, setEditingAnnexureId] = useState<string | null>(null);
+  const [annexureInputVal, setAnnexureInputVal] = useState<string>('');
+  const [savingAnnexureId, setSavingAnnexureId] = useState<string | null>(null);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (openMenuId && !(e.target as HTMLElement).closest('.row-action-menu')) {
         setOpenMenuId(null);
       }
+      if (editingAnnexureId && !(e.target as HTMLElement).closest('.annexure-inline-edit')) {
+        setEditingAnnexureId(null);
+      }
+    };
+    const handleScroll = () => {
+      if (openMenuId) setOpenMenuId(null);
     };
     document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [openMenuId]);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [openMenuId, editingAnnexureId]);
 
   // Search & Pagination
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,6 +114,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
     document_type: 'other',
     document_title: '',
     document_number: '',
+    annexure: '',
     document_category: 'legal',
     description: '',
     document_file: null as File | null,
@@ -190,7 +208,8 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
           ordered_items: updated.map((item, idx) => ({
             id: item.id,
             type: item.is_court_form || item.document_type === 'court_form' ? 'court_form' : 'document',
-            sequence: idx + 1
+            sequence: idx + 1,
+            annexure: item.annexure || ''
           }))
         };
 
@@ -245,6 +264,101 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
     }
   };
 
+  const handleSaveAnnexure = async (doc: Document, newAnnexureVal: string) => {
+    const trimmed = newAnnexureVal.trim();
+    const cleanedAnnexure = trimmed;
+
+    try {
+      setSavingAnnexureId(doc.id);
+
+      // Optimistically update local state
+      const updatedDocs = documents.map(d => 
+        d.id === doc.id ? { ...d, annexure: cleanedAnnexure } : d
+      );
+      setDocuments(updatedDocs);
+      setEditingAnnexureId(null);
+
+      const nonMasterList = updatedDocs.filter(d => !d.document_title.toLowerCase().includes('master case filing pack'));
+
+      if (caseId && section === 'all') {
+        const payload = {
+          case_id: caseId,
+          ordered_items: nonMasterList.map((item, idx) => ({
+            id: item.id,
+            type: item.is_court_form || item.document_type === 'court_form' ? 'court_form' : 'document',
+            sequence: idx + 1,
+            annexure: item.id === doc.id ? cleanedAnnexure : (item.annexure || '')
+          }))
+        };
+
+        const res = await customFetch(API.DOCUMENTS.REORDER_FILING_PACK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const masterDocData = data.master_document;
+          const oldManifest = data.old_manifest || [];
+          const newManifest = data.new_manifest || [];
+          const pageMapping = data.page_mapping || {};
+          const pageMappingId = data.page_mapping_id || null;
+          const masterUrl = masterDocData?.file_url || null;
+          const updatedAt = data.updated_at || masterDocData?.updated_at || new Date().toISOString();
+
+          if (typeof window !== 'undefined') {
+            const detail = {
+              caseId,
+              oldManifest,
+              newManifest,
+              pageMapping,
+              pageMappingId,
+              masterUrl,
+              updatedAt,
+              timestamp: Date.now()
+            };
+            window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail }));
+            try {
+              localStorage.setItem(`filing_pack_reordered_${caseId}`, JSON.stringify(detail));
+              localStorage.setItem(`documind_last_master_updated_${caseId}`, updatedAt);
+            } catch {}
+          }
+          toast.success(cleanedAnnexure ? `Annexure "${cleanedAnnexure}" saved & Master PDF recompiled!` : 'Annexure cleared & Master PDF recompiled!');
+          await fetchDocuments();
+          if (onDocumentVerified) onDocumentVerified();
+          return;
+        }
+      }
+
+      // Standalone fallback: direct PATCH
+      const isCourtForm = doc.is_court_form || doc.document_type === 'court_form';
+      const endpoint = isCourtForm 
+        ? `${API.DOCUMENTS.FILLED_COURT_FORMS.DETAIL(doc.id)}`
+        : `${API.DOCUMENTS.DETAIL(doc.id)}`;
+
+      const patchRes = await customFetch(endpoint, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ annexure: cleanedAnnexure })
+      });
+
+      if (!patchRes.ok) {
+        throw new Error('Failed to update annexure');
+      }
+
+      toast.success(cleanedAnnexure ? `Annexure "${cleanedAnnexure}" saved!` : 'Annexure removed!');
+      await fetchDocuments();
+      if (onDocumentVerified) onDocumentVerified();
+    } catch (err: any) {
+      console.error('Error saving annexure:', err);
+      toast.error(err.message || 'Failed to update annexure');
+      await fetchDocuments();
+    } finally {
+      setSavingAnnexureId(null);
+    }
+  };
+
   const handleDeleteDocument = async (documentId: string, isCourtForm?: boolean) => {
     if (isCourtForm) {
       if (!confirm('Are you sure you want to delete this filled court form?')) return;
@@ -258,6 +372,10 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
           throw new Error(data.detail || 'Failed to delete court form');
         }
         await fetchDocuments();
+        if (typeof window !== 'undefined' && caseId) {
+          window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail: { caseId, timestamp: Date.now() } }));
+          window.dispatchEvent(new CustomEvent('documind:personalized-templates-updated', { detail: { caseId, timestamp: Date.now() } }));
+        }
         if (onDocumentVerified) onDocumentVerified();
       } catch (err: any) {
         setError(err.message);
@@ -278,6 +396,10 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
         throw new Error(data.detail || 'Failed to delete document');
       }
       await fetchDocuments();
+      if (typeof window !== 'undefined' && caseId) {
+        window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail: { caseId, timestamp: Date.now() } }));
+        window.dispatchEvent(new CustomEvent('documind:personalized-templates-updated', { detail: { caseId, timestamp: Date.now() } }));
+      }
       if (onDocumentVerified) onDocumentVerified();
     } catch (err: any) {
       setError(err.message);
@@ -287,7 +409,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   };
 
   const handleMoveToOther = async (documentId: string) => {
-    if (!confirm('Are you sure you want to move this document to Other Documents?')) return;
+    if (!confirm('Are you sure you want to move this document to Supporting Files?')) return;
     setMoving(documentId);
     try {
       const response = await customFetch(API.DOCUMENTS.MOVE_TO_OTHER(documentId), {
@@ -297,7 +419,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
         const data = await response.json();
         throw new Error(data.detail || 'Failed to move document');
       }
-      toast.success('Document moved to Other Documents');
+      toast.success('Document moved to Supporting Files');
       await fetchDocuments();
       if (typeof window !== 'undefined' && caseId) {
         window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail: { caseId, timestamp: Date.now() } }));
@@ -311,7 +433,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   };
 
   const handleCopyToOther = async (documentId: string) => {
-    if (!confirm('Are you sure you want to copy this document to Other Documents?')) return;
+    if (!confirm('Are you sure you want to copy this document to Supporting Files?')) return;
     setMoving(documentId);
     try {
       const response = await customFetch(API.DOCUMENTS.COPY_TO_OTHER(documentId), {
@@ -321,7 +443,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
         const data = await response.json();
         throw new Error(data.detail || 'Failed to copy document');
       }
-      toast.success('Document copied to Other Documents');
+      toast.success('Document copied to Supporting Files');
       await fetchDocuments();
       if (onDocumentVerified) onDocumentVerified();
     } catch (err: any) {
@@ -332,7 +454,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   };
 
   const handleMoveToAll = async (documentId: string) => {
-    if (!confirm('Are you sure you want to move this document back to All Documents?')) return;
+    if (!confirm('Are you sure you want to move this document back to Case Filing Pack?')) return;
     setMoving(documentId);
     try {
       const response = await customFetch(API.DOCUMENTS.MOVE_TO_ALL(documentId), {
@@ -342,7 +464,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
         const data = await response.json();
         throw new Error(data.detail || 'Failed to move document');
       }
-      toast.success('Document moved back to All Documents');
+      toast.success('Document moved back to Case Filing Pack');
       await fetchDocuments();
       if (typeof window !== 'undefined' && caseId) {
         window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail: { caseId, timestamp: Date.now() } }));
@@ -396,6 +518,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
       formData.append('document_type', uploadData.document_type);
       formData.append('document_title', uploadData.document_title || uploadData.document_file.name);
       formData.append('document_number', uploadData.document_number);
+      formData.append('annexure', uploadData.annexure || '');
       formData.append('document_category', uploadData.document_category);
       formData.append('description', uploadData.description);
       formData.append('document_file', uploadData.document_file);
@@ -430,7 +553,8 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
           ordered_items: updatedList.map((item, idx) => ({
             id: item.id,
             type: item.is_court_form || item.document_type === 'court_form' ? 'court_form' : 'document',
-            sequence: idx + 1
+            sequence: idx + 1,
+            annexure: item.annexure || ''
           }))
         };
 
@@ -453,6 +577,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
         document_type: 'other',
         document_title: '',
         document_number: '',
+        annexure: '',
         document_category: 'legal',
         description: '',
         document_file: null,
@@ -509,7 +634,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">
-              {section === 'all' ? 'All Documents' : 'Other Documents'}
+              {section === 'all' ? 'Case Filing Pack' : 'Supporting Files'}
             </h3>
             {reordering && (
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md animate-pulse">
@@ -563,7 +688,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <div>
               <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
                 Document Number
@@ -574,6 +699,20 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                 onChange={(e) => setUploadData({ ...uploadData, document_number: e.target.value })}
                 placeholder="e.g. PET-2026-001"
                 className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-gray-900 font-semibold outline-none focus:border-[#0e2340] transition-colors placeholder:text-gray-400"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-amber-700 flex items-center justify-between">
+                <span>Annexure (Optional)</span>
+              </label>
+              <input
+                type="text"
+                value={uploadData.annexure}
+                onChange={(e) => setUploadData({ ...uploadData, annexure: e.target.value })}
+                placeholder="e.g. 1, 2 series, 3"
+                className="h-11 w-full rounded-xl border border-amber-200 bg-[#fffdfa] px-3.5 text-sm text-gray-900 font-semibold outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors placeholder:text-gray-400"
+                title="Court Annexure label for filing index (e.g. 1, 2 series, A)"
               />
             </div>
 
@@ -747,6 +886,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                     </th>
                     <th className="py-3.5 px-4">DOCUMENT TITLE</th>
                     <th className="py-3.5 px-4">DOCUMENT TYPE</th>
+                    <th className="py-3.5 px-4">ANNEXURE</th>
                     <th className="py-3.5 px-4">UPLOADED BY</th>
                     <th className="py-3.5 px-4">STATUS</th>
                     <th className="py-3.5 px-6 text-right">ACTION</th>
@@ -755,7 +895,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                 <tbody className="divide-y divide-gray-100 text-sm">
                   {paginatedDocs.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-xs text-gray-400">
+                      <td colSpan={7} className="py-8 text-center text-xs text-gray-400">
                         No documents match &quot;{searchQuery}&quot;
                       </td>
                     </tr>
@@ -763,6 +903,14 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                     paginatedDocs.map((doc, idx) => {
                       const isMaster = doc.document_title.toLowerCase().includes('master case filing pack');
                       const isCourtForm = Boolean(doc.is_court_form || doc.document_type === 'court_form' || doc.document_category === 'court_form');
+                      const isPersonalized = Boolean(
+                        doc.is_personalized_document ||
+                        doc.document_category === 'personalized_template' ||
+                        doc.document_type === 'personalized_document' ||
+                        doc.document_type_display?.toLowerCase().includes('personalized') ||
+                        doc.description?.toLowerCase().includes('personalized template') ||
+                        doc.description?.toLowerCase().includes('imported from word')
+                      );
                       
                       // Calculate non-master index for reordering
                       const nonMasterIdx = nonMasterDocs.findIndex(d => d.id === doc.id);
@@ -805,12 +953,14 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                               ? "bg-emerald-50/40 hover:bg-emerald-50/60 border-l-4 border-l-emerald-600" 
                               : isCourtForm
                                 ? "bg-violet-50/75 hover:bg-violet-100/80 border-l-4 border-l-violet-600"
-                                : "bg-white hover:bg-slate-50/80 border-l-4 border-l-transparent"
+                                : isPersonalized
+                                  ? "bg-indigo-50/40 hover:bg-indigo-50/60 border-l-4 border-l-indigo-500"
+                                  : "bg-white hover:bg-slate-50/80 border-l-4 border-l-transparent"
                           } ${
                             draggedIdx === nonMasterIdx ? "opacity-35 bg-slate-100 ring-2 ring-indigo-400" : ""
                           } ${
                             dragOverIdx === nonMasterIdx && draggedIdx !== nonMasterIdx ? "border-t-2 border-t-indigo-600 bg-indigo-50/70 shadow-inner" : ""
-                          }`}
+                          } ${openMenuId === doc.id ? "z-40 relative" : ""}`}
                         >
                           {/* Sequence / Sl. No Column */}
                           <td className="py-4 px-6 text-xs font-semibold">
@@ -830,7 +980,9 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                   className={`w-11 h-7 font-bold text-xs rounded-lg text-center cursor-pointer border focus:outline-none transition-colors ${
                                     isCourtForm 
                                       ? 'bg-violet-100/80 hover:bg-violet-200 border-violet-300 text-violet-950 font-black' 
-                                      : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+                                      : isPersonalized
+                                        ? 'bg-indigo-100/80 hover:bg-indigo-200 border-indigo-300 text-indigo-950 font-black'
+                                        : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
                                   }`}
                                   title="Change document position sequence"
                                 >
@@ -873,23 +1025,19 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                 <FileSpreadsheet className="w-4 h-4 text-violet-600 shrink-0" />
                               ) : isMaster ? (
                                 <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                              ) : isPersonalized ? (
+                                <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
                               ) : (
                                 <FileText className="w-4 h-4 text-slate-400 shrink-0" />
                               )}
                               
-                              <span className={isCourtForm ? "text-violet-950 font-bold" : "text-gray-900"}>
+                              <span className={isCourtForm ? "text-violet-950 font-bold" : isPersonalized ? "text-indigo-950 font-bold" : "text-gray-900"}>
                                 {doc.document_title}
                               </span>
 
                               {isMaster && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wide">
                                   Master PDF
-                                </span>
-                              )}
-
-                              {isCourtForm && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold bg-violet-200/80 text-violet-900 border border-violet-300 uppercase tracking-wider shadow-xs">
-                                  Court Form
                                 </span>
                               )}
                             </div>
@@ -904,10 +1052,110 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                               <span className="font-bold text-violet-800 bg-violet-100/60 px-2 py-0.5 rounded-md">
                                 Court Form
                               </span>
+                            ) : isPersonalized ? (
+                              <span className="font-bold text-indigo-800 bg-indigo-100/70 border border-indigo-200/60 px-2 py-0.5 rounded-md">
+                                {doc.document_type_display === 'Other Document' || !doc.document_type_display || doc.document_type === 'other' || doc.document_type === 'custom' || doc.document_type === 'personalized_document'
+                                  ? 'Personalized Document'
+                                  : doc.document_type_display}
+                              </span>
                             ) : (
                               <span className="text-gray-600">
                                 {doc.document_type_display || doc.document_type}
                               </span>
+                            )}
+                          </td>
+
+                          {/* Annexure Column */}
+                          <td className="py-4 px-4 text-xs font-semibold">
+                            {isMaster ? (
+                              <span className="text-gray-300 font-medium select-none" title="Master Filing Pack includes all annexures">—</span>
+                            ) : editingAnnexureId === doc.id ? (
+                              <div 
+                                className="annexure-inline-edit inline-flex items-center gap-1.5 bg-white p-1 rounded-lg border border-amber-400 shadow-md z-20 relative animate-in fade-in zoom-in-95"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span className="text-[10px] font-extrabold text-amber-800 uppercase pl-1 select-none">Ann.</span>
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={annexureInputVal}
+                                  onChange={(e) => setAnnexureInputVal(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSaveAnnexure(doc, annexureInputVal);
+                                    } else if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      setEditingAnnexureId(null);
+                                    }
+                                  }}
+                                  placeholder="e.g. 1 or A"
+                                  className="w-20 px-2 py-0.5 text-xs font-bold text-gray-900 bg-amber-50/60 border border-amber-300 rounded outline-none focus:border-amber-600 focus:bg-white"
+                                />
+                                <button
+                                  type="button"
+                                  title="Save Annexure (Enter)"
+                                  disabled={savingAnnexureId === doc.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSaveAnnexure(doc, annexureInputVal);
+                                  }}
+                                  className="p-1 rounded bg-amber-500 hover:bg-amber-600 text-white transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  {savingAnnexureId === doc.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Check className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Cancel (Esc)"
+                                  disabled={savingAnnexureId === doc.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingAnnexureId(null);
+                                  }}
+                                  className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="group/annex relative inline-flex items-center">
+                                {doc.annexure ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingAnnexureId(doc.id);
+                                      setAnnexureInputVal(doc.annexure || '');
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider shadow-2xs hover:bg-amber-200/90 hover:border-amber-400 transition-all cursor-pointer text-left"
+                                    title="Click to edit Annexure"
+                                  >
+                                    <span>{doc.annexure.trim().toLowerCase().startsWith('annexure') ? doc.annexure.trim() : `Annexure ${doc.annexure.trim()}`}</span>
+                                    <Edit2 className="w-2.5 h-2.5 text-amber-700 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingAnnexureId(doc.id);
+                                      setAnnexureInputVal('');
+                                    }}
+                                    className="inline-flex items-center gap-1 py-0.5 px-2 rounded-md text-gray-400 hover:text-amber-800 hover:bg-amber-50 border border-transparent hover:border-amber-200 transition-all cursor-pointer"
+                                    title="Click to add Annexure"
+                                  >
+                                    <span className="text-gray-300 font-medium group-hover/annex:hidden">—</span>
+                                    <span className="hidden group-hover/annex:inline-flex items-center gap-1 text-[11px] font-bold text-amber-700">
+                                      <Tag className="w-3 h-3 text-amber-600" />
+                                      + Add
+                                    </span>
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </td>
 
@@ -961,10 +1209,10 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                   onClick={() => handleMoveToAll(doc.id)}
                                   disabled={moving === doc.id}
                                   className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50/80 px-3 py-1.5 text-xs font-bold text-purple-800 hover:bg-purple-100 transition-colors disabled:opacity-50"
-                                  title="Move back to All Documents"
+                                  title="Move to Case Filing Pack"
                                 >
                                   {moving === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderInput className="w-3.5 h-3.5" />}
-                                  Move to All
+                                  Move to Filing Pack
                                 </button>
                               )}
 
@@ -996,9 +1244,9 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                 Delete
                               </button>
 
-                              {/* 3-Dots Action Dropdown Menu for non-master and non-court form */}
-                              {section === 'all' && !isMaster && !isCourtForm ? (
-                                <div className="relative inline-block text-left row-action-menu shrink-0">
+                              {/* 3-Dots Action Dropdown Menu for non-master rows */}
+                              {section === 'all' && !isMaster ? (
+                                <div className={`relative inline-block text-left row-action-menu shrink-0 ${openMenuId === doc.id ? 'z-50' : ''}`}>
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -1012,31 +1260,51 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                   </button>
 
                                   {openMenuId === doc.id && (
-                                    <div className="absolute right-0 mt-1.5 w-52 rounded-xl bg-white shadow-xl border border-gray-100 py-1.5 z-50 animate-in fade-in zoom-in-95 text-left">
+                                    <div className={`absolute right-0 ${
+                                      idx >= Math.max(1, paginatedDocs.length - 2)
+                                        ? 'bottom-full mb-1.5 origin-bottom-right'
+                                        : 'top-full mt-1.5 origin-top-right'
+                                    } w-52 rounded-xl bg-white shadow-2xl border border-gray-200/80 py-1.5 z-50 animate-in fade-in zoom-in-95 text-left`}>
                                       <button
                                         type="button"
                                         onClick={() => {
                                           setOpenMenuId(null);
-                                          handleMoveToOther(doc.id);
+                                          setEditingAnnexureId(doc.id);
+                                          setAnnexureInputVal(doc.annexure || '');
                                         }}
-                                        disabled={moving === doc.id}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold text-purple-900 hover:bg-purple-50 flex items-center gap-2.5 transition-colors disabled:opacity-50"
+                                        className="w-full text-left px-4 py-2 text-xs font-bold text-amber-900 hover:bg-amber-50 flex items-center gap-2.5 transition-colors"
                                       >
-                                        {moving === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderOutput className="w-3.5 h-3.5 text-purple-600" />}
-                                        Move to Other
+                                        <Tag className="w-3.5 h-3.5 text-amber-600" />
+                                        {doc.annexure ? 'Edit Annexure' : 'Add Annexure'}
                                       </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setOpenMenuId(null);
-                                          handleCopyToOther(doc.id);
-                                        }}
-                                        disabled={moving === doc.id}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold text-blue-900 hover:bg-blue-50 flex items-center gap-2.5 transition-colors disabled:opacity-50"
-                                      >
-                                        {moving === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5 text-blue-600" />}
-                                        Copy to Other
-                                      </button>
+                                      {!isCourtForm && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setOpenMenuId(null);
+                                              handleMoveToOther(doc.id);
+                                            }}
+                                            disabled={moving === doc.id}
+                                            className="w-full text-left px-4 py-2 text-xs font-bold text-purple-900 hover:bg-purple-50 flex items-center gap-2.5 transition-colors disabled:opacity-50"
+                                          >
+                                            {moving === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderOutput className="w-3.5 h-3.5 text-purple-600" />}
+                                            Move to Supporting Files
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setOpenMenuId(null);
+                                              handleCopyToOther(doc.id);
+                                            }}
+                                            disabled={moving === doc.id}
+                                            className="w-full text-left px-4 py-2 text-xs font-bold text-blue-900 hover:bg-blue-50 flex items-center gap-2.5 transition-colors disabled:opacity-50"
+                                          >
+                                            {moving === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5 text-blue-600" />}
+                                            Copy to Supporting Files
+                                          </button>
+                                        </>
+                                      )}
                                     </div>
                                   )}
                                 </div>

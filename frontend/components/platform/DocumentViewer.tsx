@@ -8,6 +8,7 @@ import {
 import { API_BASE_URL } from '@/lib/api';
 import { customFetch } from '@/lib/fetch';
 import { useState, useEffect } from 'react';
+import CustomPDFViewer from './CustomPDFViewer';
 
 interface DocumentViewerProps {
   url?: string | null;
@@ -20,6 +21,7 @@ export default function DocumentViewer({ url, title, onClose }: DocumentViewerPr
   const [isLoading, setIsLoading] = useState(true);
   const [blobUrl, setBlobUrl] = useState<string>('');
   const [isDownloading, setIsDownloading] = useState(false);
+  const [viewerMode, setViewerMode] = useState<'custom' | 'native'>('custom');
   
   const safeUrl = url || '';
 
@@ -294,12 +296,9 @@ export default function DocumentViewer({ url, title, onClose }: DocumentViewerPr
     }
 
     if (isPDF) {
-      let pdfUrl = blobUrl || fullUrl;
-      if (pdfUrl && !pdfUrl.includes('#')) {
-        pdfUrl = `${pdfUrl}#view=FitH&pagemode=thumbs`;
-      }
+      const pdfTargetUrl = blobUrl || fullUrl;
       return (
-        <div className="w-full h-full relative min-h-[85vh]">
+        <div className="w-full h-full relative flex-1 min-h-0 flex flex-col overflow-hidden">
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
               <div className="text-center">
@@ -308,13 +307,34 @@ export default function DocumentViewer({ url, title, onClose }: DocumentViewerPr
               </div>
             </div>
           )}
-          {!isLoading && pdfUrl && (
-            <iframe
-              src={pdfUrl}
-              className="w-full h-full border-none rounded-2xl shadow-inner"
-              title={title}
-              style={{ minHeight: 'calc(100vh - 180px)', height: '100%', width: '100%' }}
-            />
+          {!isLoading && pdfTargetUrl && (
+            viewerMode === 'custom' ? (
+              <CustomPDFViewer
+                url={pdfTargetUrl}
+                title={title}
+                onDownload={handleManualDownload}
+                onClose={onClose}
+                onSwitchToNative={() => setViewerMode('native')}
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col overflow-hidden">
+                <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between shrink-0">
+                  <span className="text-xs text-slate-500 font-medium">Native Browser Viewer</span>
+                  <button
+                    onClick={() => setViewerMode('custom')}
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-white border border-slate-200 px-2.5 py-1 rounded-lg shadow-xs hover:bg-slate-50 transition-colors"
+                  >
+                    Switch to Custom Resizable Viewer
+                  </button>
+                </div>
+                <iframe
+                  src={`${pdfTargetUrl}#view=FitH&pagemode=thumbs`}
+                  className="w-full h-full border-none rounded-b-2xl shadow-inner flex-1 min-h-0"
+                  title={title}
+                  style={{ height: '100%', width: '100%' }}
+                />
+              </div>
+            )
           )}
         </div>
       );
@@ -422,8 +442,8 @@ export default function DocumentViewer({ url, title, onClose }: DocumentViewerPr
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-white overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
-      <div className="flex-1 relative bg-white overflow-auto w-full min-h-[calc(100vh-180px)]">
+    <div className="flex flex-col h-[calc(100vh-140px)] min-h-[600px] w-full bg-white overflow-hidden rounded-2xl border border-gray-200 shadow-sm sticky top-4">
+      <div className="flex-1 relative bg-white overflow-hidden w-full h-full min-h-0 flex flex-col">
         {renderViewer()}
       </div>
     </div>

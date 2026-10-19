@@ -46,6 +46,23 @@ function getOrigin(value: string) {
   }
 }
 
+function sanitizeNullBytes<T>(value: T): T {
+  if (typeof value === 'string') {
+    return value.replace(/\0/g, '') as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeNullBytes) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k.replace(/\0/g, '')] = sanitizeNullBytes(v);
+    }
+    return result as unknown as T;
+  }
+  return value;
+}
+
 interface DocuMindIntegrationProps {
   caseId: string;
   initialDraftUrl?: string | null;
@@ -224,6 +241,13 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
         }, '*');
       }
 
+      if (detail.updatedAt) {
+        prevMasterUpdatedAtRef.current = detail.updatedAt;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`documind_last_master_updated_${caseId}`, detail.updatedAt);
+        }
+      }
+
       fetchCaseFiles();
     };
 
@@ -360,16 +384,137 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
         }
       }
 
+      if (type === 'DOCU_MIND_GET_DELETED_DOCUMENTS') {
+        try {
+          const res = await customFetch(API.DOCUMENTS.BY_CASE(caseId, 'deleted'));
+          if (res.ok) {
+            const list = await res.json();
+            const docs = Array.isArray(list) ? list : list.results || [];
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'DOCU_MIND_DELETED_DOCUMENTS_LIST',
+              documents: docs
+            }, '*');
+          }
+        } catch (err) {
+          console.error('Error in DOCU_MIND_GET_DELETED_DOCUMENTS:', err);
+        }
+      }
+
+      if (type === 'DOCU_MIND_RESTORE_CASE_DOCUMENT' && event.data?.documentId) {
+        const rawId = event.data.documentId;
+        const cleanId = String(rawId).replace(/^doc-case-/, '');
+        try {
+          const res = await customFetch(API.DOCUMENTS.RESTORE(cleanId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          if (res.ok) {
+            const data = await res.json().catch(() => ({}));
+            toast.success(`Restored "${data.document_title || 'document'}" back to Case Files!`, { id: 'documind-restore-doc' });
+            
+            const restoreDetail = {
+              caseId,
+              oldManifest: data.old_manifest || [],
+              newManifest: data.new_manifest || [],
+              pageMapping: data.page_mapping || {},
+              pageMappingId: data.page_mapping_id || null,
+              masterUrl: data.master_url,
+              updatedAt: data.updated_at,
+              timestamp: Date.now()
+            };
+
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'DOCU_MIND_CASE_DOCUMENT_RESTORED',
+              success: true,
+              documentId: cleanId,
+              document: data,
+              ...restoreDetail
+            }, '*');
+
+            // Dispatch global events to refresh Case Files and recompile Master Pack
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail: restoreDetail }));
+              window.dispatchEvent(new CustomEvent('documind:personalized-templates-updated', { detail: { caseId, timestamp: Date.now() } }));
+            }
+            fetchCaseFiles();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            toast.error(err.detail || 'Failed to restore document', { id: 'documind-restore-doc' });
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'DOCU_MIND_CASE_DOCUMENT_RESTORED',
+              success: false,
+              documentId: cleanId,
+              error: err.detail
+            }, '*');
+          }
+        } catch (err) {
+          console.error('Error in DOCU_MIND_RESTORE_CASE_DOCUMENT:', err);
+          toast.error('Network error restoring document', { id: 'documind-restore-doc' });
+          iframeRef.current?.contentWindow?.postMessage({
+            type: 'DOCU_MIND_CASE_DOCUMENT_RESTORED',
+            success: false,
+            documentId: cleanId,
+            error: 'Network error'
+          }, '*');
+        }
+      }
+
+      if (type === 'DOCU_MIND_PERMANENT_DELETE_CASE_DOCUMENT' && event.data?.documentId) {
+        const rawId = event.data.documentId;
+        const cleanId = String(rawId).replace(/^(?:doc-case-|deleted-)/, '');
+        try {
+          const res = await customFetch(API.DOCUMENTS.PERMANENT_DELETE(cleanId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          if (res.ok) {
+            const data = await res.json().catch(() => ({}));
+            toast.success(`Permanently deleted "${data.document_title || 'document'}"`, { id: 'documind-perm-delete-doc' });
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'DOCU_MIND_CASE_DOCUMENT_PERMANENTLY_DELETED',
+              success: true,
+              documentId: cleanId,
+              document: data
+            }, '*');
+
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail: { caseId, timestamp: Date.now() } }));
+              window.dispatchEvent(new CustomEvent('documind:personalized-templates-updated', { detail: { caseId, timestamp: Date.now() } }));
+            }
+            fetchCaseFiles();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            toast.error(err.detail || 'Failed to permanently delete document', { id: 'documind-perm-delete-doc' });
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'DOCU_MIND_CASE_DOCUMENT_PERMANENTLY_DELETED',
+              success: false,
+              documentId: cleanId,
+              error: err.detail
+            }, '*');
+          }
+        } catch (err) {
+          console.error('Error in DOCU_MIND_PERMANENT_DELETE_CASE_DOCUMENT:', err);
+          toast.error('Network error deleting document', { id: 'documind-perm-delete-doc' });
+          iframeRef.current?.contentWindow?.postMessage({
+            type: 'DOCU_MIND_CASE_DOCUMENT_PERMANENTLY_DELETED',
+            success: false,
+            documentId: cleanId,
+            error: 'Network error'
+          }, '*');
+        }
+      }
+
       if (type === 'DOCU_MIND_SAVE_VERSION' && event.data?.payload) {
         try {
+          const cleanPayload = sanitizeNullBytes(event.data.payload);
           const res = await customFetch(API.DOCUMENTS.DRAFT_VERSIONS.CREATE, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(event.data.payload)
+            body: JSON.stringify(cleanPayload)
           });
           if (res.ok) {
             const saved = await res.json();
-            toast.success(`Saved milestone "${event.data.payload.version_name}"!`, { id: 'documind-version-save' });
+            toast.success(`Saved milestone "${cleanPayload.version_name}"!`, { id: 'documind-version-save' });
             iframeRef.current?.contentWindow?.postMessage({
               type: 'DOCU_MIND_VERSION_SAVED',
               success: true,
@@ -631,7 +776,7 @@ export function DocuMindIntegration({ caseId, initialDraftUrl }: DocuMindIntegra
         src={iframeSrc}
         className="w-full flex-1 border-0 bg-white"
         title="Docu Mind Editor"
-        sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-popups allow-modals"
+        sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
       />
     </div>
   );

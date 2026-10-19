@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -10,7 +10,7 @@ import {
   Plus, MoreVertical, Eye, Download, Edit2,
   Trash2, File, ChevronLeft, ChevronRight,
   Info, Users, Scale, FileOutput, CheckCircle2,
-  ArrowRight, Loader2, UserCheck, Folder
+  ArrowRight, Loader2, UserCheck, Folder, Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { customFetch } from '@/lib/fetch';
@@ -19,6 +19,7 @@ import { useTopbarTitle } from './TopbarContext';
 import DocumentManager from './DocumentManager';
 import DocumentVerificationSystem from './DocumentVerificationSystem';
 import PDFCourtFormEditor from './PDFCourtFormEditor';
+import PersonalizedTemplatesManager from './PersonalizedTemplatesManager';
 import { DocuMindIntegration } from './DocuMindIntegration';
 
 // --- Types ---
@@ -116,6 +117,30 @@ const Field = ({ label, value, isBadge = false, badgeVariant = '' }: { label: st
   </div>
 );
 
+// --- Subtab Detailed Information Guides ---
+const TAB_DESCRIPTIONS: Record<string, { title: string; desc: string }> = {
+  case: {
+    title: 'Case Filing Pack',
+    desc: 'Official documents compiled into the case\'s Master Filing PDF with court sequence numbers and annexures, which you can also open, edit, and annotate within the Drafting tool.'
+  },
+  client: {
+    title: 'Client Requests',
+    desc: 'Request documents directly from your client. Once the client uploads them, you can review and verify them here to automatically move them into the Case Filing Pack. If the client cannot upload from their portal, you can also upload and verify on their behalf.'
+  },
+  other: {
+    title: 'Supporting Files',
+    desc: 'Store standalone reference documents, evidence, and research files that are not merged into the Master Filing PDF. You can also copy or move any file between Case Filing Pack and Supporting Files whenever needed.'
+  },
+  court_forms: {
+    title: 'Court Forms',
+    desc: 'Generate, draft, finalize, and edit case-specific official court forms for this case before filing.'
+  },
+  personalized_templates: {
+    title: 'Personalized Templates',
+    desc: 'Create and customize your own personalized legal templates (such as Affidavits, Petitions, or Notices) tailored for this case file, with the option to add them to the Case Filing Pack.'
+  }
+};
+
 export function CaseWorkspace({
   viewBase = '/advocate/cases',
   role = 'advocate',
@@ -137,6 +162,59 @@ export function CaseWorkspace({
 
   const [activeFormId, setActiveFormId] = useState<string | null>(initialFormId);
 
+  // --- Subtab Tooltip Info State ---
+  const [tabInfoTooltip, setTabInfoTooltip] = useState<{
+    id: string;
+    title: string;
+    desc: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const hideTabInfoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleShowTabInfo = (key: string, e: React.MouseEvent<HTMLElement>) => {
+    if (hideTabInfoTimeoutRef.current) {
+      clearTimeout(hideTabInfoTimeoutRef.current);
+      hideTabInfoTimeoutRef.current = null;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const info = TAB_DESCRIPTIONS[key];
+    if (!info) return;
+
+    const width = 340;
+    let left = rect.left + rect.width / 2 - width / 2;
+    if (left < 16) left = 16;
+    if (typeof window !== 'undefined' && left + width > window.innerWidth - 16) {
+      left = window.innerWidth - width - 16;
+    }
+
+    setTabInfoTooltip({
+      id: key,
+      title: info.title,
+      desc: info.desc,
+      x: left,
+      y: rect.bottom + 8
+    });
+  };
+
+  const handleHideTabInfo = () => {
+    hideTabInfoTimeoutRef.current = setTimeout(() => {
+      setTabInfoTooltip(null);
+    }, 150);
+  };
+
+  useEffect(() => {
+    const handleDismissTooltip = () => setTabInfoTooltip(null);
+    window.addEventListener('scroll', handleDismissTooltip, true);
+    window.addEventListener('resize', handleDismissTooltip);
+    return () => {
+      window.removeEventListener('scroll', handleDismissTooltip, true);
+      window.removeEventListener('resize', handleDismissTooltip);
+      if (hideTabInfoTimeoutRef.current) clearTimeout(hideTabInfoTimeoutRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     setActiveFormId(initialFormId);
   }, [initialFormId]);
@@ -145,8 +223,8 @@ export function CaseWorkspace({
     if (initialTabFromUrl === 'Court Forms') return 'Documents';
     return initialTabFromUrl || (caseId && typeof window !== 'undefined' ? sessionStorage.getItem(`lastCaseTab_${caseId}`) : null) || 'Overview';
   });
-  const [docSubTab, setDocSubTab] = useState<'client' | 'case' | 'other' | 'court_forms'>(() => {
-    const validSubTabs = ['client', 'case', 'other', 'court_forms'];
+  const [docSubTab, setDocSubTab] = useState<'client' | 'case' | 'other' | 'court_forms' | 'personalized_templates'>(() => {
+    const validSubTabs = ['client', 'case', 'other', 'court_forms', 'personalized_templates'];
     const fromUrl = initialSubTabFromUrl && validSubTabs.includes(initialSubTabFromUrl) ? (initialSubTabFromUrl as any) : null;
     const fromSession = caseId && typeof window !== 'undefined' ? (sessionStorage.getItem(`lastCaseSubTab_${caseId}`) as any) : null;
     if (initialFormId || newBlank || initialTabFromUrl === 'Court Forms') return 'court_forms';
@@ -164,7 +242,7 @@ export function CaseWorkspace({
     } else if (initialTabFromUrl) {
       setActiveTab(initialTabFromUrl);
     }
-    if (initialSubTabFromUrl && ['client', 'case', 'other', 'court_forms'].includes(initialSubTabFromUrl)) {
+    if (initialSubTabFromUrl && ['client', 'case', 'other', 'court_forms', 'personalized_templates'].includes(initialSubTabFromUrl)) {
       setDocSubTab(initialSubTabFromUrl as any);
     }
   }, [initialTabFromUrl, initialSubTabFromUrl]);
@@ -548,14 +626,28 @@ export function CaseWorkspace({
                     window.history.replaceState({}, '', url.toString());
                   }
                 }}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'case'
+                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'case'
                     ? 'text-gray-900 font-bold'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 style={docSubTab === 'case' ? { borderBottomColor: accent, color: accent } : {}}
               >
-                <Folder className="w-4 h-4" />
-                All Documents
+                <Folder className="w-4 h-4 shrink-0" />
+                <span>Case Filing Pack</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Case Filing Pack information"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleShowTabInfo('case', e);
+                  }}
+                  onMouseEnter={(e) => handleShowTabInfo('case', e)}
+                  onMouseLeave={handleHideTabInfo}
+                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </span>
               </button>
 
               <button
@@ -572,14 +664,28 @@ export function CaseWorkspace({
                     window.history.replaceState({}, '', url.toString());
                   }
                 }}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'client'
+                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'client'
                     ? 'text-gray-900 font-bold'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 style={docSubTab === 'client' ? { borderBottomColor: accent, color: accent } : {}}
               >
-                <UserCheck className="w-4 h-4" />
-                Client Requested Documents
+                <UserCheck className="w-4 h-4 shrink-0" />
+                <span>Client Requests</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Client Requests information"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleShowTabInfo('client', e);
+                  }}
+                  onMouseEnter={(e) => handleShowTabInfo('client', e)}
+                  onMouseLeave={handleHideTabInfo}
+                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </span>
               </button>
 
               <button
@@ -596,14 +702,28 @@ export function CaseWorkspace({
                     window.history.replaceState({}, '', url.toString());
                   }
                 }}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'other'
+                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'other'
                     ? 'text-gray-900 font-bold'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 style={docSubTab === 'other' ? { borderBottomColor: accent, color: accent } : {}}
               >
-                <FileText className="w-4 h-4" />
-                Other Documents
+                <FileText className="w-4 h-4 shrink-0" />
+                <span>Supporting Files</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Supporting Files information"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleShowTabInfo('other', e);
+                  }}
+                  onMouseEnter={(e) => handleShowTabInfo('other', e)}
+                  onMouseLeave={handleHideTabInfo}
+                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </span>
               </button>
 
               <button
@@ -620,23 +740,112 @@ export function CaseWorkspace({
                     window.history.replaceState({}, '', url.toString());
                   }
                 }}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'court_forms'
+                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'court_forms'
                     ? 'text-gray-900 font-bold'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 style={docSubTab === 'court_forms' ? { borderBottomColor: accent, color: accent } : {}}
               >
-                <ClipboardList className="w-4 h-4" />
-                Court Forms
+                <ClipboardList className="w-4 h-4 shrink-0" />
+                <span>Court Forms</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Court Forms information"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleShowTabInfo('court_forms', e);
+                  }}
+                  onMouseEnter={(e) => handleShowTabInfo('court_forms', e)}
+                  onMouseLeave={handleHideTabInfo}
+                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDocSubTab('personalized_templates');
+                  setActiveFormId(null);
+                  if (typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('tab', 'Documents');
+                    url.searchParams.set('subtab', 'personalized_templates');
+                    url.searchParams.delete('formId');
+                    url.searchParams.delete('newBlank');
+                    window.history.replaceState({}, '', url.toString());
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'personalized_templates'
+                    ? 'text-gray-900 font-bold'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                style={docSubTab === 'personalized_templates' ? { borderBottomColor: accent, color: accent } : {}}
+              >
+                <Sparkles className="w-4 h-4 shrink-0" />
+                <span>Personalized Templates</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Personalized Templates information"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleShowTabInfo('personalized_templates', e);
+                  }}
+                  onMouseEnter={(e) => handleShowTabInfo('personalized_templates', e)}
+                  onMouseLeave={handleHideTabInfo}
+                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </span>
               </button>
             </div>
+
+            {/* Tab Info Tooltip Popup */}
+            {tabInfoTooltip && (
+              <div
+                className="fixed z-[99999] transition-all duration-150 shadow-xl rounded-xl p-3.5 bg-white/95 backdrop-blur-md text-gray-800 border border-purple-100 shadow-purple-900/10 pointer-events-auto"
+                style={{
+                  top: `${tabInfoTooltip.y}px`,
+                  left: `${tabInfoTooltip.x}px`,
+                  width: '330px',
+                  maxWidth: 'calc(100vw - 32px)',
+                }}
+                onMouseEnter={() => {
+                  if (hideTabInfoTimeoutRef.current) {
+                    clearTimeout(hideTabInfoTimeoutRef.current);
+                    hideTabInfoTimeoutRef.current = null;
+                  }
+                }}
+                onMouseLeave={handleHideTabInfo}
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1 rounded-md bg-purple-50 text-purple-700 border border-purple-100 mt-0.5 shrink-0">
+                    <Info className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm text-gray-900 mb-1 flex items-center justify-between">
+                      <span>{tabInfoTooltip.title}</span>
+                      <span className="text-[10px] font-medium tracking-wide px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200/60">
+                        Guide
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 leading-relaxed font-normal">
+                      {tabInfoTooltip.desc}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Toggle View Content */}
             {docSubTab === 'case' ? (
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <FileText className="w-5 h-5 text-purple-700" />
-                  All Documents
+                  Case Filing Pack
                 </h3>
                 <DocumentManager
                   key="all-docs-manager"
@@ -652,7 +861,7 @@ export function CaseWorkspace({
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <FileText className="w-5 h-5 text-purple-700" />
-                  Other Documents
+                  Supporting Files
                 </h3>
                 <DocumentManager
                   key="other-docs-manager"
@@ -674,6 +883,16 @@ export function CaseWorkspace({
                   accent={accent}
                   initialFormId={activeFormId}
                   newBlank={activeFormId ? false : newBlank}
+                />
+              </div>
+            ) : docSubTab === 'personalized_templates' ? (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <PersonalizedTemplatesManager
+                  caseId={caseId}
+                  clientId={caseData.client || caseData.client_id}
+                  caseData={caseData}
+                  role={role}
+                  accent={accent}
                 />
               </div>
             ) : (

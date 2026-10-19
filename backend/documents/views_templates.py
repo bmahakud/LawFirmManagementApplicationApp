@@ -10,12 +10,13 @@ from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.utils import timezone
 
-from .models_templates import CourtFormTemplate, FilledCourtForm, CaseSignature
+from .models_templates import CourtFormTemplate, FilledCourtForm, CaseSignature, PersonalizedTemplate
 from .serializers_templates import (
     CourtFormTemplateSerializer,
     FilledCourtFormSerializer,
     FilledCourtFormCreateSerializer,
-    CaseSignatureSerializer
+    CaseSignatureSerializer,
+    PersonalizedTemplateSerializer
 )
 from cases.models import Case
 from clients.models import Client
@@ -699,4 +700,400 @@ class CaseSignatureViewSet(viewsets.ModelViewSet):
             created_by=request.user if request.user.is_authenticated else None
         )
         return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+
+
+class PersonalizedTemplateViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing Personalized Templates created by advocates and admins.
+    Supports creating templates of any category/type, updating content,
+    adding/removing from All Documents, and PDF generation.
+    """
+    queryset = PersonalizedTemplate.objects.all()
+    serializer_class = PersonalizedTemplateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        user_type = getattr(user, 'user_type', None)
+
+        if user_type == 'client':
+            queryset = queryset.filter(client__user_account=user)
+        elif user_type == 'advocate':
+            if hasattr(user, 'firm') and user.firm:
+                queryset = queryset.filter(
+                    models.Q(case__assigned_advocate=user) |
+                    models.Q(case__firm=user.firm) |
+                    models.Q(created_by=user)
+                ).distinct()
+            else:
+                queryset = queryset.filter(
+                    models.Q(case__assigned_advocate=user) |
+                    models.Q(case__solo_advocate=user) |
+                    models.Q(created_by=user)
+                ).distinct()
+        elif user_type in ['admin', 'super_admin']:
+            if hasattr(user, 'firm') and user.firm:
+                queryset = queryset.filter(
+                    models.Q(firm=user.firm) |
+                    models.Q(case__firm=user.firm) |
+                    models.Q(created_by=user)
+                ).distinct()
+
+        case_id = self.request.query_params.get('case') or self.request.query_params.get('case_id')
+        if case_id:
+            queryset = queryset.filter(case_id=case_id)
+
+        template_type = self.request.query_params.get('type')
+        if template_type:
+            queryset = queryset.filter(template_type=template_type)
+
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                models.Q(title__icontains=search) |
+                models.Q(custom_type_name__icontains=search) |
+                models.Q(description__icontains=search)
+            )
+
+        return queryset.select_related('case', 'client', 'firm', 'created_by', 'generated_document')
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        case = serializer.validated_data.get('case')
+        client = serializer.validated_data.get('client')
+        firm = serializer.validated_data.get('firm')
+
+        if case:
+            if not client and getattr(case, 'client', None):
+                client = case.client
+            if not firm and getattr(case, 'firm', None):
+                firm = case.firm
+        if not firm and hasattr(user, 'firm') and user.firm:
+            firm = user.firm
+
+        serializer.save(
+            created_by=user,
+            client=client,
+            firm=firm
+        )
+
+    def perform_update(self, serializer):
+        template = serializer.save()
+        if template.is_added_to_all_docs and template.generated_document:
+            try:
+                from .services.personalized_template_pdf import generate_pdf_for_personalized_template
+                from .services.pdf_merger import trigger_auto_recompile_master_pack
+                from django.core.files.base import ContentFile
+                import re
+
+                pdf_bytes = generate_pdf_for_personalized_template(template)
+                safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', template.title or 'Template')
+                filename = f"{safe_title}_{str(template.id)[:6]}.pdf"
+                doc = template.generated_document
+                doc.document_title = template.title
+                doc.document_file.save(filename, ContentFile(pdf_bytes), save=True)
+                doc.save()
+
+                if template.case_id:
+                    trigger_auto_recompile_master_pack(str(template.case_id), self.request.user)
+            except Exception as e:
+                logger.error(f"Error re-generating PDF for updated template {template.id}: {e}", exc_info=True)
+
+    def perform_destroy(self, instance):
+        case_id = instance.case_id
+        user = self.request.user
+        doc = instance.generated_document
+        instance.delete()
+        if doc and not doc.is_deleted:
+            try:
+                doc.soft_delete(user)
+            except Exception as e:
+                logger.error(f"Error soft-deleting generated doc {doc.id} on template delete: {e}")
+        if case_id:
+            try:
+                from .services.pdf_merger import trigger_auto_recompile_master_pack
+                trigger_auto_recompile_master_pack(str(case_id), user)
+            except Exception as e:
+                logger.error(f"Error triggering master pack recompile on template delete: {e}")
+
+    @action(detail=True, methods=['post'])
+    def add_to_all_documents(self, request, pk=None):
+        """
+        Generates a PDF from this personalized template and creates/updates
+        a UserDocument in All Documents for this case.
+        """
+        import re
+        from django.core.files.base import ContentFile
+        from documents.models import UserDocument
+        from .services.personalized_template_pdf import generate_pdf_for_personalized_template
+        from .services.pdf_merger import trigger_auto_recompile_master_pack
+
+        template = self.get_object()
+        if not template.case_id:
+            return Response(
+                {'error': 'A case must be associated with this template to add it to All Documents.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            pdf_bytes = generate_pdf_for_personalized_template(template)
+        except Exception as e:
+            logger.error(f"Error generating PDF for personalized template {template.id}: {e}", exc_info=True)
+            return Response(
+                {'error': f'Failed to generate PDF for template: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        doc_type_mapping = {
+            'legal_notice': 'notice',
+            'affidavit': 'affidavit',
+            'petition': 'petition',
+            'agreement': 'agreement',
+            'power_of_attorney': 'power_of_attorney',
+            'vakalatnama': 'vakalatnama',
+            'application': 'application',
+            'undertaking': 'undertaking',
+            'written_statement': 'written_statement',
+            'memo': 'personalized_document',
+            'custom': 'personalized_document'
+        }
+        doc_type = doc_type_mapping.get(template.template_type, 'personalized_document')
+        safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', template.title or 'Template')
+        filename = f"{safe_title}_{str(template.id)[:6]}.pdf"
+
+        # Update existing UserDocument if already created, else create new
+        doc = template.generated_document
+        if doc and not doc.is_deleted:
+            doc.document_title = template.title
+            doc.document_type = doc_type
+            doc.document_category = 'personalized_template'
+            doc.is_in_all_documents = True
+            doc.is_in_other_documents = False
+            doc.description = template.description or f"Generated from personalized template: {template.title}"
+            doc.document_file.save(filename, ContentFile(pdf_bytes), save=True)
+            doc.save()
+        else:
+            doc = UserDocument.objects.create(
+                case=template.case,
+                client=template.client or template.case.client,
+                firm=template.firm or template.case.firm,
+                uploaded_by=request.user,
+                document_title=template.title,
+                document_type=doc_type,
+                document_category='personalized_template',
+                description=template.description or f"Generated from personalized template: {template.title}",
+                verification_status='verified',
+                verified_by=request.user,
+                verified_at=timezone.now(),
+                is_in_all_documents=True,
+                is_in_other_documents=False,
+                is_deleted=False
+            )
+            doc.document_file.save(filename, ContentFile(pdf_bytes), save=True)
+
+        template.generated_document = doc
+        template.is_added_to_all_docs = True
+        template.status = 'added_to_documents'
+        template.save(update_fields=['generated_document', 'is_added_to_all_docs', 'status', 'updated_at'])
+
+        # Auto-recompile Master Filing Pack with this new document included
+        try:
+            trigger_auto_recompile_master_pack(str(template.case_id), request.user)
+        except Exception as e:
+            logger.error(f"Error triggering master pack recompile: {e}")
+
+        serializer = self.get_serializer(template)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def remove_from_all_documents(self, request, pk=None):
+        """
+        Removes the generated document from All Documents (soft delete).
+        """
+        from .services.pdf_merger import trigger_auto_recompile_master_pack
+
+        template = self.get_object()
+        doc = template.generated_document
+        if doc:
+            doc.is_in_all_documents = False
+            doc.is_deleted = True
+            doc.save(update_fields=['is_in_all_documents', 'is_deleted', 'updated_at'])
+
+        template.generated_document = None
+        template.is_added_to_all_docs = False
+        template.status = 'draft'
+        template.save(update_fields=['generated_document', 'is_added_to_all_docs', 'status', 'updated_at'])
+
+        if template.case_id:
+            try:
+                trigger_auto_recompile_master_pack(str(template.case_id), request.user)
+            except Exception as e:
+                logger.error(f"Error triggering master pack recompile: {e}")
+
+        serializer = self.get_serializer(template)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'])
+    def download_pdf(self, request, pk=None):
+        """
+        Generates or streams the PDF file for this personalized template.
+        """
+        import re
+        from .services.personalized_template_pdf import generate_pdf_for_personalized_template
+
+        template = self.get_object()
+        try:
+            pdf_bytes = generate_pdf_for_personalized_template(template)
+            safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', template.title or 'Template')
+            filename = f"{safe_title}.pdf"
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="{filename}"'
+            return response
+        except Exception as e:
+            logger.error(f"Error generating PDF download for template {template.id}: {e}", exc_info=True)
+            return Response({'error': f'Failed to generate PDF: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'])
+    def duplicate(self, request, pk=None):
+        """
+        Duplicates an existing personalized template.
+        """
+        template = self.get_object()
+        new_template = PersonalizedTemplate.objects.create(
+            case=template.case,
+            client=template.client,
+            firm=template.firm,
+            title=f"{template.title} (Copy)",
+            template_type=template.template_type,
+            custom_type_name=template.custom_type_name,
+            description=template.description,
+            content=template.content,
+            fields=template.fields,
+            field_values=template.field_values,
+            status='draft',
+            is_added_to_all_docs=False,
+            generated_document=None,
+            created_by=request.user
+        )
+        serializer = self.get_serializer(new_template)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='import_word')
+    def import_word(self, request):
+        """
+        Extracts content, title, and metadata from an uploaded Word (.docx/.doc) document.
+        Returns the parsed text and suggested title for direct insertion into the editor.
+        """
+        import os
+        import re
+
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response({'error': 'No file uploaded. Please select a Word (.docx) file.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        filename = uploaded_file.name or 'Imported Document.docx'
+        file_ext = os.path.splitext(filename)[1].lower()
+
+        if file_ext not in ['.docx', '.doc']:
+            return Response({'error': 'Only Word documents (.docx, .doc) are supported.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            extracted_text = ""
+            base_name = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ').strip()
+            inferred_title = base_name.title() if base_name else 'Imported Document'
+
+            # 1. Try python-docx
+            if file_ext == '.docx':
+                try:
+                    import docx
+                    uploaded_file.seek(0)
+                    doc = docx.Document(uploaded_file)
+
+                    paragraphs = []
+                    first_heading = None
+
+                    for p in doc.paragraphs:
+                        txt = p.text.strip()
+                        if txt:
+                            style_name = getattr(p.style, 'name', '') or ''
+                            if not first_heading and ('Heading' in style_name or 'Title' in style_name):
+                                first_heading = txt
+                            paragraphs.append(p.text)
+                        else:
+                            if paragraphs and paragraphs[-1] != '':
+                                paragraphs.append('')
+
+                    # Extract table content cleanly if tables exist
+                    for table in doc.tables:
+                        table_rows = []
+                        for row in table.rows:
+                            row_cells = [cell.text.strip() for cell in row.cells]
+                            if any(row_cells):
+                                table_rows.append(' | '.join(row_cells))
+                        if table_rows:
+                            paragraphs.append('')
+                            paragraphs.extend(table_rows)
+                            paragraphs.append('')
+
+                    extracted_text = '\n'.join(paragraphs).strip()
+
+                    if first_heading and len(first_heading) < 100:
+                        inferred_title = first_heading.strip()
+                except Exception as docx_err:
+                    logger.warning(f"python-docx parsing failed, falling back to mammoth: {docx_err}")
+
+            # 2. Try mammoth fallback
+            if not extracted_text.strip():
+                try:
+                    import mammoth
+                    uploaded_file.seek(0)
+                    result = mammoth.extract_raw_text(uploaded_file)
+                    extracted_text = (result.value or '').strip()
+                except Exception as mammoth_err:
+                    logger.warning(f"mammoth extraction failed: {mammoth_err}")
+
+            # 3. Clean up excessive newlines
+            extracted_text = re.sub(r'\n{3,}', '\n\n', extracted_text).strip()
+
+            if not extracted_text:
+                return Response(
+                    {'error': 'Could not extract text from this Word file. The document may be empty, image-only, or password-protected.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Inferred template type based on document content/title
+            sample_text = (inferred_title + ' ' + extracted_text[:400]).lower()
+            template_type = 'custom'
+            custom_type_name = 'Imported Template'
+
+            if 'affidavit' in sample_text:
+                template_type = 'affidavit'
+                custom_type_name = 'Affidavit'
+            elif 'notice' in sample_text:
+                template_type = 'legal_notice'
+                custom_type_name = 'Legal Notice'
+            elif 'petition' in sample_text or 'plaint' in sample_text or 'application' in sample_text:
+                template_type = 'petition'
+                custom_type_name = 'Petition'
+            elif 'agreement' in sample_text or 'contract' in sample_text or 'deed' in sample_text:
+                template_type = 'agreement'
+                custom_type_name = 'Agreement'
+            elif 'power of attorney' in sample_text or 'poa' in sample_text:
+                template_type = 'power_of_attorney'
+                custom_type_name = 'Power of Attorney'
+
+            return Response({
+                'success': True,
+                'title': inferred_title,
+                'content': extracted_text,
+                'template_type': template_type,
+                'custom_type_name': custom_type_name,
+                'filename': filename
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error importing Word file: {e}", exc_info=True)
+            return Response({'error': f'Failed to process Word document: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 

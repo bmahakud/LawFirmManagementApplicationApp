@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -6,6 +7,8 @@ from django.utils import timezone
 from django.db.models import Q
 from .models import UserDocument
 from .serializers import UserDocumentSerializer, UserDocumentListSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class UserDocumentViewSet(viewsets.ModelViewSet):
@@ -41,7 +44,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
            - Documents linked to cases assigned to advocate (assigned_advocate or solo_advocate)
            - Documents linked to clients assigned to advocate
         
-        2. Clients:
+            2. Clients:
            - Documents uploaded by client
            - Documents linked to client's profile or client's cases
         
@@ -53,6 +56,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         """
         user = self.request.user
         show_deleted = self.request.query_params.get('show_deleted', 'false').lower() == 'true'
+        if getattr(self, 'action', None) in ['restore', 'permanent_delete']:
+            show_deleted = True
         
         if user.user_type == 'platform_owner':
             queryset = UserDocument.objects.all()
@@ -223,6 +228,26 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         is_master = bool(document.document_title and 'Master Case Filing Pack' in document.document_title)
         document.soft_delete(user)
         
+        # Cascade delete any associated PersonalizedTemplate records
+        try:
+            from .models_templates import PersonalizedTemplate
+            pts_to_delete = list(PersonalizedTemplate.objects.filter(generated_document=document))
+            for pt in document.source_personalized_templates.all():
+                if pt not in pts_to_delete:
+                    pts_to_delete.append(pt)
+            if case_id and (
+                document.document_category == 'personalized_template' or
+                'personalized template' in (document.description or '').lower() or
+                'imported from word' in (document.description or '').lower()
+            ):
+                for pt in PersonalizedTemplate.objects.filter(case_id=case_id, title__iexact=(document.document_title or '').strip()):
+                    if pt not in pts_to_delete:
+                        pts_to_delete.append(pt)
+            for pt in pts_to_delete:
+                pt.delete()
+        except Exception as e:
+            logger.error(f"Error cascade deleting personalized templates for document {document.id}: {e}", exc_info=True)
+
         if case_id and not is_master:
             from .services.pdf_merger import trigger_auto_recompile_master_pack
             trigger_auto_recompile_master_pack(str(case_id), user)
@@ -236,11 +261,18 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
     def restore(self, request, pk=None):
         """Restore a soft-deleted document"""
         user = request.user
-        
-        if user.user_type not in ['platform_owner', 'super_admin', 'admin']:
-            raise PermissionDenied("Only super admins can restore documents.")
-        
         document = self.get_object()
+        
+        if user.user_type == 'advocate':
+            can_restore = (
+                document.uploaded_by == user or
+                (user.firm and document.firm == user.firm) or
+                (document.case and (document.case.assigned_advocate == user or document.case.solo_advocate == user))
+            )
+            if not can_restore:
+                raise PermissionDenied("You do not have permission to restore this document.")
+        elif user.user_type not in ['platform_owner', 'super_admin', 'admin']:
+            raise PermissionDenied("You do not have permission to restore documents.")
         
         if not document.is_deleted:
             return Response(
@@ -250,12 +282,104 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         
         document.restore()
         
+        old_manifest = []
+        new_manifest = []
+        page_mapping = {}
+        page_mapping_id = None
+        master_url = None
+        master_doc = None
+
         if document.case_id and not (document.document_title and 'Master Case Filing Pack' in document.document_title):
-            from .services.pdf_merger import trigger_auto_recompile_master_pack
-            trigger_auto_recompile_master_pack(str(document.case_id), user)
+            try:
+                master_doc, old_manifest, new_manifest, page_mapping, page_mapping_id = self._sync_filing_pack_manifest_and_mapping(
+                    str(document.case_id), user
+                )
+                if master_doc and master_doc.document_file:
+                    try:
+                        master_url = request.build_absolute_uri(master_doc.document_file.url)
+                    except Exception:
+                        master_url = master_doc.document_file.url
+            except Exception as e:
+                logger.error(f"Error syncing manifest on document restore: {e}", exc_info=True)
+                from .services.pdf_merger import trigger_auto_recompile_master_pack
+                trigger_auto_recompile_master_pack(str(document.case_id), user)
+
+        return Response({
+            "detail": "Document restored successfully.",
+            "id": str(document.id),
+            "document_title": document.document_title,
+            "old_manifest": old_manifest,
+            "new_manifest": new_manifest,
+            "page_mapping": page_mapping,
+            "page_mapping_id": page_mapping_id,
+            "master_url": master_url,
+            "updated_at": master_doc.updated_at.isoformat() if master_doc and master_doc.updated_at else None
+        }, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['post', 'delete'], url_path='permanent-delete')
+    def permanent_delete(self, request, pk=None):
+        """Permanently delete a document (hard delete) from database and storage"""
+        user = request.user
+        document = self.get_object()
+        
+        if user.user_type == 'advocate':
+            can_delete = (
+                document.uploaded_by == user or
+                (user.firm and document.firm == user.firm) or
+                (document.case and (document.case.assigned_advocate == user or document.case.solo_advocate == user))
+            )
+            if not can_delete:
+                raise PermissionDenied("You do not have permission to permanently delete this document.")
+        elif user.user_type == 'client':
+            if document.uploaded_by != user:
+                raise PermissionDenied("You can only permanently delete your own uploaded documents.")
+        elif user.user_type not in ['platform_owner', 'super_admin', 'admin']:
+            raise PermissionDenied("You do not have permission to permanently delete documents.")
+        
+        case_id = document.case_id
+        doc_id = str(document.id)
+        doc_title = document.document_title or "Document"
+        is_master = bool(document.document_title and 'Master Case Filing Pack' in document.document_title)
+
+        # Cascade delete any associated PersonalizedTemplate records
+        try:
+            from .models_templates import PersonalizedTemplate
+            pts_to_delete = list(PersonalizedTemplate.objects.filter(generated_document=document))
+            for pt in document.source_personalized_templates.all():
+                if pt not in pts_to_delete:
+                    pts_to_delete.append(pt)
+            if case_id and (
+                document.document_category == 'personalized_template' or
+                'personalized template' in (document.description or '').lower() or
+                'imported from word' in (document.description or '').lower()
+            ):
+                for pt in PersonalizedTemplate.objects.filter(case_id=case_id, title__iexact=(document.document_title or '').strip()):
+                    if pt not in pts_to_delete:
+                        pts_to_delete.append(pt)
+            for pt in pts_to_delete:
+                pt.delete()
+        except Exception as e:
+            logger.error(f"Error cascade deleting personalized templates for document {document.id}: {e}", exc_info=True)
+
+        # Delete physical file from storage if present
+        try:
+            if document.document_file and document.document_file.name:
+                document.document_file.delete(save=False)
+        except Exception as e:
+            logger.warning(f"Could not delete physical file for document {doc_id}: {e}")
+
+        # Hard delete document from database
+        document.delete()
+
+        if case_id and not is_master:
+            try:
+                from .services.pdf_merger import trigger_auto_recompile_master_pack
+                trigger_auto_recompile_master_pack(str(case_id), user)
+            except Exception as e:
+                logger.error(f"Error triggering auto recompile after permanent delete: {e}", exc_info=True)
 
         return Response(
-            {"detail": "Document restored successfully."},
+            {"detail": "Document permanently deleted.", "id": doc_id, "document_title": doc_title},
             status=status.HTTP_200_OK
         )
     
@@ -305,7 +429,20 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         # If section == 'other', return documents in Other Documents tab.
         # Otherwise return documents in All Documents tab (with single Master PDF pinned at top).
         section = request.query_params.get('section', 'all')
-        if section == 'other':
+        if section == 'deleted':
+            queryset = UserDocument.objects.filter(
+                case_id=case_id,
+                is_deleted=True
+            ).exclude(
+                document_title__icontains="Master Case Filing Pack"
+            ).exclude(
+                document_title__icontains='.ltproj'
+            ).exclude(
+                document_file__icontains='.ltproj'
+            ).order_by('-deleted_at', '-updated_at')
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+        elif section == 'other':
             queryset = UserDocument.objects.filter(
                 case_id=case_id,
                 is_deleted=False,
@@ -338,8 +475,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
 
             master_doc_data = self.get_serializer(master_doc).data if master_doc else None
 
-            # 2. Fetch Filled Court Forms for this case
-            filled_forms = FilledCourtForm.objects.filter(case_id=case_id).select_related('template', 'created_by')
+            # 2. Fetch Filled Court Forms for this case (exclude drafts - only finalized forms appear in All Documents)
+            filled_forms = FilledCourtForm.objects.filter(case_id=case_id).exclude(status='draft').select_related('template', 'created_by')
             form_items = []
             for f in filled_forms:
                 form_title = getattr(f.template, 'name', f"Court Form #{str(f.id)[:8]}") if getattr(f, 'template', None) else f"Court Form #{str(f.id)[:8]}"
@@ -349,6 +486,10 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                         pdf_url = request.build_absolute_uri(f.generated_pdf.url)
                     except Exception:
                         pdf_url = f.generated_pdf.url
+
+                f_annex = getattr(f, 'annexure', '') or ''
+                if not f_annex and f.field_values and isinstance(f.field_values, dict):
+                    f_annex = str(f.field_values.get('annexure_no', '') or f.field_values.get('annexure', '') or '').strip()
 
                 form_items.append({
                     'id': str(f.id),
@@ -364,6 +505,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     'uploaded_by_name': f.created_by.get_full_name() if f.created_by else 'System / Form',
                     'uploaded_at': f.created_at.isoformat() if hasattr(f, 'created_at') and f.created_at else timezone.now().isoformat(),
                     'custom_sequence': getattr(f, 'custom_sequence', 0) or 0,
+                    'annexure': f_annex,
+                    'description': getattr(f, 'description', '') or '',
                     'is_in_all_documents': True,
                     'is_in_other_documents': False,
                     'is_deleted': False,
@@ -389,6 +532,21 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             for d in other_docs_data:
                 d['is_court_form'] = False
                 d['item_type'] = 'document'
+                desc = (d.get('description') or '').lower()
+                doc_cat = d.get('document_category') or ''
+                doc_t = d.get('document_type') or ''
+                disp = d.get('document_type_display') or ''
+                is_pt = (
+                    doc_cat == 'personalized_template' or
+                    doc_t == 'personalized_document' or
+                    'personalized' in disp.lower() or
+                    'personalized template' in desc or
+                    'imported from word' in desc
+                )
+                if is_pt:
+                    d['is_personalized_document'] = True
+                    if doc_t in ['other', 'custom', 'personalized_document', ''] or disp in ['Other Document', 'Other', '']:
+                        d['document_type_display'] = 'Personalized Document'
 
             # 4. Sort non-master items by custom sequence if specified, else default order
             all_non_master = form_items + other_docs_data
@@ -632,13 +790,17 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             except Exception:
                 pass
 
-        # 1. Filled Court Forms
-        forms = FilledCourtForm.objects.filter(case_id=case_id).select_related('template')
+        # 1. Filled Court Forms (only finalized forms are part of the filing pack)
+        forms = FilledCourtForm.objects.filter(case_id=case_id).exclude(status='draft').select_related('template')
         form_list = []
         for f in forms:
             form_name = getattr(f.template, 'name', f"Court Form #{str(f.id)[:8]}") if getattr(f, 'template', None) else f"Court Form #{str(f.id)[:8]}"
             m_info = manifest_map.get(str(f.id), {})
             page_count = m_info.get('page_count', 1)
+
+            f_annex = getattr(f, 'annexure', '') or ''
+            if not f_annex and f.field_values and isinstance(f.field_values, dict):
+                f_annex = str(f.field_values.get('annexure_no', '') or '').strip()
 
             form_list.append({
                 'id': str(f.id),
@@ -647,6 +809,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 'type_display': 'Court Form',
                 'format': 'FORM',
                 'sequence': getattr(f, 'custom_sequence', 0) or 0,
+                'annexure': f_annex,
                 'page_count': page_count,
                 'created_at': f.created_at.isoformat() if hasattr(f, 'created_at') and f.created_at else ''
             })
@@ -662,6 +825,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             document_title__icontains=".ltproj"
         ).exclude(
             document_file__icontains=".ltproj"
+        ).exclude(
+            fulfills_request__status__in=['pending', 'uploaded', 'rejected']
         )
         
         doc_list = []
@@ -704,6 +869,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 'type_display': d.get_document_type_display() if hasattr(d, 'get_document_type_display') else d.document_type,
                 'format': item_type,
                 'sequence': getattr(d, 'custom_sequence', 0) or 0,
+                'annexure': getattr(d, 'annexure', '') or '',
                 'page_count': page_count,
                 'created_at': d.uploaded_at.isoformat() if d.uploaded_at else ''
             })
@@ -737,11 +903,175 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         return Response(sorted_items, status=status.HTTP_200_OK)
 
     @staticmethod
-    def _migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
-        if not page_mapping:
+    def _migrate_draft_versions_background(case_id, page_mapping, page_mapping_id, old_manifest=None, new_manifest=None):
+        if not page_mapping and not new_manifest:
             return
         from .services.pdf_merger import migrate_draft_versions_background
-        migrate_draft_versions_background(case_id, page_mapping, page_mapping_id)
+        migrate_draft_versions_background(case_id, page_mapping, page_mapping_id, old_manifest=old_manifest, new_manifest=new_manifest)
+
+    @classmethod
+    def _sync_filing_pack_manifest_and_mapping(cls, case_id, user=None):
+        from .models_templates import FilledCourtForm
+        from cases.models import Case
+        import json
+        import uuid
+        from django.utils import timezone
+        from .services.pdf_merger import compute_filing_pack_page_mapping, trigger_auto_recompile_master_pack, migrate_draft_versions_background
+
+        case_obj = Case.objects.filter(id=case_id).first()
+        if not case_obj:
+            return None, [], [], {}, None
+
+        old_master = UserDocument.objects.filter(
+            case_id=case_id,
+            is_deleted=False,
+            document_title__icontains="Master Case Filing Pack"
+        ).order_by('-updated_at').first()
+
+        old_manifest = []
+        if old_master and old_master.verification_notes:
+            try:
+                parsed = json.loads(old_master.verification_notes)
+                if isinstance(parsed, list):
+                    old_manifest = parsed
+                elif isinstance(parsed, dict):
+                    old_manifest = parsed.get('manifest_json', parsed.get('manifest', []))
+            except Exception:
+                old_manifest = []
+
+        manifest_page_counts = {str(m.get('id')): int(m.get('page_count') or 1) for m in old_manifest if m.get('id')}
+
+        filled_forms = list(FilledCourtForm.objects.filter(case_id=case_id).exclude(status='draft').order_by('created_at'))
+        docs = list(UserDocument.objects.filter(
+            case_id=case_id,
+            is_deleted=False,
+            is_in_all_documents=True
+        ).exclude(
+            document_title__icontains="Master Case Filing Pack"
+        ).exclude(
+            document_title__icontains=".ltproj"
+        ).exclude(
+            document_file__icontains=".ltproj"
+        ).exclude(
+            fulfills_request__status__in=['pending', 'uploaded', 'rejected']
+        ).order_by('uploaded_at'))
+
+        all_items = []
+        for f in filled_forms:
+            form_title = getattr(f.template, 'name', f"Court Form #{str(f.id)[:8]}") if getattr(f, 'template', None) else f"Court Form #{str(f.id)[:8]}"
+            p_count = manifest_page_counts.get(str(f.id), 1)
+            f_annex = getattr(f, 'annexure', '') or ''
+            if not f_annex and f.field_values and isinstance(f.field_values, dict):
+                f_annex = str(f.field_values.get('annexure_no', '') or '').strip()
+
+            all_items.append({
+                'id': str(f.id),
+                'title': form_title,
+                'item_type': 'court_form',
+                'sequence': int(getattr(f, 'custom_sequence', 0) or 0),
+                'annexure': f_annex,
+                'created_sort_key': f.created_at.isoformat() if hasattr(f, 'created_at') and f.created_at else '',
+                'page_count': max(1, p_count)
+            })
+
+        for d in docs:
+            import os
+            file_ext = os.path.splitext(d.document_file.name)[1].lower() if d.document_file else ''
+            p_count = manifest_page_counts.get(str(d.id))
+            if p_count is None:
+                if file_ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']:
+                    p_count = 1
+                elif file_ext in ['.pdf'] and d.document_file:
+                    try:
+                        from pypdf import PdfReader
+                        d.document_file.open('rb')
+                        r = PdfReader(d.document_file)
+                        p_count = len(r.pages)
+                        d.document_file.close()
+                    except Exception:
+                        p_count = 1
+                else:
+                    p_count = 1
+            all_items.append({
+                'id': str(d.id),
+                'title': d.document_title or 'Untitled Document',
+                'item_type': 'document',
+                'sequence': int(getattr(d, 'custom_sequence', 0) or 0),
+                'annexure': getattr(d, 'annexure', '') or '',
+                'created_sort_key': d.uploaded_at.isoformat() if d.uploaded_at else '',
+                'page_count': max(1, p_count)
+            })
+
+        has_custom = any(int(item.get('sequence', 0) or 0) > 0 for item in all_items)
+        if has_custom:
+            sorted_items = sorted(
+                all_items,
+                key=lambda x: (
+                    int(x.get('sequence') or 0) if int(x.get('sequence') or 0) > 0 else 999990,
+                    x.get('created_sort_key', '')
+                )
+            )
+        else:
+            sorted_items = all_items
+
+        total_items = len(sorted_items)
+        existing_cover_pages = (int(old_manifest[0].get('start_page', 2) or 2) - 1) if (old_manifest and len(old_manifest) > 0 and old_manifest[0].get('start_page') and int(old_manifest[0].get('start_page', 0) or 0) > 1) else None
+        cover_page_count = existing_cover_pages if existing_cover_pages is not None else (1 if total_items <= 10 else (2 if total_items <= 25 else 3))
+        current_page = cover_page_count + 1
+
+        new_manifest = []
+        for itm in sorted_items:
+            pc = itm['page_count']
+            new_manifest.append({
+                'id': str(itm['id']),
+                'title': itm['title'],
+                'item_type': itm['item_type'],
+                'annexure': itm.get('annexure', ''),
+                'start_page': current_page,
+                'page_count': pc,
+                'end_page': current_page + pc - 1
+            })
+            current_page += pc
+
+        page_mapping = compute_filing_pack_page_mapping(old_manifest, new_manifest)
+        page_mapping_id = str(uuid.uuid4()) if page_mapping else None
+
+        now = timezone.now()
+        master_title = f"Master Case Filing Pack ({case_obj.case_title})"
+        uploader = user or case_obj.assigned_advocate or case_obj.solo_advocate
+
+        master_doc = old_master
+        if not master_doc:
+            master_doc, _ = UserDocument.objects.get_or_create(
+                case_id=case_id,
+                document_title=master_title,
+                defaults={
+                    'document_type': 'drafting',
+                    'document_category': 'case_filing_pack',
+                    'uploaded_by': uploader,
+                    'verification_status': 'verified',
+                    'is_in_all_documents': True,
+                    'is_in_other_documents': False,
+                    'is_deleted': False
+                }
+            )
+
+        master_doc.verification_notes = json.dumps({
+            'manifest': new_manifest,
+            'manifest_json': new_manifest,
+            'last_page_mapping': page_mapping,
+            'last_page_mapping_id': page_mapping_id,
+            'is_recompiling': True,
+        })
+        master_doc.updated_at = now
+        master_doc.save(update_fields=['verification_notes', 'updated_at'])
+
+        if page_mapping or new_manifest:
+            migrate_draft_versions_background(case_id, page_mapping, page_mapping_id, old_manifest=old_manifest, new_manifest=new_manifest)
+
+        trigger_auto_recompile_master_pack(str(case_id), user)
+
+        return master_doc, old_manifest, new_manifest, page_mapping, page_mapping_id
 
 
     @action(detail=False, methods=['post'], url_path='reorder-filing-pack')
@@ -773,14 +1103,18 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     except (ValueError, TypeError):
                         target_seq = seq
 
+                    update_kwargs = {'custom_sequence': target_seq}
+                    if isinstance(item, dict) and 'annexure' in item:
+                        update_kwargs['annexure'] = str(item.get('annexure') or '').strip()
+
                     if item_type == 'court_form':
-                        FilledCourtForm.objects.filter(id=item_id, case_id=case_id).update(custom_sequence=target_seq)
+                        FilledCourtForm.objects.filter(id=item_id, case_id=case_id).update(**update_kwargs)
                     elif item_type == 'document':
-                        UserDocument.objects.filter(id=item_id, case_id=case_id).update(custom_sequence=target_seq)
+                        UserDocument.objects.filter(id=item_id, case_id=case_id).update(**update_kwargs)
                     else:
-                        c_cnt = FilledCourtForm.objects.filter(id=item_id, case_id=case_id).update(custom_sequence=target_seq)
+                        c_cnt = FilledCourtForm.objects.filter(id=item_id, case_id=case_id).update(**update_kwargs)
                         if not c_cnt:
-                            UserDocument.objects.filter(id=item_id, case_id=case_id).update(custom_sequence=target_seq)
+                            UserDocument.objects.filter(id=item_id, case_id=case_id).update(**update_kwargs)
 
                 # Capture old manifest before deriving new manifest
                 old_master = UserDocument.objects.filter(
@@ -810,8 +1144,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                         except (ValueError, TypeError):
                             pass
 
-                # Fetch all filing pack forms and documents
-                filled_forms = list(FilledCourtForm.objects.filter(case_id=case_id).order_by('created_at'))
+                # Fetch all filing pack forms and documents (excluding drafts)
+                filled_forms = list(FilledCourtForm.objects.filter(case_id=case_id).exclude(status='draft').order_by('created_at'))
                 docs = list(UserDocument.objects.filter(
                     case_id=case_id,
                     is_deleted=False,
@@ -832,11 +1166,16 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     p_count = manifest_page_counts.get(str(f.id))
                     if p_count is None:
                         p_count = 1
+                    f_annex = getattr(f, 'annexure', '') or ''
+                    if not f_annex and f.field_values and isinstance(f.field_values, dict):
+                        f_annex = str(f.field_values.get('annexure_no', '') or '').strip()
+
                     all_items.append({
                         'id': str(f.id),
                         'title': form_title,
                         'item_type': 'court_form',
                         'sequence': int(getattr(f, 'custom_sequence', 0) or 0),
+                        'annexure': f_annex,
                         'created_sort_key': f.created_at.isoformat() if hasattr(f, 'created_at') and f.created_at else '',
                         'page_count': max(1, p_count)
                     })
@@ -864,6 +1203,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                         'title': d.document_title or 'Untitled Document',
                         'item_type': 'document',
                         'sequence': int(getattr(d, 'custom_sequence', 0) or 0),
+                        'annexure': getattr(d, 'annexure', '') or '',
                         'created_sort_key': d.uploaded_at.isoformat() if d.uploaded_at else '',
                         'page_count': max(1, p_count)
                     })
@@ -881,7 +1221,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     sorted_items = all_items
 
                 total_items = len(sorted_items)
-                cover_page_count = 1 if total_items <= 10 else (2 if total_items <= 25 else 3)
+                existing_cover_pages = (int(old_manifest[0].get('start_page', 2) or 2) - 1) if (old_manifest and len(old_manifest) > 0 and old_manifest[0].get('start_page') and int(old_manifest[0].get('start_page', 0) or 0) > 1) else None
+                cover_page_count = existing_cover_pages if existing_cover_pages is not None else (1 if total_items <= 10 else (2 if total_items <= 25 else 3))
                 current_page = cover_page_count + 1
 
                 new_manifest = []
@@ -891,6 +1232,7 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                         'id': str(itm['id']),
                         'title': itm['title'],
                         'item_type': itm['item_type'],
+                        'annexure': itm.get('annexure', ''),
                         'start_page': current_page,
                         'page_count': pc,
                         'end_page': current_page + pc - 1
@@ -935,9 +1277,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 master_doc.updated_at = now
                 master_doc.save(update_fields=['verification_notes', 'updated_at'])
 
-            # Trigger background recompile so HTTP request returns instantly and never times out (prevents 502/504)
-            if page_mapping:
-                self._migrate_draft_versions_background(case_id, page_mapping, page_mapping_id)
+            if page_mapping or new_manifest:
+                self._migrate_draft_versions_background(case_id, page_mapping, page_mapping_id, old_manifest=old_manifest, new_manifest=new_manifest)
 
             from .services.pdf_merger import trigger_auto_recompile_master_pack
             trigger_auto_recompile_master_pack(str(case_id), request.user)

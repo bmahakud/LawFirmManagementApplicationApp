@@ -39,9 +39,7 @@ const financeSubItems = [
   { label: 'Subscriptions', path: '/super-admin/finance/subscriptions', icon: Crown },
 ];
 
-const bottomNavItems = [
-  { label: 'Documents', path: '/super-admin/documents', icon: FileText },
-];
+const bottomNavItems: { label: string; path: string; icon: any }[] = [];
 
 export default function SuperAdminSidebar() {
   const router = useRouter();
@@ -64,7 +62,7 @@ export default function SuperAdminSidebar() {
     () => pathname.startsWith('/super-admin/users')
   );
   const [casesMenuOpen, setCasesMenuOpen] = useState(
-    () => pathname.startsWith('/super-admin/cases')
+    () => pathname.startsWith('/super-admin/cases') || pathname.startsWith('/super-admin/documents')
   );
   const [financeMenuOpen, setFinanceMenuOpen] = useState(
     () => pathname.startsWith('/super-admin/finance')
@@ -72,7 +70,7 @@ export default function SuperAdminSidebar() {
 
   useEffect(() => {
     if (pathname.startsWith('/super-admin/users')) setUserMenuOpen(true);
-    if (pathname.startsWith('/super-admin/cases')) setCasesMenuOpen(true);
+    if (pathname.startsWith('/super-admin/cases') || pathname.startsWith('/super-admin/documents')) setCasesMenuOpen(true);
     if (pathname.startsWith('/super-admin/finance')) setFinanceMenuOpen(true);
   }, [pathname]);
 

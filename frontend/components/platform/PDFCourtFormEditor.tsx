@@ -1,18 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { customFetch } from '@/lib/fetch';
 import { API, API_BASE_URL } from '@/lib/api';
 import {
   FileText, Plus, Search, X, Save, Loader2, Eye,
   Download, Share2, CheckCircle, Edit, ArrowLeft, RefreshCw,
   GripVertical, Upload, Trash2, PenTool, AlertTriangle,
-  Check, Bookmark
+  Check, Bookmark, Clock, ChevronLeft, ChevronRight, FileSpreadsheet,
+  Edit2, Tag
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import SignaturePad from './SignaturePad';
 import { DEFAULT_COURT_FORM_TEMPLATES } from '@/lib/courtFormTemplates';
+import CustomPDFViewer from './CustomPDFViewer';
 
 // A4 dimensions in pixels at 96 DPI
 const A4_WIDTH = 794; // 210mm
@@ -54,6 +56,8 @@ type FilledCourtForm = {
   advocate_signature_date?: string;
   client_signature_date?: string;
   created_at: string;
+  created_by_name?: string;
+  annexure?: string;
 };
 
 type PlacedSignature = {
@@ -297,6 +301,50 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   const [selectedForm, setSelectedForm] = useState<FilledCourtForm | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [finalizingId, setFinalizingId] = useState<string | null>(null);
+  const [formSearchQuery, setFormSearchQuery] = useState('');
+  const [formCurrentPage, setFormCurrentPage] = useState(1);
+  const [formPageSize, setFormPageSize] = useState(10);
+
+  const filteredForms = useMemo(() => {
+    if (!formSearchQuery.trim()) return filledForms;
+    const q = formSearchQuery.toLowerCase();
+    return filledForms.filter(f =>
+      (f.template_name || '').toLowerCase().includes(q) ||
+      (f.status || '').toLowerCase().includes(q) ||
+      (f.status_display || '').toLowerCase().includes(q) ||
+      (f.created_by_name || '').toLowerCase().includes(q)
+    );
+  }, [filledForms, formSearchQuery]);
+
+  const formTotalPages = Math.max(1, Math.ceil(filteredForms.length / formPageSize));
+  const paginatedForms = useMemo(() => {
+    const start = (formCurrentPage - 1) * formPageSize;
+    return filteredForms.slice(start, start + formPageSize);
+  }, [filteredForms, formCurrentPage, formPageSize]);
+
+  // Inline Annexure editing state
+  const [editingAnnexureId, setEditingAnnexureId] = useState<string | null>(null);
+  const [annexureInputVal, setAnnexureInputVal] = useState<string>('');
+  const [savingAnnexureId, setSavingAnnexureId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (editingAnnexureId && !(e.target as HTMLElement).closest('.annexure-inline-edit')) {
+        setEditingAnnexureId(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [editingAnnexureId]);
+
+  useEffect(() => {
+    if (formCurrentPage > formTotalPages) {
+      setFormCurrentPage(1);
+    }
+  }, [formCurrentPage, formTotalPages]);
   const [searchQuery, setSearchQuery] = useState('');
   const [signatureType, setSignatureType] = useState<'advocate' | 'client' | 'custom'>('advocate');
   const [activeSigTarget, setActiveSigTarget] = useState<{
@@ -330,6 +378,45 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
   useEffect(() => {
     setDynamicDimensions(null);
   }, [selectedTemplate?.id, selectedForm?.id]);
+
+  const handleSaveAnnexure = async (form: FilledCourtForm, newAnnexureVal: string) => {
+    const trimmed = newAnnexureVal.trim();
+    const cleanedAnnexure = trimmed;
+
+    try {
+      setSavingAnnexureId(form.id);
+
+      // Optimistically update local state
+      setFilledForms(prev => prev.map(f => f.id === form.id ? { ...f, annexure: cleanedAnnexure } : f));
+      setEditingAnnexureId(null);
+
+      const patchRes = await customFetch(`/api/documents/filled-court-forms/${form.id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ annexure: cleanedAnnexure })
+      });
+
+      if (!patchRes.ok) {
+        throw new Error('Failed to update annexure');
+      }
+
+      toast.success(cleanedAnnexure ? `Annexure "${cleanedAnnexure}" saved!` : 'Annexure removed!');
+
+      // Re-fetch forms to sync state
+      if (caseId) {
+        const formsRes = await customFetch(`/api/documents/filled-court-forms/?case=${caseId}`).catch(() => null);
+        if (formsRes && formsRes.ok) {
+          const data = await formsRes.json();
+          setFilledForms(Array.isArray(data) ? data : data.results || []);
+        }
+      }
+    } catch (err: any) {
+      console.error('Error saving court form annexure:', err);
+      toast.error(err.message || 'Failed to update annexure');
+    } finally {
+      setSavingAnnexureId(null);
+    }
+  };
 
   // Unsaved changes & modal tracking
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -1415,6 +1502,30 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
     confirmDelete(formId);
   };
 
+  const handleFinalizeForm = async (formId: string) => {
+    setFinalizingId(formId);
+    try {
+      const patchRes = await customFetch(`/api/documents/filled-court-forms/${formId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completed' })
+      });
+      if (!patchRes.ok) throw new Error('Failed to finalize form');
+
+      // Trigger PDF generation so server-side PDF is generated and Master Pack recompiles
+      await customFetch(`/api/documents/filled-court-forms/${formId}/generate_pdf/`, {
+        method: 'POST'
+      });
+
+      toast.success('Form finalized and added to Case Filing Pack!');
+      await fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to finalize form');
+    } finally {
+      setFinalizingId(null);
+    }
+  };
+
   const renderField = (fieldName: string, placeholder: string) => {
     const isEditing = view === 'edit';
     return (
@@ -2033,18 +2144,13 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           {/* Document Container - Read Only */}
           <div className="w-full flex justify-center bg-gray-100 p-4 sm:p-8 rounded-lg overflow-x-auto">
             {selectedForm ? (
-              <iframe
-                key={`iframe-pdf-${selectedForm.id}`}
-                src={`${API_BASE_URL}/api/documents/filled-court-forms/${selectedForm.id}/pdf/`}
-                className="border-0 rounded-lg shadow-2xl bg-white transition-all duration-200"
-                style={{
-                  width: `${(dynamicDimensions || getTemplateDimensions(selectedTemplate?.name || selectedForm?.template_name)).width}px`,
-                  minHeight: `${(dynamicDimensions || getTemplateDimensions(selectedTemplate?.name || selectedForm?.template_name)).height}px`,
-                  height: `${(dynamicDimensions || getTemplateDimensions(selectedTemplate?.name || selectedForm?.template_name)).height}px`,
-                  maxWidth: 'none'
-                }}
-                title={`${selectedTemplate.name} Preview`}
-              />
+              <div className="w-full max-w-5xl h-[calc(100vh-250px)] min-h-[600px] rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+                <CustomPDFViewer
+                  key={`custom-pdf-${selectedForm.id}`}
+                  url={`${API_BASE_URL}/api/documents/filled-court-forms/${selectedForm.id}/pdf/`}
+                  title={`${selectedTemplate?.name || selectedForm?.template_name || 'Court Form'} Preview`}
+                />
+              </div>
             ) : (
               <div
                 id="a4-document-container-preview"
@@ -2153,7 +2259,7 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                 onClick={() => handleSaveDraft(false)}
                 disabled={saving}
                 className="px-3.5 py-2 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs"
-                title="Save as Draft in database"
+                title="Saves as draft (will not appear in Case Filing Pack until finalized)"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-amber-600" />}
                 Save as Draft
@@ -2162,10 +2268,11 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                 type="button"
                 onClick={() => handleSave(false)}
                 disabled={saving}
-                className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2 transition-all active:scale-95 shadow-xs"
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2 transition-all active:scale-95 shadow-xs"
+                title="Finalizes form and adds it to Case Filing Pack"
               >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Save & Complete
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                Save & Finalize
               </button>
               <button
                 type="button"
@@ -2330,92 +2437,11 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
           )}
         </div>
 
-        {/* Filled Forms List */}
-        {filledForms.length > 0 ? (
-          <div className="space-y-3">
-            {filledForms.map(form => (
-              <div
-                key={form.id}
-                className="bg-white rounded-xl border border-gray-200 p-4 hover:border-purple-300 transition-all shadow-sm"
-              >
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-                      <FileText className="w-5 h-5 text-purple-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4
-                        onClick={() => handleOpenForm(form, 'preview')}
-                        className="text-sm font-bold text-gray-900 truncate cursor-pointer hover:text-purple-600 transition-colors"
-                      >
-                        {form.template_name}
-                      </h4>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Created {new Date(form.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${form.status === 'draft' ? 'bg-gray-100 text-gray-700' :
-                      form.status === 'completed' ? 'bg-blue-100 text-blue-700' :
-                        form.status === 'signed' ? 'bg-green-100 text-green-700' :
-                          'bg-purple-100 text-purple-700'
-                      }`}>
-                      {form.status_display}
-                    </span>
-
-                    {form.client_signed && (
-                      <span className="text-xs text-green-600 font-semibold flex items-center gap-1">
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        Client Signed
-                      </span>
-                    )}
-                    {form.advocate_signed && (
-                      <span className="text-xs text-blue-600 font-semibold flex items-center gap-1">
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        Advocate Signed
-                      </span>
-                    )}
-
-                    <button
-                      onClick={() => handleOpenForm(form, 'preview')}
-                      className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
-                      title="Open Form"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      Open
-                    </button>
-
-                    {isAdvocateRole && (form.status === 'draft' || form.status === 'completed') && !form.is_shared_with_client && (
-                      <button
-                        onClick={() => confirmShare(form.id)}
-                        className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 flex items-center gap-1.5 transition-all active:scale-95"
-                        title="Share with Client"
-                      >
-                        <Share2 className="w-3.5 h-3.5" />
-                        Share
-                      </button>
-                    )}
-
-                    {isAdvocateRole && (
-                      <button
-                        onClick={() => handleDeleteForm(form.id)}
-                        className="p-1.5 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-all active:scale-95"
-                        title="Delete Form"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-            <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 mb-4">No forms created yet</p>
+        {/* Filled Forms Table / Empty State */}
+        {filledForms.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-200">
+            <FileSpreadsheet className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm font-semibold text-gray-400 mb-4">No court forms created yet</p>
             {isAdvocateRole && (
               <button
                 onClick={() => setView('templates')}
@@ -2425,6 +2451,311 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                 Create Your First Form
               </button>
             )}
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* Search & Pagination Header */}
+            <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white">
+              <div className="relative group max-w-xs w-full">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-purple-600 transition-colors" />
+                <input
+                  type="text"
+                  placeholder="Search records..."
+                  value={formSearchQuery}
+                  onChange={(e) => { setFormSearchQuery(e.target.value); setFormCurrentPage(1); }}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 pl-10 pr-4 text-xs font-semibold outline-none focus:bg-white focus:border-purple-300 focus:ring-4 focus:ring-purple-500/5 transition-all placeholder:text-gray-400 text-gray-900"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 text-xs text-gray-500 font-medium">
+                {/* Page Size Selector */}
+                <div className="flex items-center gap-1.5 mr-2">
+                  <span className="text-gray-400 font-normal">Show:</span>
+                  <select
+                    value={formPageSize}
+                    onChange={(e) => { setFormPageSize(Number(e.target.value)); setFormCurrentPage(1); }}
+                    className="bg-gray-50 border border-gray-200 rounded-lg py-1 px-2 text-xs font-bold text-gray-700 outline-none focus:bg-white focus:border-purple-300 transition-all cursor-pointer"
+                  >
+                    <option value={5}>5 / page</option>
+                    <option value={10}>10 / page</option>
+                    <option value={20}>20 / page</option>
+                    <option value={50}>50 / page</option>
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setFormCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={formCurrentPage === 1}
+                  className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span>Page {formCurrentPage} of {formTotalPages}</span>
+                <button
+                  type="button"
+                  onClick={() => setFormCurrentPage(prev => Math.min(prev + 1, formTotalPages))}
+                  disabled={formCurrentPage >= formTotalPages}
+                  className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <span className="text-gray-400">({filteredForms.length} total)</span>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/70 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
+                    <th className="py-3.5 px-6">SL. NO</th>
+                    <th className="py-3.5 px-4">DOCUMENT TITLE</th>
+                    <th className="py-3.5 px-4">DOCUMENT TYPE</th>
+                    <th className="py-3.5 px-4">ANNEXURE</th>
+                    <th className="py-3.5 px-4">UPLOADED BY</th>
+                    <th className="py-3.5 px-4">STATUS</th>
+                    <th className="py-3.5 px-6 text-right">ACTION</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-sm">
+                  {paginatedForms.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-xs text-gray-400">
+                        {formSearchQuery ? `No court forms match "${formSearchQuery}"` : 'No court forms available'}
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedForms.map((form, idx) => {
+                      const slNo = (formCurrentPage - 1) * formPageSize + idx + 1;
+                      const isDraft = form.status === 'draft';
+                      const isCompleted = form.status === 'completed';
+                      const isSigned = form.status === 'signed';
+
+                      return (
+                        <tr
+                          key={form.id}
+                          className="bg-violet-50/50 hover:bg-violet-100/70 border-l-4 border-l-violet-600 transition-colors"
+                        >
+                          {/* Sl. No */}
+                          <td className="py-4 px-6 text-xs font-semibold text-gray-400">
+                            {slNo}
+                          </td>
+
+                          {/* Document Title */}
+                          <td className="py-4 px-4 font-bold text-gray-900">
+                            <div className="flex items-center gap-2">
+                              <FileSpreadsheet className="w-4 h-4 text-violet-600 shrink-0" />
+                              <span
+                                onClick={() => handleOpenForm(form, 'preview')}
+                                className="text-violet-950 font-bold hover:text-purple-600 cursor-pointer transition-colors"
+                              >
+                                {form.template_name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400 font-normal">
+                              <span>Created {new Date(form.created_at).toLocaleDateString()}</span>
+                              {form.client_signed && (
+                                <span className="text-[11px] text-green-600 font-semibold flex items-center gap-0.5">
+                                  • Client Signed
+                                </span>
+                              )}
+                              {form.advocate_signed && (
+                                <span className="text-[11px] text-blue-600 font-semibold flex items-center gap-0.5">
+                                  • Advocate Signed
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Document Type */}
+                          <td className="py-4 px-4 text-xs font-medium">
+                            <span className="font-bold text-violet-800 bg-violet-100/60 px-2 py-0.5 rounded-md">
+                              Court Form
+                            </span>
+                          </td>
+
+                          {/* Annexure Column */}
+                          <td className="py-4 px-4 text-xs font-semibold">
+                            {editingAnnexureId === form.id ? (
+                              <div 
+                                className="annexure-inline-edit inline-flex items-center gap-1.5 bg-white p-1 rounded-lg border border-amber-400 shadow-md z-20 relative animate-in fade-in zoom-in-95"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span className="text-[10px] font-extrabold text-amber-800 uppercase pl-1 select-none">Ann.</span>
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={annexureInputVal}
+                                  onChange={(e) => setAnnexureInputVal(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSaveAnnexure(form, annexureInputVal);
+                                    } else if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      setEditingAnnexureId(null);
+                                    }
+                                  }}
+                                  placeholder="e.g. 1 or B"
+                                  className="w-20 px-2 py-0.5 text-xs font-bold text-gray-900 bg-amber-50/60 border border-amber-300 rounded outline-none focus:border-amber-600 focus:bg-white"
+                                />
+                                <button
+                                  type="button"
+                                  title="Save Annexure (Enter)"
+                                  disabled={savingAnnexureId === form.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSaveAnnexure(form, annexureInputVal);
+                                  }}
+                                  className="p-1 rounded bg-amber-500 hover:bg-amber-600 text-white transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  {savingAnnexureId === form.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Check className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Cancel (Esc)"
+                                  disabled={savingAnnexureId === form.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingAnnexureId(null);
+                                  }}
+                                  className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="group/annex relative inline-flex items-center">
+                                {form.annexure ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingAnnexureId(form.id);
+                                      setAnnexureInputVal(form.annexure || '');
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider shadow-2xs hover:bg-amber-200/90 hover:border-amber-400 transition-all cursor-pointer text-left"
+                                    title="Click to edit Annexure"
+                                  >
+                                    <span>{form.annexure.trim().toLowerCase().startsWith('annexure') ? form.annexure.trim() : `Annexure ${form.annexure.trim()}`}</span>
+                                    <Edit2 className="w-2.5 h-2.5 text-amber-700 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingAnnexureId(form.id);
+                                      setAnnexureInputVal('');
+                                    }}
+                                    className="inline-flex items-center gap-1 py-0.5 px-2 rounded-md text-gray-400 hover:text-amber-800 hover:bg-amber-50 border border-transparent hover:border-amber-200 transition-all cursor-pointer"
+                                    title="Click to add Annexure"
+                                  >
+                                    <span className="text-gray-300 font-medium group-hover/annex:hidden">—</span>
+                                    <span className="hidden group-hover/annex:inline-flex items-center gap-1 text-[11px] font-bold text-amber-700">
+                                      <Tag className="w-3 h-3 text-amber-600" />
+                                      + Add
+                                    </span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Uploaded By */}
+                          <td className="py-4 px-4 text-xs font-medium">
+                            <span className="font-bold text-gray-900">{form.created_by_name || 'Advocate'}</span>
+                            <span className="block text-[11px] text-gray-400 mt-0.5">
+                              {form.created_at ? new Date(form.created_at).toLocaleDateString() : 'N/A'}
+                            </span>
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-4 px-4">
+                            {isDraft ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-yellow-50 text-yellow-700 text-xs font-semibold">
+                                <Clock className="w-3 h-3" />
+                                Draft
+                              </span>
+                            ) : isSigned ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold">
+                                <CheckCircle className="w-3 h-3" />
+                                Signed
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-green-50 text-green-700 text-xs font-semibold">
+                                <CheckCircle className="w-3 h-3" />
+                                Finalized
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-4 px-6 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenForm(form, 'preview')}
+                                className="w-[96px] h-8 inline-flex items-center justify-center gap-1.5 rounded-lg border border-violet-200 bg-violet-100/80 text-violet-900 hover:bg-violet-200 text-xs font-bold transition-colors shadow-xs shrink-0"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-violet-700" />
+                                View Form
+                              </button>
+
+                              {isAdvocateRole && isDraft && (
+                                <button
+                                  type="button"
+                                  disabled={finalizingId === form.id}
+                                  onClick={() => handleFinalizeForm(form.id)}
+                                  className="h-8 inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors shadow-xs px-3 shrink-0 disabled:opacity-50"
+                                  title="Finalize this court form and add it to Case Filing Pack"
+                                >
+                                  {finalizingId === form.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                  )}
+                                  Finalize
+                                </button>
+                              )}
+
+                              {isAdvocateRole && (isDraft || isCompleted) && !form.is_shared_with_client && (
+                                <button
+                                  type="button"
+                                  onClick={() => confirmShare(form.id)}
+                                  className="h-8 inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition-colors shadow-xs px-3 shrink-0"
+                                  title="Share with Client"
+                                >
+                                  <Share2 className="w-3.5 h-3.5" />
+                                  Share
+                                </button>
+                              )}
+
+                              {isAdvocateRole && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteForm(form.id)}
+                                  className="w-[82px] h-8 inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50/50 text-xs font-semibold text-red-600 hover:bg-red-100/80 transition-colors shadow-xs shrink-0"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -2798,15 +3129,16 @@ export default function PDFCourtFormEditor({ caseId, clientId, role, accent = '#
                 type="button"
                 disabled={saving}
                 onClick={() => handleSave(true)}
-                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-sm transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                title="Finalizes form and adds it to Case Filing Pack"
               >
                 {saving ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Saving...
+                    Finalizing...
                   </>
                 ) : (
-                  'Save & Complete'
+                  'Save & Finalize'
                 )}
               </button>
             </div>

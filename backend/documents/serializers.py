@@ -23,19 +23,30 @@ class UserDocumentSerializer(serializers.ModelSerializer):
             'verified_by_name', 'verification_notes', 'verified_at',
             'is_in_all_documents', 'is_in_other_documents', 'is_copied',
             'is_deleted', 'deleted_at', 'deleted_by', 'deleted_by_name',
-            'version', 'custom_sequence', 'parent_document', 'uploaded_at', 'updated_at',
-            'filing_pack_manifest', 'is_recompiling'
+            'version', 'custom_sequence', 'annexure', 'parent_document', 'uploaded_at', 'updated_at',
+            'filing_pack_manifest', 'is_recompiling', 'is_personalized_document'
         ]
         read_only_fields = [
             'id', 'uploaded_by', 'uploaded_by_name', 'firm', 'uploaded_at', 
             'updated_at', 'verified_at', 'verified_by', 'verified_by_name',
             'is_deleted', 'deleted_at', 'deleted_by', 'deleted_by_name',
             'file_url', 'document_type_display', 'client_name', 'case_title',
-            'filing_pack_manifest', 'is_recompiling'
+            'filing_pack_manifest', 'is_recompiling', 'is_personalized_document'
         ]
     
     filing_pack_manifest = serializers.SerializerMethodField()
     is_recompiling = serializers.SerializerMethodField()
+    is_personalized_document = serializers.SerializerMethodField()
+
+    def get_is_personalized_document(self, obj):
+        return bool(
+            obj.document_type == 'personalized_document' or
+            obj.document_category == 'personalized_template' or
+            (obj.description and (
+                'personalized template' in obj.description.lower() or
+                'imported from word' in obj.description.lower()
+            ))
+        )
 
     def get_is_recompiling(self, obj):
         if obj.verification_notes and obj.document_title and 'master case filing pack' in obj.document_title.lower():
@@ -78,6 +89,7 @@ class UserDocumentListSerializer(serializers.ModelSerializer):
     document_type_display = serializers.CharField(source='get_document_type_display', read_only=True)
     file_url = serializers.SerializerMethodField()
     filing_pack_manifest = serializers.SerializerMethodField()
+    is_personalized_document = serializers.SerializerMethodField()
     
     class Meta:
         model = UserDocument
@@ -85,9 +97,19 @@ class UserDocumentListSerializer(serializers.ModelSerializer):
             'id', 'document_title', 'document_type', 'document_type_display',
             'document_category', 'uploaded_by_name', 'client_name', 'case_title',
             'verification_status', 'is_in_all_documents', 'is_in_other_documents', 'is_copied',
-            'uploaded_at', 'is_deleted', 'version', 'custom_sequence', 'file_url',
-            'filing_pack_manifest'
+            'uploaded_at', 'is_deleted', 'deleted_at', 'version', 'custom_sequence', 'annexure', 'file_url',
+            'filing_pack_manifest', 'is_personalized_document'
         ]
+
+    def get_is_personalized_document(self, obj):
+        return bool(
+            obj.document_type == 'personalized_document' or
+            obj.document_category == 'personalized_template' or
+            (obj.description and (
+                'personalized template' in obj.description.lower() or
+                'imported from word' in obj.description.lower()
+            ))
+        )
     
     def get_filing_pack_manifest(self, obj):
         if obj.verification_notes and obj.document_title and 'master case filing pack' in obj.document_title.lower():

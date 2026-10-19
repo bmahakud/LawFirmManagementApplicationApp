@@ -16,7 +16,6 @@ const topNavItems = [
   { label: 'Dashboard', path: '/firm-admin/dashboard', icon: LayoutDashboard },
   { label: 'Calendar', path: '/firm-admin/calendar', icon: Calendar },
   { label: 'Cases', path: '/firm-admin/cases', icon: Briefcase },
-  { label: 'Documents', path: '/firm-admin/documents', icon: FileText },
   { label: 'Drafts', path: '/firm-admin/drafts', icon: UserCheck },
 ];
 
@@ -65,7 +64,12 @@ export default function FirmAdminSidebar() {
     if (pathname.startsWith('/firm-admin/billing')) setBillingMenuOpen(true);
   }, [pathname]);
 
-  const isActive = (path: string) => pathname.startsWith(path);
+  const isActive = (path: string) => {
+    if (path === '/firm-admin/cases') {
+      return pathname.startsWith('/firm-admin/cases') || pathname.startsWith('/firm-admin/documents');
+    }
+    return pathname.startsWith(path);
+  };
   const userSectionActive = pathname.startsWith('/firm-admin/users');
 
   const sidebarContent = (

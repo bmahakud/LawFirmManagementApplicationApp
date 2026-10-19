@@ -19,7 +19,6 @@ const navItems = [
   { label: 'My Clients', path: '/advocate/clients', icon: Users },
   { label: 'My Paralegals', path: '/advocate/paralegals', icon: UserCog },
   { label: 'Cases', path: '/advocate/cases', icon: Briefcase },
-  { label: 'Documents', path: '/advocate/documents', icon: FileText },
   { label: 'Case Workspace', path: '/advocate/drafting', icon: PenTool },
   { label: 'Calendar', path: '/advocate/calendar', icon: Calendar },
   { label: 'Time & Billing', path: '/advocate/billing', icon: IndianRupee },
@@ -30,7 +29,12 @@ export default function AdvocateSidebar() {
   const router = useRouter();
   const { isSidebarOpen, closeSidebar, isCollapsed, toggleCollapse } = useTopbar();
   const pathname = usePathname();
-  const isActive = (path: string) => pathname.startsWith(path);
+  const isActive = (path: string) => {
+    if (path === '/advocate/cases') {
+      return pathname.startsWith('/advocate/cases') || pathname.startsWith('/advocate/documents');
+    }
+    return pathname.startsWith(path);
+  };
 
   // Firm switcher state
   const [showFirmSwitcher, setShowFirmSwitcher] = useState(false);

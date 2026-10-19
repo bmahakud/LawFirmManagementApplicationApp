@@ -5,7 +5,11 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from cases.models import Case
 from .models_versions import CaseDraftVersion
-from .serializers_versions import CaseDraftVersionSerializer, CaseDraftVersionListSerializer
+from .serializers_versions import (
+    CaseDraftVersionSerializer,
+    CaseDraftVersionListSerializer,
+    _sanitize_null_bytes
+)
 
 
 import base64
@@ -128,13 +132,60 @@ class CaseDraftVersionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         case_id = self.request.data.get('case') or self.request.query_params.get('case_id')
         case = get_object_or_404(Case, id=case_id)
-        document_identifier = self.request.data.get('document_identifier') or self.request.data.get('document_id') or ''
+        document_identifier = _sanitize_null_bytes(self.request.data.get('document_identifier') or self.request.data.get('document_id') or '')
         
         # Offload any inline base64 images in snapshot_data to DigitalOcean Spaces CDN
-        snapshot_data = serializer.validated_data.get('snapshot_data', {})
+        snapshot_data = _sanitize_null_bytes(serializer.validated_data.get('snapshot_data', {}))
         if snapshot_data:
             snapshot_data = _offload_base64_images_to_cdn(snapshot_data, str(case.id), self.request)
+            snapshot_data = _sanitize_null_bytes(snapshot_data)
+            
+            # Align anchors and nodes with current master filing pack manifest to prevent stale page offsets
+            if document_identifier.startswith('doc-master-') or not document_identifier:
+                try:
+                    from .models import UserDocument
+                    import json, re
+                    master_doc = UserDocument.objects.filter(
+                        case=case,
+                        document_title__startswith='Master Case Filing Pack',
+                        is_deleted=False
+                    ).first()
+                    if master_doc and master_doc.verification_notes:
+                        parsed_notes = json.loads(master_doc.verification_notes) if isinstance(master_doc.verification_notes, str) else master_doc.verification_notes
+                        manifest = parsed_notes.get('manifest') or parsed_notes.get('manifest_json') or []
+                        if manifest:
+                            anchors = snapshot_data.get('anchors', [])
+                            nodes = snapshot_data.get('nodes', [])
+                            for nd in manifest:
+                                nd_id = str(nd.get('id', '') or '').strip()
+                                nd_title = (nd.get('title') or '').strip().lower()
+                                nd_start = int(nd.get('start_page', 1) or 1)
+                                nd_max = int(nd.get('end_page', nd_start) or nd_start)
+                                for a in anchors:
+                                    if ('pan' in nd_title and a.get('imageUrl') and '120262c7871a' in a.get('imageUrl')) or \
+                                       (nd_id and str(a.get('documentId', '')).endswith(nd_id)):
+                                        tp = min(nd_max, nd_start + int(a.get('pageOffset', 0) or 0))
+                                        a['pageNumber'] = tp
+                                        if a.get('textQuote'):
+                                            a['textQuote'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {tp}]', a['textQuote'])
+                                for n in nodes:
+                                    if ('pan' in nd_title and n.get('imageUrl') and '120262c7871a' in n.get('imageUrl')) or \
+                                       (nd_id and str(n.get('documentId', '')).endswith(nd_id)):
+                                        tp = min(nd_max, nd_start + int(n.get('pageOffset', 0) or 0))
+                                        n['sourcePageNumber'] = tp
+                                        if n.get('text'):
+                                            n['text'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {tp}]', n['text'])
+                                        if n.get('title'):
+                                            n['title'] = re.sub(r'\bPAGE \d+\b', f'PAGE {tp}', n['title'])
+                except Exception:
+                    pass
+
             serializer.validated_data['snapshot_data'] = snapshot_data
+
+        if 'summary' in serializer.validated_data:
+            serializer.validated_data['summary'] = _sanitize_null_bytes(serializer.validated_data['summary'])
+        if 'version_name' in serializer.validated_data:
+            serializer.validated_data['version_name'] = _sanitize_null_bytes(serializer.validated_data['version_name'])
 
         # Calculate next version number for this specific document in this case
         versions_query = CaseDraftVersion.objects.filter(case=case)
@@ -183,7 +234,7 @@ class CaseDraftVersionViewSet(viewsets.ModelViewSet):
     def name_version(self, request, pk=None):
         """Allow advocate to name or rename a key version milestone"""
         version = self.get_object()
-        version_name = request.data.get('version_name', '').strip()
+        version_name = _sanitize_null_bytes(request.data.get('version_name', '').strip())
         if not version_name:
             return Response({'error': 'version_name is required'}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -226,7 +277,7 @@ class CaseDraftVersionViewSet(viewsets.ModelViewSet):
             page_count=version.page_count,
             annotation_count=version.annotation_count,
             summary=f"Reverted workspace state back to version {version.version_number}",
-            snapshot_data=version.snapshot_data,
+            snapshot_data=_sanitize_null_bytes(version.snapshot_data),
             pdf_file=version.pdf_file,
             is_named=True
         )

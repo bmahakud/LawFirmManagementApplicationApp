@@ -117,6 +117,10 @@ class UserDocument(models.Model):
         ('rejoinder', 'Rejoinder'),
         ('other', 'Other Document'),
 
+        # Personalized Templates & Court Forms
+        ('personalized_document', 'Personalized Document'),
+        ('court_form', 'Court Form'),
+
         # Drafting & Research (Docu Mind)
         ('drafting', 'Drafting (Docu Mind)'),
         ('research_notes', 'Research Notes'),
@@ -208,6 +212,7 @@ class UserDocument(models.Model):
     # Version tracking (for array-like storage of multiple versions)
     version = models.IntegerField(default=1, help_text="Version number of this document")
     custom_sequence = models.IntegerField(default=0, help_text="Manual override for filing pack document ordering")
+    annexure = models.CharField(max_length=100, blank=True, default='', help_text="Court annexure label, e.g. '1', '2 series', '3', or blank")
     parent_document = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
@@ -230,6 +235,23 @@ class UserDocument(models.Model):
             models.Index(fields=['uploaded_by', 'is_deleted']),
         ]
     
+    def get_document_type_display(self):
+        if self.document_type == 'personalized_document':
+            return 'Personalized Document'
+        if (
+            self.document_category == 'personalized_template' or
+            (self.description and (
+                'personalized template' in self.description.lower() or
+                'imported from word' in self.description.lower()
+            ))
+        ):
+            if self.document_type in ['other', 'custom', '', None]:
+                return 'Personalized Document'
+        
+        field = self._meta.get_field('document_type')
+        val = getattr(self, field.attname, self.document_type)
+        return dict(field.flatchoices).get(val, str(val) if val else 'Other Document')
+
     def __str__(self):
         return f"{self.document_title} - {self.get_document_type_display()}"
     

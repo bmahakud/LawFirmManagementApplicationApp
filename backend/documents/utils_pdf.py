@@ -156,7 +156,7 @@ class PDFService:
         forms_queryset = FilledCourtForm.objects.filter(
             case=case,
             template__category='drafting'
-        ).select_related('template').order_by('-updated_at')
+        ).exclude(status='draft').select_related('template').order_by('-updated_at')
         
         all_forms = list(forms_queryset)
         if not all_forms:
@@ -258,11 +258,18 @@ class PDFService:
                     page_label = f"{body_page} TO {body_page + num_pages - 1}"
                 body_page += num_pages
             
+            f_annex = getattr(form, 'annexure', '') or ''
+            if not f_annex and form.field_values and isinstance(form.field_values, dict):
+                f_annex = str(form.field_values.get('annexure_no', '') or '').strip()
+
             index_data.append({
                 'sl_no': f"{sl_no:02d}",
+                'annexure': f_annex,
                 'desc': name,
                 'page': page_label
             })
+            
+            data['annexure'] = f_annex
             
             form_pages[data['id']] = {
                 'page_label': page_label,
@@ -353,8 +360,13 @@ class PDFService:
             else:
                 body_page += num_pages
                 
+            f_annex = getattr(form, 'annexure', '') or ''
+            if not f_annex and form.field_values and isinstance(form.field_values, dict):
+                f_annex = str(form.field_values.get('annexure_no', '') or '').strip()
+
             index_data.append({
                 'sl_no': f"{sl_no:02d}",
+                'annexure': f_annex,
                 'desc': name,
                 'page': page_label
             })

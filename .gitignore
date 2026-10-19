@@ -56,3 +56,5 @@ backend/htmlcov/
 *~
 .DS_Store
 Thumbs.db
+*.tar.gz
+frontend/next-env.d.ts

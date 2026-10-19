@@ -74,6 +74,7 @@ export const API = {
     UPLOAD: "/api/documents/",
     DETAIL: (uuid: string) => `/api/documents/${uuid}/`,
     RESTORE: (id: string) => `/api/documents/${id}/restore/`,
+    PERMANENT_DELETE: (id: string) => `/api/documents/${id}/permanent-delete/`,
     USER_DOCUMENTS: "/api/documents/user_documents/",
     BY_CLIENT: (id: string) => `/api/documents/by_client/?client_id=${id}`,
     BY_CASE: (id: string, section: string = 'all') => `/api/documents/by_case/?case_id=${id}&section=${section}`,
@@ -129,6 +130,17 @@ export const API = {
       NAME_VERSION: (id: string) => `/api/documents/draft-versions/${id}/name-version/`,
       RESTORE: (id: string) => `/api/documents/draft-versions/${id}/restore/`,
       DELETE: (id: string) => `/api/documents/draft-versions/${id}/`,
+    },
+    PERSONALIZED_TEMPLATES: {
+      LIST: "/api/documents/personalized-templates/",
+      CREATE: "/api/documents/personalized-templates/",
+      DETAIL: (id: string) => `/api/documents/personalized-templates/${id}/`,
+      BY_CASE: (caseId: string) => `/api/documents/personalized-templates/?case_id=${encodeURIComponent(caseId)}`,
+      ADD_TO_ALL_DOCUMENTS: (id: string) => `/api/documents/personalized-templates/${id}/add_to_all_documents/`,
+      REMOVE_FROM_ALL_DOCUMENTS: (id: string) => `/api/documents/personalized-templates/${id}/remove_from_all_documents/`,
+      DOWNLOAD_PDF: (id: string) => `/api/documents/personalized-templates/${id}/download_pdf/`,
+      DUPLICATE: (id: string) => `/api/documents/personalized-templates/${id}/duplicate/`,
+      IMPORT_WORD: "/api/documents/personalized-templates/import_word/",
     }
   },
   DOCUMENT_REQUESTS: {

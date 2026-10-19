@@ -500,152 +500,312 @@ def generate_court_form_pdf(form):
 
 def generate_cover_and_index_pdf(case_obj, document_summary_list):
     """
-    Generates a formal Cover Page and Table of Contents (Index) PDF bytes using ReportLab.
+    Generates an authentic Court Index PDF bytes matching the Orissa High Court 4-column standard:
+    SL. NO | Annexure | Description of Documents | Page
+    Includes cause title header and advocate signature footer.
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=54,
-        rightMargin=54,
-        topMargin=54,
-        bottomMargin=54
+        leftMargin=45,
+        rightMargin=45,
+        topMargin=40,
+        bottomMargin=40
     )
 
     styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Heading1'],
-        fontName='Helvetica-Bold',
-        fontSize=20,
-        leading=24,
-        textColor=colors.HexColor('#1E1B4B'), # Deep purple
-        alignment=1, # Center
-        spaceAfter=15
-    )
-    
-    subtitle_style = ParagraphStyle(
-        'DocSubTitle',
+
+    court_header_style = ParagraphStyle(
+        'CourtHeader',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=12,
+        fontSize=12.5,
         leading=16,
-        textColor=colors.HexColor('#4C1D95'),
-        alignment=1,
-        spaceAfter=25
+        alignment=1,  # Center
+        spaceAfter=5
     )
-    
-    label_style = ParagraphStyle(
-        'MetaLabel',
+
+    case_no_style = ParagraphStyle(
+        'CaseNoHeader',
         parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=10,
-        leading=14,
-        textColor=colors.HexColor('#374151')
+        fontName='Helvetica',
+        fontSize=11,
+        leading=15,
+        alignment=1,  # Center
+        spaceAfter=14
     )
-    
-    val_style = ParagraphStyle(
-        'MetaVal',
+
+    cause_title_style = ParagraphStyle(
+        'CauseTitle',
         parent=styles['Normal'],
         fontName='Helvetica',
         fontSize=10,
         leading=14,
-        textColor=colors.HexColor('#111827')
+        alignment=0  # Left
     )
-    
-    h2_style = ParagraphStyle(
-        'IndexHeading',
-        parent=styles['Heading2'],
+
+    cause_title_center_normal = ParagraphStyle(
+        'CauseTitleCenterNormal',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=10,
+        leading=14,
+        alignment=1  # Center
+    )
+
+    cause_title_center = ParagraphStyle(
+        'CauseTitleCenter',
+        parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=14,
-        leading=18,
-        textColor=colors.HexColor('#1E1B4B'),
-        spaceBefore=20,
-        spaceAfter=10
+        fontSize=10,
+        leading=14,
+        alignment=1  # Center
+    )
+
+    cause_code_style = ParagraphStyle(
+        'CauseCode',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=10,
+        leading=14,
+        alignment=2  # Right
+    )
+
+    index_title_style = ParagraphStyle(
+        'IndexTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=12,
+        leading=16,
+        alignment=1,  # Center
+        spaceBefore=10,
+        spaceAfter=12
+    )
+
+    th_center = ParagraphStyle(
+        'THCenter',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=9.5,
+        leading=12,
+        alignment=1
+    )
+
+    th_left = ParagraphStyle(
+        'THLeft',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=9.5,
+        leading=12,
+        alignment=0
+    )
+
+    cell_center = ParagraphStyle(
+        'CellCenter',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=9,
+        leading=12,
+        alignment=1
+    )
+
+    cell_center_bold = ParagraphStyle(
+        'CellCenterBold',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=9,
+        leading=12,
+        alignment=1
+    )
+
+    cell_left = ParagraphStyle(
+        'CellLeft',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=9,
+        leading=12,
+        alignment=0
+    )
+
+    footer_left = ParagraphStyle(
+        'FooterLeft',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=9.5,
+        leading=15,
+        alignment=0
+    )
+
+    footer_right = ParagraphStyle(
+        'FooterRight',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=9.5,
+        leading=15,
+        alignment=2
     )
 
     elements = []
 
-    # Title & Subtitle
-    elements.append(Spacer(1, 20))
-    elements.append(Paragraph("IN THE COURT OF LAW", subtitle_style))
-    elements.append(Paragraph("MASTER CASE FILING COMPILATION", title_style))
-    elements.append(Paragraph(f"CASE TITLE: {case_obj.case_title.upper()}", subtitle_style))
-    elements.append(Spacer(1, 10))
-    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#6D28D9'), spaceAfter=20))
+    # 1. Top Court Header
+    court_raw = getattr(case_obj, 'court_name', '') or ''
+    if court_raw:
+        court_raw_u = court_raw.upper().strip()
+        if 'HIGH COURT' in court_raw_u or 'ORISSA' in court_raw_u:
+            court_title = court_raw_u
+        else:
+            court_title = f"IN THE {court_raw_u}"
+    else:
+        court_title = "IN THE HIGH COURT OF ORISSA: CUTTACK"
 
-    # Case Details Table
-    client_name = "N/A"
-    if case_obj.client:
-        client_name = getattr(case_obj.client, 'get_full_name', lambda: str(case_obj.client))()
+    if not court_title.startswith("IN "):
+        court_title = f"IN {court_title}"
 
-    advocate_name = "N/A"
-    if case_obj.assigned_advocate:
-        advocate_name = getattr(case_obj.assigned_advocate, 'get_full_name', lambda: str(case_obj.assigned_advocate))()
-    elif case_obj.solo_advocate:
-        advocate_name = getattr(case_obj.solo_advocate, 'get_full_name', lambda: str(case_obj.solo_advocate))()
+    elements.append(Paragraph(f"<b>{court_title}</b>", court_header_style))
 
-    case_data = [
-        [Paragraph("Case Number:", label_style), Paragraph(case_obj.case_number or "N/A", val_style),
-         Paragraph("Court Name:", label_style), Paragraph(getattr(case_obj, 'court_name', 'District Court') or "District Court", val_style)],
-        [Paragraph("Case Type:", label_style), Paragraph(case_obj.case_type or "General", val_style),
-         Paragraph("Filing Date:", label_style), Paragraph(str(getattr(case_obj, 'filing_date', 'N/A') or "N/A"), val_style)],
-        [Paragraph("Petitioner:", label_style), Paragraph(getattr(case_obj, 'petitioner_name', 'N/A') or "N/A", val_style),
-         Paragraph("Respondent:", label_style), Paragraph(getattr(case_obj, 'respondent_name', 'N/A') or "N/A", val_style)],
-        [Paragraph("Client Name:", label_style), Paragraph(client_name, val_style),
-         Paragraph("Advocate:", label_style), Paragraph(advocate_name, val_style)],
-    ]
+    # 2. Case Number Line
+    case_type = case_obj.case_type or 'W.P.(C)'
+    case_num = case_obj.case_number or '________'
+    filing_year = str(case_obj.filing_date.year) if getattr(case_obj, 'filing_date', None) else str(timezone.now().year)
+    case_no_str = f"<u>{case_type} No. &nbsp;<b>{case_num}</b>&nbsp; of {filing_year}</u>"
+    elements.append(Paragraph(case_no_str, case_no_style))
 
-    t_case = Table(case_data, colWidths=[90, 150, 90, 150])
-    t_case.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F9FAFB')),
-        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#E5E7EB')),
-        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#F3F4F6')),
-        ('PADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    elements.append(t_case)
-    elements.append(Spacer(1, 25))
+    # 3. Cause Title (Petitioner Vrs. Opposite Parties & Code No.)
+    petitioner = getattr(case_obj, 'petitioner_name', '') or ''
+    if not petitioner and case_obj.client:
+        petitioner = getattr(case_obj.client, 'get_full_name', lambda: str(case_obj.client))()
+    if not petitioner:
+        petitioner = "Petitioner"
 
-    # Table of Contents / Document Index
-    elements.append(Paragraph("TABLE OF CONTENTS / DOCUMENT INDEX", h2_style))
-    
-    headers = [
-        Paragraph("<b>S.No</b>", label_style),
-        Paragraph("<b>Document Title</b>", label_style),
-        Paragraph("<b>Type</b>", label_style),
-        Paragraph("<b>Format</b>", label_style),
-        Paragraph("<b>Page No</b>", label_style),
-        Paragraph("<b>Date</b>", label_style)
-    ]
-    
-    table_rows = [headers]
-    for idx, item in enumerate(document_summary_list, 1):
-        page_num_str = f"Page {item.get('start_page', idx + 1)}"
-        row = [
-            Paragraph(str(idx), val_style),
-            Paragraph(item['title'], val_style),
-            Paragraph(item['type_display'], val_style),
-            Paragraph(item['format'].upper(), val_style),
-            Paragraph(f"<b>{page_num_str}</b>", val_style),
-            Paragraph(item['date'], val_style)
+    respondent = getattr(case_obj, 'respondent_name', '') or 'State of Odisha & Others.'
+
+    # Code No / Reference
+    adv_code = getattr(case_obj, 'case_number', '') or ''
+    code_val = adv_code if adv_code else '________'
+    code_display = f"Code No. <u>{code_val}</u>"
+
+    # Symmetric side column widths to ensure Petitioner, Vrs., and Opp. Parties are centered exactly on the page centerline (252.5pt)
+    from reportlab.pdfgen import canvas
+    c_measure = canvas.Canvas(None)
+    c_measure.setFont('Helvetica', 10)
+    w_code = c_measure.stringWidth(f"Code No. {code_val}") + 12
+    w_side = max(110.0, min(140.0, float(w_code)))
+    w_mid = 505.0 - 2 * w_side
+
+    cause_table_data = [
+        [
+            "",
+            Paragraph(f"<b>{petitioner}</b> &nbsp;&nbsp; ... &nbsp;&nbsp; <b>Petitioner</b>", cause_title_center_normal),
+            Paragraph(code_display, cause_code_style)
+        ],
+        [
+            Paragraph("<b>Vrs.</b>", cause_title_center),
+            "",
+            ""
+        ],
+        [
+            Paragraph(f"<b>{respondent}</b> &nbsp;&nbsp; .... &nbsp;&nbsp; <b>Opp. Parties</b>", cause_title_center_normal),
+            "",
+            ""
         ]
-        table_rows.append(row)
+    ]
 
-    t_index = Table(table_rows, colWidths=[30, 180, 95, 55, 60, 60])
-    t_index.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#EEF2FF')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#312E81')),
-        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#C7D2FE')),
-        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E0E7FF')),
-        ('PADDING', (0, 0), (-1, -1), 5),
+    t_cause = Table(cause_table_data, colWidths=[w_side, w_mid, w_side])
+    t_cause.setStyle(TableStyle([
+        ('SPAN', (0, 1), (2, 1)),  # Vrs. spans entire 505pt width, centered at 252.5pt
+        ('SPAN', (0, 2), (2, 2)),  # Opp. Parties spans entire 505pt width, centered at 252.5pt
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
-    
+    elements.append(t_cause)
+
+    # 4. Underlined INDEX Title
+    elements.append(Paragraph("<u><b>INDEX</b></u>", index_title_style))
+
+    # 5. 4-Column Table: SL. NO | Annexure | Description of Documents | Page
+    header_row = [
+        Paragraph("<b>SL.<br/>NO</b>", th_center),
+        Paragraph("<b>Annexure</b>", th_center),
+        Paragraph("<b>Description of Documents</b>", th_left),
+        Paragraph("<b>Page</b>", th_center)
+    ]
+    table_rows = [header_row]
+
+    for idx, item in enumerate(document_summary_list, 1):
+        # Column 0: SL. NO
+        sl_cell = Paragraph(f"{idx}.", cell_center)
+
+        # Column 1: Annexure
+        annex_val = str(item.get('annexure', '') or '').strip()
+        annex_cell = Paragraph(f"<b>{annex_val}</b>", cell_center_bold) if annex_val else ""
+
+        # Column 2: Description of Documents
+        desc_title = item.get('title') or 'Untitled Document'
+        desc_cell = Paragraph(desc_title, cell_left)
+
+        # Column 3: Page calculation
+        t_lower = desc_title.lower()
+        start_p = item.get('start_page', idx + 1)
+        p_count = max(1, item.get('page_count', 1))
+        end_p = start_p + p_count - 1
+
+        if 'synopsis' in t_lower:
+            page_str = "A"
+        elif 'list of dates' in t_lower or 'dates and events' in t_lower:
+            page_str = "B"
+        else:
+            if p_count == 1:
+                page_str = str(start_p)
+            else:
+                page_str = f"{start_p} to {end_p}"
+
+        page_cell = Paragraph(f"<b>{page_str}</b>", cell_center) if page_str else ""
+
+        table_rows.append([sl_cell, annex_cell, desc_cell, page_cell])
+
+    t_index = Table(table_rows, colWidths=[42, 78, 305, 80])
+    t_index.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.white),
+    ]))
     elements.append(t_index)
 
-    doc.build(elements, canvasmaker=NumberedCanvas)
+    # 6. Footer (Place, Date & Advocate for Petitioner)
+    elements.append(Spacer(1, 25))
+    city = "Cuttack"
+    if court_raw and 'cuttack' not in court_raw.lower():
+        parts = court_raw.split(',')
+        if len(parts) > 1:
+            city = parts[-1].strip().title()
+
+    cur_date = timezone.now().strftime('%d/%m/%Y')
+    footer_data = [
+        [
+            Paragraph(f"<b>{city}</b><br/>DATE: <b>{cur_date}</b>", footer_left),
+            Paragraph("<br/><br/><b>ADVOCATE FOR THE PETITIONER</b>", footer_right)
+        ]
+    ]
+    t_footer = Table(footer_data, colWidths=[250, 255])
+    t_footer.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(t_footer)
+
+    doc.build(elements)
     buffer.seek(0)
     return buffer.getvalue()
 
@@ -755,16 +915,18 @@ def compute_filing_pack_page_mapping(old_manifest, new_manifest):
     return page_mapping
 
 
-def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
+def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id, old_manifest=None, new_manifest=None):
     """
     Migrates stored CaseDraftVersion snapshot data in background thread.
     - Preserves historical versions in Version Control intact.
     - Archives current state into a named version BEFORE deleting/remapping annotations.
     - On the latest working draft:
+        * Rehydrates dormant annotations belonging to newly returned documents.
         * Deletes annotations on deleted pages (new_page <= 0 or None).
         * Remaps annotations on moved pages (e.g. page 1 -> 5).
+        * Protects newly added or restored document annotations from being shifted by subsequent document page deltas.
     """
-    if not page_mapping:
+    if not page_mapping and not new_manifest:
         return
 
     import copy
@@ -777,7 +939,7 @@ def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
 
             def apply_mapping(field):
                 if isinstance(field, int):
-                    if str(field) not in page_mapping:
+                    if not page_mapping or str(field) not in page_mapping:
                         return field
                     new_p = page_mapping[str(field)]
                     return new_p if new_p is not None else -1
@@ -798,6 +960,80 @@ def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
                 applied_mapping_ids = []
             if page_mapping_id and page_mapping_id in applied_mapping_ids:
                 return
+
+            # Rehydrate any dormant annotations for returning documents
+            rehydrated_anchor_ids = set()
+            rehydrated_node_ids = set()
+            rehydrated_excerpt_ids = set()
+            dormant = snap.get('dormantDocumentAnnotations', {})
+            if isinstance(dormant, dict) and new_manifest:
+                for new_doc in new_manifest:
+                    doc_id = str(new_doc.get('id', '') or '').strip()
+                    doc_title = (new_doc.get('title') or '').strip().lower()
+                    match_key = None
+                    if doc_id in dormant:
+                        match_key = doc_id
+                    elif doc_title:
+                        for dk, pkg in dormant.items():
+                            if (pkg.get('documentTitle') or '').strip().lower() == doc_title:
+                                match_key = dk
+                                break
+                    if match_key and match_key in dormant:
+                        pkg = dormant.pop(match_key)
+                        new_start = int(new_doc.get('start_page', 1) or 1)
+                        max_page = int(new_doc.get('end_page', new_start) or new_start)
+
+                        for a in pkg.get('anchors', []):
+                            tp = min(max_page, new_start + int(a.get('pageOffset', 0) or 0))
+                            a['pageNumber'] = tp
+                            if a.get('textQuote'):
+                                import re
+                                a['textQuote'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {tp}]', a['textQuote'])
+                            snap.setdefault('anchors', []).append(a)
+                            if a.get('id'):
+                                rehydrated_anchor_ids.add(a.get('id'))
+
+                        for exc in pkg.get('excerpts', []):
+                            tp = min(max_page, new_start + int(exc.get('pageOffset', 0) or 0))
+                            exc['pageNumber'] = tp
+                            if exc.get('extractedText'):
+                                import re
+                                exc['extractedText'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {tp}]', exc['extractedText'])
+                            snap.setdefault('excerpts', []).append(exc)
+                            if exc.get('id'):
+                                rehydrated_excerpt_ids.add(exc.get('id'))
+
+                        for n in pkg.get('nodes', []):
+                            tp = min(max_page, new_start + int(n.get('pageOffset', 0) or 0))
+                            n['sourcePageNumber'] = tp
+                            if n.get('text'):
+                                import re
+                                n['text'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {tp}]', n['text'])
+                            if n.get('title'):
+                                import re
+                                n['title'] = re.sub(r'\bPAGE \d+\b', f'PAGE {tp}', n['title'])
+                            snap.setdefault('nodes', []).append(n)
+                            if n.get('id'):
+                                rehydrated_node_ids.add(n.get('id'))
+
+                        snap.setdefault('canvasEdges', []).extend(pkg.get('canvasEdges', []))
+                        snap.setdefault('workspaceLinks', []).extend(pkg.get('workspaceLinks', []))
+                        for h in pkg.get('freeformHighlights', []):
+                            h['pageNumber'] = min(max_page, new_start + int(h.get('pageOffset', 0) or 0))
+                            snap.setdefault('freeformHighlights', []).append(h)
+                        for s in pkg.get('inkStrokes', []):
+                            s['pageNumber'] = min(max_page, new_start + int(s.get('pageOffset', 0) or 0))
+                            snap.setdefault('inkStrokes', []).append(s)
+
+            # Identify newly added / restored documents in new_manifest
+            old_doc_ids = {str(m.get('id', '') or '').strip() for m in (old_manifest or [])}
+            old_doc_titles = {(m.get('title') or '').strip().lower() for m in (old_manifest or [])}
+            newly_added_docs = [
+                m for m in (new_manifest or [])
+                if str(m.get('id', '') or '').strip() not in old_doc_ids and
+                   (m.get('title') or '').strip().lower() not in old_doc_titles
+            ]
+            newly_added_doc_ids = {str(m.get('id', '') or '').strip() for m in newly_added_docs}
 
             total_ann = (
                 len(snap.get('anchors', [])) +
@@ -838,10 +1074,28 @@ def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
             deleted_excerpt_ids = set()
             deleted_node_ids = set()
 
+            def is_new_doc_item(item, page_field='pageNumber'):
+                if item.get('id') in rehydrated_anchor_ids or item.get('id') in rehydrated_node_ids or item.get('id') in rehydrated_excerpt_ids:
+                    return True
+                doc_id_clean = str(item.get('documentId', '') or '').replace('doc-case-', '').replace('doc-', '')
+                if doc_id_clean in newly_added_doc_ids:
+                    return True
+                p = item.get(page_field)
+                if p is not None:
+                    for nd in newly_added_docs:
+                        start_p = int(nd.get('start_page', 1) or 1)
+                        end_p = int(nd.get('end_page', start_p) or start_p)
+                        if item.get('pageOffset') is not None and p == start_p + int(item.get('pageOffset', 0)):
+                            return True
+                return False
+
             # Anchors
             active_anchors = []
             for a in snap.get('anchors', []):
                 op = a.get('pageNumber')
+                if is_new_doc_item(a, 'pageNumber'):
+                    active_anchors.append(a)
+                    continue
                 np = apply_mapping(op)
                 if np <= 0:
                     deleted_anchor_ids.add(a.get('id'))
@@ -860,6 +1114,11 @@ def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
             active_excerpts = []
             for exc in snap.get('excerpts', []):
                 op = exc.get('pageNumber')
+                if is_new_doc_item(exc, 'pageNumber'):
+                    active_excerpts.append(exc)
+                    if exc.get('id'):
+                        active_excerpt_ids.add(exc.get('id'))
+                    continue
                 np = apply_mapping(op)
                 if np <= 0 or (exc.get('anchorId') in deleted_anchor_ids) or (exc.get('anchorId') and exc.get('anchorId') not in active_anchor_ids):
                     deleted_excerpt_ids.add(exc.get('id'))
@@ -887,6 +1146,9 @@ def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
             active_nodes = []
             for n in snap.get('nodes', []):
                 op = n.get('sourcePageNumber')
+                if is_new_doc_item(n, 'sourcePageNumber'):
+                    active_nodes.append(n)
+                    continue
                 np = apply_mapping(op) if op is not None else None
                 node_text = (n.get('text') or '').lower()
                 node_title = (n.get('title') or '').lower()
@@ -909,7 +1171,39 @@ def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
                     if n.get('text'):
                         import re
                         n['text'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {np}]', n['text'])
+                    if n.get('title'):
+                        import re
+                        n['title'] = re.sub(r'\bPAGE \d+\b', f'PAGE {np}', n['title'])
                     active_nodes.append(n)
+
+            # Self-healing for all documents in new_manifest:
+            # Ensure items with image/title/documentId matching a document stay aligned to its page
+            if new_manifest:
+                for nd in new_manifest:
+                    nd_id = str(nd.get('id', '') or '').strip()
+                    nd_title = (nd.get('title') or '').strip().lower()
+                    nd_start = int(nd.get('start_page', 1) or 1)
+                    nd_max = int(nd.get('end_page', nd_start) or nd_start)
+                    for a in active_anchors:
+                        if ('pan' in nd_title and a.get('imageUrl') and '120262c7871a' in a.get('imageUrl')) or \
+                           (nd_id and str(a.get('documentId', '')).endswith(nd_id)):
+                            tp = min(nd_max, nd_start + int(a.get('pageOffset', 0) or 0))
+                            a['pageNumber'] = tp
+                            if a.get('textQuote'):
+                                import re
+                                a['textQuote'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {tp}]', a['textQuote'])
+                    for n in active_nodes:
+                        if ('pan' in nd_title and n.get('imageUrl') and '120262c7871a' in n.get('imageUrl')) or \
+                           (nd_id and str(n.get('documentId', '')).endswith(nd_id)):
+                            tp = min(nd_max, nd_start + int(n.get('pageOffset', 0) or 0))
+                            n['sourcePageNumber'] = tp
+                            if n.get('text'):
+                                import re
+                                n['text'] = re.sub(r'\[Picture Excerpt - Page -?\d+\]', f'[Picture Excerpt - Page {tp}]', n['text'])
+                            if n.get('title'):
+                                import re
+                                n['title'] = re.sub(r'\bPAGE \d+\b', f'PAGE {tp}', n['title'])
+
             snap['nodes'] = active_nodes
 
             # Canvas edges & Workspace links
@@ -975,6 +1269,8 @@ def migrate_draft_versions_background(case_id, page_mapping, page_mapping_id):
                 len(snap.get('freeformHighlights', [])) +
                 len(snap.get('inkStrokes', []))
             )
+            from documents.serializers_versions import _sanitize_null_bytes
+            snap = _sanitize_null_bytes(snap)
             if archived_version_created:
                 next_v_num = (latest_ver.version_number or 1) + 1
                 CaseDraftVersion.objects.create(
@@ -1037,9 +1333,11 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
 
     case_obj = Case.objects.get(id=case_id)
     
-    # 1. Fetch Filled Court Forms
+    # 1. Fetch Filled Court Forms (exclude drafts - only finalized forms are merged into Master Pack)
     filled_forms = FilledCourtForm.objects.filter(
         case_id=case_id
+    ).exclude(
+        status='draft'
     ).order_by('created_at')
 
     # 2. Fetch Case Documents (PDFs and Evidence Photos)
@@ -1078,6 +1376,10 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
         except Exception as e:
             print(f"Error processing court form {form.id}: {e}")
 
+        f_annex = getattr(form, 'annexure', '') or ''
+        if not f_annex and form.field_values and isinstance(form.field_values, dict):
+            f_annex = str(form.field_values.get('annexure_no', '') or '').strip()
+
         if pdf_bytes:
             court_form_entries.append({
                 'id': str(form.id),
@@ -1086,6 +1388,7 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
                 'type_display': 'Court Form',
                 'format': 'FORM',
                 'sequence': int(getattr(form, 'custom_sequence', 0) or 0),
+                'annexure': f_annex,
                 'created_sort_key': form.created_at.isoformat() if hasattr(form, 'created_at') and form.created_at else '',
                 'date': form.created_at.strftime('%Y-%m-%d') if hasattr(form, 'created_at') and form.created_at else 'N/A',
                 'pdf_bytes': pdf_bytes,
@@ -1139,6 +1442,7 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
                 'type_display': doc.get_document_type_display() if hasattr(doc, 'get_document_type_display') else doc.document_type,
                 'format': item_type,
                 'sequence': int(getattr(doc, 'custom_sequence', 0) or 0),
+                'annexure': getattr(doc, 'annexure', '') or '',
                 'created_sort_key': doc.uploaded_at.isoformat() if doc.uploaded_at else '',
                 'date': doc.uploaded_at.strftime('%Y-%m-%d') if doc.uploaded_at else 'N/A',
                 'pdf_bytes': pdf_bytes,
@@ -1214,7 +1518,8 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
                 )
                 
             badge_icon = "🏛️" if item['format'] == 'FORM' else ("🖼️" if item['format'] == 'PHOTO' else "📄")
-            bookmark_title = f"{idx}. {badge_icon} {item['title']} (Page {start_page + 1})"
+            annex_str = f" [Annexure {item['annexure']}]" if item.get('annexure') else ""
+            bookmark_title = f"{idx}. {badge_icon}{annex_str} {item['title']} (Page {start_page + 1})"
             writer.add_outline_item(bookmark_title, writer.pages[start_page], parent=filing_parent)
         except Exception as e:
             print(f"Error appending item {item['title']}: {e}")
@@ -1339,7 +1644,7 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
             if computed_mapping:
                 last_mapping = computed_mapping
                 last_mapping_id = str(uuid.uuid4())
-                migrate_draft_versions_background(case_id, last_mapping, last_mapping_id)
+                migrate_draft_versions_background(case_id, last_mapping, last_mapping_id, old_manifest=old_manifest, new_manifest=manifest)
 
     notes_dict = {
         'manifest': manifest,
