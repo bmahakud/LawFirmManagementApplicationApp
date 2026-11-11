@@ -34,6 +34,8 @@ import {
   Eye,
   CheckCircle2,
   Layers,
+  ArrowUpDown,
+  Hash,
 } from 'lucide-react';
 import {
   ActivityFeed,
@@ -57,6 +59,7 @@ import {
 } from '@/components/platform/ui';
 import { DocuMindIntegration } from './DocuMindIntegration';
 import ReorderFilingPackModal from './ReorderFilingPackModal';
+import DateBookmarkModal from './DateBookmarkModal';
 import {
   activityRows,
   caseFormFields,
@@ -72,7 +75,7 @@ import { customFetch } from '@/lib/fetch';
 import DocumentManager from '@/components/platform/DocumentManager';
 import DocumentViewer from '@/components/platform/DocumentViewer';
 import { API, API_BASE_URL } from '@/lib/api';
-import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams, usePathname } from 'next/navigation';
 import { Country, State, City } from 'country-state-city';
 import { useTopbarTitle } from '@/components/platform/TopbarContext';
 import { toast } from 'react-hot-toast';
@@ -272,8 +275,37 @@ function DataTable({
                       );
                     }
 
-                    // Code / Number column -> mono badge
+                    // Code / Number column -> mono badge (matches photo 1 style with registration status)
                     if (['number', 'code', 'invoice', 'id'].includes(column.key)) {
+                      const isCaseNumber = column.key === 'number';
+                      const isUnreg = isCaseNumber && row.isRegistered === false;
+                      const regNumber = row.registrationNumber as string | undefined;
+
+                      if (isCaseNumber) {
+                        return (
+                          <td key={column.key} className="py-4 px-6 text-sm">
+                            <div className="inline-flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-bold text-blue-600 bg-blue-50/70 border border-blue-200/60 px-3 py-1 rounded-xl text-xs shadow-xs">
+                                {val}
+                              </span>
+                              {isUnreg && regNumber ? (
+                                <span className="font-mono font-bold text-amber-700 bg-amber-50/70 border border-amber-200/60 px-3 py-1 rounded-xl text-xs shadow-xs" title="Unregistered Diary Number">
+                                  {regNumber}
+                                </span>
+                              ) : isUnreg ? (
+                                <span className="font-mono font-bold text-amber-700 bg-amber-50/70 border border-amber-200/60 px-3 py-1 rounded-xl text-xs shadow-xs">
+                                  Unregistered
+                                </span>
+                              ) : regNumber ? (
+                                <span className="font-mono font-bold text-emerald-700 bg-emerald-50/70 border border-emerald-200/60 px-3 py-1 rounded-xl text-xs shadow-xs" title="Court Registration Number">
+                                  Reg: {regNumber}
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                        );
+                      }
+
                       return (
                         <td key={column.key} className="py-4 px-6 text-sm">
                           <span className="font-mono font-bold text-blue-600 bg-blue-50/60 border border-blue-100 px-2.5 py-1 rounded-lg text-xs">
@@ -639,6 +671,8 @@ export function CasesPage({
   const [cases, setCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [registrationFilter, setRegistrationFilter] = useState<'all' | 'registered' | 'unregistered'>('all');
+  const [sortBy, setSortBy] = useState<string>('date_desc');
 
   useEffect(() => {
     const fetchCases = async () => {
@@ -673,17 +707,99 @@ export function CasesPage({
     fetchCases();
   }, [filterByAssignedAdvocate]);
 
-  const caseRows = cases.map((c) => {
+  // Compute registration counts
+  const totalCount = cases.length;
+  const registeredCount = useMemo(() => {
+    return cases.filter(c => c.is_registered !== false).length;
+  }, [cases]);
+  const unregisteredCount = useMemo(() => {
+    return cases.filter(c => c.is_registered === false).length;
+  }, [cases]);
+
+  // Filter and sort cases
+  const processedCases = useMemo(() => {
+    let list = [...cases];
+
+    // Filter by registration status
+    if (registrationFilter === 'registered') {
+      list = list.filter(c => c.is_registered !== false);
+    } else if (registrationFilter === 'unregistered') {
+      list = list.filter(c => c.is_registered === false);
+    }
+
+    // Sort cases reliably
+    list.sort((a, b) => {
+      const isUnregA = a.is_registered === false;
+      const isUnregB = b.is_registered === false;
+
+      if (sortBy === 'date_desc') {
+        const timeA = new Date(a.filing_date || a.created_at || 0).getTime();
+        const timeB = new Date(b.filing_date || b.created_at || 0).getTime();
+        return timeB - timeA;
+      }
+      if (sortBy === 'date_asc') {
+        const timeA = new Date(a.filing_date || a.created_at || 0).getTime();
+        const timeB = new Date(b.filing_date || b.created_at || 0).getTime();
+        return timeA - timeB;
+      }
+      if (sortBy === 'hearing_asc') {
+        if (!a.next_hearing_date) return 1;
+        if (!b.next_hearing_date) return -1;
+        return new Date(a.next_hearing_date).getTime() - new Date(b.next_hearing_date).getTime();
+      }
+      if (sortBy === 'reg_first') {
+        if (isUnregA !== isUnregB) return isUnregA ? 1 : -1;
+        return (a.case_title || '').localeCompare(b.case_title || '');
+      }
+      if (sortBy === 'unreg_first') {
+        if (isUnregA !== isUnregB) return isUnregA ? -1 : 1;
+        return (a.case_title || '').localeCompare(b.case_title || '');
+      }
+      if (sortBy === 'matter_asc') {
+        return (a.case_title || '').localeCompare(b.case_title || '');
+      }
+      if (sortBy === 'matter_desc') {
+        return (b.case_title || '').localeCompare(a.case_title || '');
+      }
+      if (sortBy === 'number_asc') {
+        return (a.case_number || '').localeCompare(b.case_number || '');
+      }
+      return 0;
+    });
+
+    return list;
+  }, [cases, registrationFilter, sortBy]);
+
+  const caseRows = processedCases.map((c) => {
+    const isUnreg = c.is_registered === false;
     const locationParts = [c.district, c.state].filter(Boolean);
     const locationStr = locationParts.length > 0 ? locationParts.join(', ') : 'N/A';
+
+    let hearingFormatted = 'Not scheduled';
+    if (c.next_hearing_date) {
+      try {
+        const d = new Date(c.next_hearing_date);
+        if (!isNaN(d.getTime())) {
+          hearingFormatted = d.toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+          });
+        }
+      } catch {
+        hearingFormatted = c.next_hearing_date;
+      }
+    }
 
     return {
       matter: c.case_title || 'Untitled Case',
       number: c.case_number || 'N/A',
+      registrationNumber: c.registration_number || '',
       client: c.client_name || 'N/A',
       status: c.status || 'N/A',
       location: locationStr,
-      hearing: c.next_hearing_date || 'Not scheduled',
+      hearing: hearingFormatted,
+      isRegistered: !isUnreg,
       viewHref: viewBase ? `${viewBase}/${c.id}` : undefined,
     };
   });
@@ -695,6 +811,87 @@ export function CasesPage({
         description={description}
         actions={primaryHref && primaryLabel ? <ActionLink href={primaryHref} label={primaryLabel} /> : undefined}
       />
+
+      {/* Registration Status Filter & Sort Toolbar */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm">
+        {/* Registration Quick Filter Tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setRegistrationFilter('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              registrationFilter === 'all'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            All Matters
+            <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded-full bg-slate-200/70 text-slate-700">
+              {totalCount}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRegistrationFilter('registered')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              registrationFilter === 'registered'
+                ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
+                : 'text-slate-600 hover:text-emerald-700'
+            }`}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Registered Cases
+            <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-full ${
+              registrationFilter === 'registered' ? 'bg-emerald-700 text-white' : 'bg-slate-200/70 text-slate-700'
+            }`}>
+              {registeredCount}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRegistrationFilter('unregistered')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              registrationFilter === 'unregistered'
+                ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/20'
+                : 'text-slate-600 hover:text-amber-700'
+            }`}
+          >
+            <Hash className="w-3.5 h-3.5" />
+            Unregistered (Diary)
+            <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-full ${
+              registrationFilter === 'unregistered' ? 'bg-amber-700 text-white' : 'bg-slate-200/70 text-slate-700'
+            }`}>
+              {unregisteredCount}
+            </span>
+          </button>
+        </div>
+
+        {/* Sort Dropdown */}
+        <div className="flex items-center gap-2 justify-end">
+          <label htmlFor="cases-sort" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+            Sort:
+          </label>
+          <div className="relative">
+            <select
+              id="cases-sort"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="appearance-none pl-3 pr-8 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer shadow-sm"
+            >
+              <option value="date_desc">Date: Newest First</option>
+              <option value="date_asc">Date: Oldest First</option>
+              <option value="hearing_asc">Next Hearing: Earliest</option>
+              <option value="reg_first">Registered Cases First</option>
+              <option value="unreg_first">Unregistered (Diary) First</option>
+              <option value="matter_asc">Matter: A to Z</option>
+              <option value="matter_desc">Matter: Z to A</option>
+              <option value="number_asc">Case Number</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+        </div>
+      </div>
 
       <div>
         {loading ? (
@@ -1582,7 +1779,9 @@ export function TeamMemberFormPage({
 }: AccentProps & { detail?: boolean; title?: string; description?: string; fixedRole?: string }) {
   const router = useRouter();
   const params = useParams();
+  const pathname = usePathname();
   const userId = params?.userId || params?.id;
+  const isPlatformOwner = pathname?.startsWith('/platform-owner');
 
   const [formData, setFormData] = useState<any>({
     first_name: '',
@@ -1614,16 +1813,36 @@ export function TeamMemberFormPage({
   const [error, setError] = useState('');
   const [limitError, setLimitError] = useState<any>(null);
 
+  // For firm super-admin / firm-admin, automatically set firm from current session
   useEffect(() => {
-    // Always fetch firms so the existing-user "Target Firm" dropdown is populated
-    customFetch(API.FIRMS.LIST)
-      .then(res => res.json())
-      .then(data => {
-        if (data.results) setFirms(data.results);
-        else if (Array.isArray(data)) setFirms(data);
-      })
-      .catch(err => console.error('Failed to fetch firms:', err));
-  }, []);
+    if (!isPlatformOwner) {
+      try {
+        const userStr = localStorage.getItem('user_details');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          const firmId = typeof user.firm === 'object' ? user.firm?.id : user.firm;
+          if (firmId) {
+            setFormData((prev: any) => ({ ...prev, firm: firmId }));
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse user_details:', e);
+      }
+    }
+  }, [isPlatformOwner]);
+
+  useEffect(() => {
+    // Only fetch all firms across platform for platform owners
+    if (isPlatformOwner) {
+      customFetch(API.FIRMS.LIST)
+        .then(res => res.json())
+        .then(data => {
+          if (data.results) setFirms(data.results);
+          else if (Array.isArray(data)) setFirms(data);
+        })
+        .catch(err => console.error('Failed to fetch firms:', err));
+    }
+  }, [isPlatformOwner]);
 
   useEffect(() => {
     // If we're creating/editing an admin, fetch branches
@@ -1679,6 +1898,8 @@ export function TeamMemberFormPage({
   const [existingUserFound, setExistingUserFound] = useState<any>(null);
 
   const handleLookup = async (type: 'email' | 'phone', value: string) => {
+    // Cross-firm lookups are strictly prohibited for firm super admins and admins to preserve tenant isolation
+    if (!isPlatformOwner) return;
     if (!value || value.length < 5) return;
 
     // Simple validation before searching
@@ -1713,25 +1934,27 @@ export function TeamMemberFormPage({
     }
   };
 
-  // Debounced lookup for email - faster response (400ms)
+  // Debounced lookup for email - only for platform owner
   useEffect(() => {
+    if (!isPlatformOwner) return;
     const timer = setTimeout(() => {
       if (formData.email && formData.email.includes('@')) {
         handleLookup('email', formData.email);
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [formData.email]);
+  }, [formData.email, isPlatformOwner]);
 
-  // Debounced lookup for phone - faster response (400ms)
+  // Debounced lookup for phone - only for platform owner
   useEffect(() => {
+    if (!isPlatformOwner) return;
     const timer = setTimeout(() => {
       if (formData.phone_number && formData.phone_number.length >= 10) {
         handleLookup('phone', formData.phone_number);
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [formData.phone_number]);
+  }, [formData.phone_number, isPlatformOwner]);
 
   const roles = [
     { label: 'Admin', value: 'admin' },
@@ -1749,6 +1972,9 @@ export function TeamMemberFormPage({
 
     try {
       const payload = { ...formData };
+      if (!isPlatformOwner) {
+        delete payload.existing_user_id;
+      }
 
       // Auto-assign first firm for Partner Manager if none selected, as backend requires it
       // for invitation emails and role mapping (preventing 500 error).
@@ -1809,7 +2035,7 @@ export function TeamMemberFormPage({
         title={title ?? (detail ? 'Team Member Profile' : 'Add Team Member')}
         description={description ?? (detail ? 'Role scope, assignment load, and access visibility for an individual user.' : 'Create a new team member with controlled access and full profile initialization.')}
       />
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} autoComplete="off">
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-lg text-sm font-semibold text-red-600 flex items-center gap-2">
             <AlertCircle className="w-5 h-5" />
@@ -1817,7 +2043,7 @@ export function TeamMemberFormPage({
           </div>
         )}
 
-        {existingUserFound && (
+        {isPlatformOwner && existingUserFound && (
           <div className="mb-6 p-5 bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-5 animate-in fade-in zoom-in duration-500 shadow-sm">
             <div className="p-3 bg-blue-600 text-white rounded-xl shadow-md">
               <UserCheck className="w-6 h-6" />
@@ -1894,16 +2120,16 @@ export function TeamMemberFormPage({
                 <div className="grid gap-5 md:grid-cols-2">
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">First Name</label>
-                    <input disabled={!!existingUserFound} value={formData.first_name} onChange={e => update('first_name', e.target.value)} required placeholder="John" className={`h-11 w-full rounded-xl border border-gray-200 px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all ${!!existingUserFound ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-[#f7f8fa]'}`} />
+                    <input disabled={isPlatformOwner && !!existingUserFound} value={formData.first_name} onChange={e => update('first_name', e.target.value)} required placeholder="John" autoComplete="off" className={`h-11 w-full rounded-xl border border-gray-200 px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all ${(isPlatformOwner && !!existingUserFound) ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-[#f7f8fa]'}`} />
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Last Name</label>
-                    <input disabled={!!existingUserFound} value={formData.last_name} onChange={e => update('last_name', e.target.value)} required placeholder="Doe" className={`h-11 w-full rounded-xl border border-gray-200 px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all ${!!existingUserFound ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-[#f7f8fa]'}`} />
+                    <input disabled={isPlatformOwner && !!existingUserFound} value={formData.last_name} onChange={e => update('last_name', e.target.value)} required placeholder="Doe" autoComplete="off" className={`h-11 w-full rounded-xl border border-gray-200 px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all ${(isPlatformOwner && !!existingUserFound) ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-[#f7f8fa]'}`} />
                   </div>
                   <div className="relative">
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Email Address</label>
                     <div className="relative group">
-                      <input type="email" value={formData.email} onChange={e => update('email', e.target.value)} required placeholder="john@example.com" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all pr-12" />
+                      <input type="email" value={formData.email} onChange={e => update('email', e.target.value)} required placeholder="john@example.com" autoComplete="off" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all pr-12" />
                       {isLookingUp && (
                         <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center">
                           <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
@@ -1921,7 +2147,7 @@ export function TeamMemberFormPage({
                   {!fixedRole && (
                     <div>
                       <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">User Role</label>
-                      <select disabled={!!existingUserFound} value={formData.user_type} onChange={e => update('user_type', e.target.value)} className={`h-11 w-full rounded-xl border border-gray-200 px-3.5 text-sm text-black font-semibold outline-none appearance-none ${!!existingUserFound ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-[#f7f8fa]'}`}>
+                      <select disabled={isPlatformOwner && !!existingUserFound} value={formData.user_type} onChange={e => update('user_type', e.target.value)} className={`h-11 w-full rounded-xl border border-gray-200 px-3.5 text-sm text-black font-semibold outline-none appearance-none ${(isPlatformOwner && !!existingUserFound) ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-[#f7f8fa]'}`}>
                         {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                       </select>
                     </div>
@@ -1951,7 +2177,7 @@ export function TeamMemberFormPage({
                 <div className="grid gap-5 md:grid-cols-2">
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Gender</label>
-                    <select disabled={!!existingUserFound} value={formData.gender} onChange={e => update('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none disabled:opacity-70 disabled:cursor-not-allowed">
+                    <select disabled={isPlatformOwner && !!existingUserFound} value={formData.gender} onChange={e => update('gender', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none appearance-none disabled:opacity-70 disabled:cursor-not-allowed">
                       <option value="">Select Gender</option>
                       <option value="male">Male</option>
                       <option value="female">Female</option>
@@ -1960,47 +2186,47 @@ export function TeamMemberFormPage({
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Date of Birth</label>
-                    <input disabled={!!existingUserFound} type="date" value={formData.date_of_birth} onChange={e => update('date_of_birth', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none disabled:opacity-70 disabled:cursor-not-allowed" />
+                    <input disabled={isPlatformOwner && !!existingUserFound} type="date" value={formData.date_of_birth} onChange={e => update('date_of_birth', e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none disabled:opacity-70 disabled:cursor-not-allowed" />
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Aadhar Number</label>
-                    <AadharInput disabled={!!existingUserFound} value={formData.aadhar_number} onChange={v => update('aadhar_number', v)} />
+                    <AadharInput disabled={isPlatformOwner && !!existingUserFound} value={formData.aadhar_number} onChange={v => update('aadhar_number', v)} />
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">PAN Number</label>
-                    <input disabled={!!existingUserFound} value={formData.pan_number} onChange={e => update('pan_number', e.target.value)} placeholder="ABCDE1234F" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all disabled:opacity-70 disabled:cursor-not-allowed uppercase" />
+                    <input disabled={isPlatformOwner && !!existingUserFound} value={formData.pan_number} onChange={e => update('pan_number', e.target.value)} placeholder="ABCDE1234F" autoComplete="off" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all disabled:opacity-70 disabled:cursor-not-allowed uppercase" />
                   </div>
                 </div>
               </Panel>
 
-              {!existingUserFound && (
+              {(!isPlatformOwner || !existingUserFound) && (
                 <Panel title="Location & Firm" subtitle="Service region and firm alignment.">
                   <div className="space-y-5">
                     <div className="grid gap-5 md:grid-cols-2">
                       <div>
                         <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Address Line 1</label>
-                        <input value={formData.address_line_1} onChange={e => update('address_line_1', e.target.value)} placeholder="Street name, building" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                        <input value={formData.address_line_1} onChange={e => update('address_line_1', e.target.value)} placeholder="Street name, building" autoComplete="off" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
                       </div>
                       <div>
                         <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Address Line 2</label>
-                        <input value={formData.address_line_2} onChange={e => update('address_line_2', e.target.value)} placeholder="Locality, landmark" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                        <input value={formData.address_line_2} onChange={e => update('address_line_2', e.target.value)} placeholder="Locality, landmark" autoComplete="off" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
                       </div>
                     </div>
                     <div className="grid gap-5 md:grid-cols-2">
                       <div>
                         <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">State</label>
-                        <input value={formData.state} onChange={e => update('state', e.target.value)} placeholder="State" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                        <input value={formData.state} onChange={e => update('state', e.target.value)} placeholder="State" autoComplete="off" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
                       </div>
                       <div>
                         <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">City</label>
-                        <input value={formData.city} onChange={e => update('city', e.target.value)} placeholder="City" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                        <input value={formData.city} onChange={e => update('city', e.target.value)} placeholder="City" autoComplete="off" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
                       </div>
                     </div>
                     <div>
                       <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Postal Code</label>
-                      <input value={formData.postal_code} onChange={e => update('postal_code', e.target.value)} placeholder="e.g. 400001" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                      <input value={formData.postal_code} onChange={e => update('postal_code', e.target.value)} placeholder="e.g. 400001" autoComplete="off" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
                     </div>
-                    {formData.user_type === 'super_admin' && (
+                    {isPlatformOwner && formData.user_type === 'super_admin' && (
                       <div className="pt-2 border-t border-gray-100">
                         <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
                           Associated Law Firm <span className="text-red-500">*</span>
@@ -2029,11 +2255,11 @@ export function TeamMemberFormPage({
                 <div className="grid gap-5 md:grid-cols-2">
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Bar Registration No.</label>
-                    <input value={formData.bar_council_registration} onChange={e => update('bar_council_registration', e.target.value)} placeholder="E.g. WB/123/2023" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                    <input value={formData.bar_council_registration} onChange={e => update('bar_council_registration', e.target.value)} placeholder="E.g. WB/123/2023" autoComplete="off" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">Bar Registration State</label>
-                    <input value={formData.bar_council_state} onChange={e => update('bar_council_state', e.target.value)} placeholder="E.g. West Bengal" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
+                    <input value={formData.bar_council_state} onChange={e => update('bar_council_state', e.target.value)} placeholder="E.g. West Bengal" autoComplete="off" className="h-11 w-full rounded-xl border border-gray-200 bg-[#f7f8fa] px-3.5 text-sm text-black font-semibold outline-none focus:border-[#0e2340] transition-all" />
                   </div>
                 </div>
               </Panel>
@@ -2041,7 +2267,7 @@ export function TeamMemberFormPage({
           }
           right={
             <div className="space-y-6">
-              {!existingUserFound && (
+              {(!isPlatformOwner || !existingUserFound) && (
                 <Panel title="Account Security" subtitle={detail ? "Update credentials" : "Onboarding credentials."}>
                   <div className="space-y-4">
                     <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
@@ -2050,7 +2276,7 @@ export function TeamMemberFormPage({
                     <PasswordInput
                       value={formData.password}
                       onChange={v => update('password', v)}
-                      required={!detail && !existingUserFound}
+                      required={!detail && (!isPlatformOwner || !existingUserFound)}
                     />
                   </div>
                   {detail && (
@@ -2078,7 +2304,7 @@ export function TeamMemberFormPage({
                 <div className="flex flex-col gap-3">
                   <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-[#0e2340] px-4 py-3 text-sm font-bold text-white hover:bg-[#1a3a5c] shadow-lg shadow-[#0e2340]/10 transition-all active:scale-[0.98] disabled:opacity-50">
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {existingUserFound ? 'Add to Firm' : 'Save Team Member'}
+                    {(isPlatformOwner && existingUserFound) ? 'Add to Firm' : 'Save Team Member'}
                   </button>
                   <button type="button" onClick={() => router.back()} className="w-full flex items-center justify-center gap-2.5 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-500 hover:bg-gray-50 hover:text-gray-700 hover:border-gray-300 transition-all active:scale-[0.98]">
                     <X className="h-4 w-4" /> Cancel
@@ -2336,6 +2562,7 @@ export function ReportsPage({ accent }: AccentProps) {
 }
 
 export function DocumentLibraryPage({ accent, roleTitle, viewBase }: AccentProps & { roleTitle: string; viewBase?: string }) {
+  const isClientRole = roleTitle?.toLowerCase() === 'client';
   return (
     <div className="space-y-8">
       <PageSection
@@ -2344,25 +2571,48 @@ export function DocumentLibraryPage({ accent, roleTitle, viewBase }: AccentProps
         description="Personal and professional documents for verification and record keeping."
       />
       <Panel title="My Documents" subtitle="Upload and manage your documents">
-        <DocumentManager accent={accent} showUpload={true} viewBase={viewBase} />
+        <DocumentManager accent={accent} showUpload={!isClientRole} viewBase={viewBase} role={isClientRole ? 'client' : (roleTitle?.toLowerCase() as any)} />
       </Panel>
     </div>
   );
 }
 
+const formatDateTime = (dateStr?: string | null) => {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
 export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProps & { roleTitle: string; documentId: string }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const fromCase = searchParams.get('fromCase');
   const subtab = searchParams.get('subtab') || 'case';
+
+  const isClientRole = roleTitle?.toLowerCase() === 'client' || (typeof pathname === 'string' && pathname.startsWith('/client'));
 
   const [doc, setDoc] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [showReorderModal, setShowReorderModal] = useState(false);
+  const [showDateBookmarkModal, setShowDateBookmarkModal] = useState(false);
 
   const targetCaseId = fromCase || (doc?.case && (typeof doc.case === 'object' ? doc.case.id : doc.case));
+  const isMaster = doc?.document_type === 'drafting_mind_master_case_filing_pack' || doc?.document_type === 'master_filing_pack' || (doc?.document_title && doc.document_title.toLowerCase().includes('master case filing pack'));
 
   const handleBack = () => {
     const caseId = fromCase || (doc?.case && (typeof doc.case === 'object' ? doc.case.id : doc.case));
@@ -2527,7 +2777,7 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
       <PageSection
         eyebrow={doc.is_court_form ? "Case Court Form" : "Library Archive"}
         title={doc.document_title}
-        description={`Detailed record for ${doc.document_type_display || doc.document_type}. Original file is stored securely.`}
+        description={`Detailed record for ${doc.document_type_display || doc.document_type}.${doc.uploaded_at ? ` Uploaded on ${formatDateTime(doc.uploaded_at)}.` : ''} Original file is stored securely.`}
         actions={
           <div className="flex items-center gap-3">
             <button
@@ -2537,7 +2787,7 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
               <ChevronLeft className="h-4 w-4" />
               Back
             </button>
-            {doc.is_court_form && targetCaseId && (
+            {!isClientRole && doc.is_court_form && targetCaseId && (
               <Link
                 href={`/advocate/cases/${targetCaseId}?tab=Documents&subtab=court_forms&formId=${doc.id}`}
                 className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-bold text-violet-900 hover:bg-violet-100 shadow-sm transition-all active:scale-[0.98]"
@@ -2546,15 +2796,26 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
                 Edit Form Fields
               </Link>
             )}
-            {targetCaseId && !doc.is_court_form && (
-              <button
-                type="button"
-                onClick={() => setShowReorderModal(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-2.5 text-sm font-bold text-indigo-900 hover:bg-indigo-100 shadow-sm transition-all active:scale-[0.98]"
-              >
-                <Layers className="h-4 w-4 text-indigo-600" />
-                Reorder Filing Index
-              </button>
+            {!isClientRole && targetCaseId && !doc.is_court_form && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowDateBookmarkModal(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-2.5 text-sm font-bold text-indigo-900 hover:bg-indigo-100 shadow-sm transition-all active:scale-[0.98]"
+                  title="Organize documents into Date Sub-Bookmarks"
+                >
+                  <Calendar className="h-4 w-4 text-indigo-600" />
+                  Date Bookmarks
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowReorderModal(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm font-bold text-indigo-900 hover:bg-indigo-50 shadow-sm transition-all active:scale-[0.98]"
+                >
+                  <Layers className="h-4 w-4 text-indigo-600" />
+                  Reorder Filing Index
+                </button>
+              </>
             )}
             <button
               onClick={handleDownload}
@@ -2571,27 +2832,43 @@ export function DocumentDetailPage({ accent, roleTitle, documentId }: AccentProp
 
       <div className="relative animate-in fade-in zoom-in-95 duration-500 delay-150 h-[calc(100vh-140px)] min-h-[600px]">
         {isRecompiling && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm rounded-2xl min-h-[400px]">
-            <Loader2 className="h-8 w-8 animate-spin text-indigo-600 mb-2" />
-            <p className="text-sm font-semibold text-gray-700">Refreshing Master PDF with updated filing index...</p>
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/20 backdrop-blur-[2px] rounded-2xl pointer-events-none transition-all">
+            <div className="px-4 py-2 bg-white/95 backdrop-blur-sm border border-zinc-200 rounded-full shadow-lg flex items-center gap-2.5">
+              <Loader2 className="h-4 w-4 animate-spin text-black" />
+              <p className="text-xs font-semibold text-black">Updating Master PDF table of contents...</p>
+            </div>
           </div>
         )}
         <DocumentViewer
-          key={`${doc.id}-${doc.updated_at || ''}-${doc._cacheBust || ''}`}
+          key={doc.id}
           url={fileUrl}
           title={doc.document_title}
+          caseId={targetCaseId}
+          caseTitle={doc?.case_title}
+          isMasterPdf={isMaster}
+          onBookmarksUpdated={handleReordered}
         />
       </div>
 
-      {targetCaseId && (
-        <ReorderFilingPackModal
-          isOpen={showReorderModal}
-          onClose={() => setShowReorderModal(false)}
-          caseId={targetCaseId}
-          caseTitle={doc?.case_title}
-          accent={accent}
-          onReordered={handleReordered}
-        />
+      {!isClientRole && targetCaseId && (
+        <>
+          <DateBookmarkModal
+            isOpen={showDateBookmarkModal}
+            onClose={() => setShowDateBookmarkModal(false)}
+            caseId={targetCaseId}
+            caseTitle={doc?.case_title}
+            accent={accent}
+            onSuccess={handleReordered}
+          />
+          <ReorderFilingPackModal
+            isOpen={showReorderModal}
+            onClose={() => setShowReorderModal(false)}
+            caseId={targetCaseId}
+            caseTitle={doc?.case_title}
+            accent={accent}
+            onReordered={handleReordered}
+          />
+        </>
       )}
     </div>
   );

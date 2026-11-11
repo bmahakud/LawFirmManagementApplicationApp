@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 import { Panel, classNames } from './ui';
+import CaseTypeSelect from './CaseTypeSelect';
 
 interface Option {
   value: string;
@@ -71,7 +72,9 @@ export default function CaseAddForm({
   const [form, setForm] = useState({
     case_title: '',
     case_number: '',
-    case_type: 'intellectual property',
+    is_registered: true,
+    registration_number: '',
+    case_type: '',
     category: targetCategory,
     client: '',
     status: 'open',
@@ -307,7 +310,7 @@ export default function CaseAddForm({
     try {
       const optionalStringFields = [
         'court_name', 'description', 'opposing_counsel',
-        'respondent_name', 'case_number', 'court_no', 'judge_name',
+        'respondent_name', 'case_number', 'registration_number', 'court_no', 'judge_name',
         'district', 'state', 'representing', 'cnr_number', 'case_summary',
         'payment_terms', 'loe_notes', 'petitioner_name', 'next_hearing_date',
         'assigned_paralegal',
@@ -474,6 +477,15 @@ export default function CaseAddForm({
           <motion.div key="step0" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
             <Panel title="Matter Identity" subtitle="Primary title and legal classification.">
               <div className="space-y-5">
+                {/* Field 1: Case Type (Dropdown at Top) */}
+                <CaseTypeSelect
+                  required={MANDATORY_FIELDS.case_type}
+                  value={form.case_type}
+                  onChange={val => set('case_type', val)}
+                  error={fieldErrors.case_type ? fieldErrors.case_type[0] : undefined}
+                />
+
+                {/* Field 2: Case Title */}
                 <div className="flex flex-col gap-1.5">
                   <FieldLabel required={MANDATORY_FIELDS.case_title}>Case Title</FieldLabel>
                   <div className="relative group">
@@ -492,35 +504,123 @@ export default function CaseAddForm({
                   {fieldErrors.case_title && <p className="text-[10px] text-red-500 font-bold ml-1">{fieldErrors.case_title[0]}</p>}
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1.5">
+                {/* Field 3: Advocate Internal Case Number */}
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
                     <FieldLabel>Case Number</FieldLabel>
-                    <div className="relative group">
-                      <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        value={form.case_number}
-                        onChange={e => set('case_number', e.target.value)}
-                        placeholder="2026-IP-003"
-                        className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#0e2340] transition-all"
-                      />
-                    </div>
+                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/60">
+                      Advocate / Matter Ref
+                    </span>
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <FieldLabel required={MANDATORY_FIELDS.case_type}>Case Type</FieldLabel>
+                  <div className="relative group">
+                    <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-[#0e2340] transition-colors" />
+                    <input
+                      value={form.case_number}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setForm(prev => {
+                          const year = new Date().getFullYear();
+                          // If user is unregistered and hasn't manually customized diary no, auto-reflect base ref
+                          const isAutoDiary = !prev.is_registered && (!prev.registration_number || prev.registration_number.startsWith('D_'));
+                          return {
+                            ...prev,
+                            case_number: val,
+                            registration_number: isAutoDiary ? `D_${val.trim() || '101'}_${year}` : prev.registration_number
+                          };
+                        });
+                      }}
+                      placeholder="e.g. 2026-TS-67 or MURD999"
+                      className="h-11 w-full rounded-xl border border-gray-100 bg-gray-50/50 pl-11 px-4 text-sm font-semibold text-gray-900 outline-none focus:bg-white focus:border-[#0e2340] focus:ring-4 focus:ring-[#0e2340]/5 transition-all"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 pl-1">
+                    Internal advocate matter / case number (shown in Assigned Matters list).
+                  </p>
+                </div>
+
+                {/* Field 2: Registration Status & Court / Diary No. (Completely Optional) */}
+                <div className="flex flex-col gap-3 p-4 bg-slate-50/80 rounded-2xl border border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <FieldLabel>Court Registration Status & Filing No.</FieldLabel>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Completely optional at case creation — can be added or updated later.</p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200/60 text-slate-600 uppercase tracking-wider">
+                      Optional
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForm(prev => ({
+                          ...prev,
+                          is_registered: true,
+                          registration_number: prev.registration_number?.startsWith('D_') ? '' : prev.registration_number
+                        }));
+                      }}
+                      className={classNames(
+                        "h-10 rounded-xl px-3 text-xs font-bold transition-all flex items-center justify-center gap-2 border",
+                        form.is_registered
+                          ? "bg-[#0e2340] text-white border-[#0e2340] shadow-sm shadow-[#0e2340]/10"
+                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                      )}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Registered Case
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const year = new Date().getFullYear();
+                        const baseRef = form.case_number?.trim() || '101';
+                        setForm(prev => ({
+                          ...prev,
+                          is_registered: false,
+                          registration_number: prev.registration_number && prev.registration_number.startsWith('D_')
+                            ? prev.registration_number
+                            : `D_${baseRef}_${year}`
+                        }));
+                      }}
+                      className={classNames(
+                        "h-10 rounded-xl px-3 text-xs font-bold transition-all flex items-center justify-center gap-2 border",
+                        !form.is_registered
+                          ? "bg-amber-600 text-white border-amber-600 shadow-sm shadow-amber-600/10"
+                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                      )}
+                    >
+                      <Hash className="w-3.5 h-3.5" />
+                      Unregistered (Diary)
+                    </button>
+                  </div>
+
+                  {/* Registration / Diary Number input */}
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    <div className="flex items-center justify-between">
+                      <FieldLabel>
+                        {form.is_registered ? 'Court Registration / Case No. (Optional)' : 'Diary / Unregistered No. (Auto D_ Prefix)'}
+                      </FieldLabel>
+                      {!form.is_registered && (
+                        <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60">
+                          Prefix D_ applied (Editable)
+                        </span>
+                      )}
+                    </div>
                     <div className="relative group">
-                      <Scale className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-[#0e2340] transition-colors" />
                       <input
-                        required
-                        value={form.case_type}
-                        onChange={e => set('case_type', e.target.value)}
-                        placeholder="e.g. Intellectual Property"
-                        className={classNames(
-                          "h-11 w-full rounded-xl border pl-11 px-4 text-sm font-semibold text-gray-900 outline-none transition-all",
-                          fieldErrors.case_type ? "border-red-200 bg-red-50/50" : "border-gray-100 bg-gray-50/50 focus:bg-white focus:border-[#0e2340] focus:ring-4 focus:ring-[#0e2340]/5"
-                        )}
+                        value={form.registration_number}
+                        onChange={e => setForm(prev => ({ ...prev, registration_number: e.target.value }))}
+                        placeholder={form.is_registered ? "e.g. WP/452/2026 or leave blank for now" : `D_${form.case_number?.trim() || '101'}_${new Date().getFullYear()}`}
+                        className="h-11 w-full rounded-xl border border-gray-100 bg-white pl-11 px-4 text-sm font-semibold text-gray-900 outline-none focus:border-[#0e2340] focus:ring-4 focus:ring-[#0e2340]/5 transition-all"
                       />
                     </div>
-                    {fieldErrors.case_type && <p className="text-[10px] text-red-500 font-bold ml-1">{fieldErrors.case_type[0]}</p>}
+                    <p className="text-[11px] text-gray-400 pl-1">
+                      {form.is_registered
+                        ? 'Leave blank if not yet registered in court, or enter the formal court number.'
+                        : 'Auto-formatted as (D_case no_case year). You can freely edit this number.'}
+                    </p>
                   </div>
                 </div>
 

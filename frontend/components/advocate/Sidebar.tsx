@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   Scale, LayoutDashboard, Briefcase, FileText,
-  Calendar, MessageSquare, LogOut, ChevronRight, PenTool, Users, Plus,
+  Calendar, MessageSquare, LogOut, ChevronRight, Users, Plus,
   UserCheck, Settings, X, IndianRupee, UserCog, Building2, ChevronDown,
   Check, RefreshCw, ArrowLeftRight, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
@@ -19,7 +19,6 @@ const navItems = [
   { label: 'My Clients', path: '/advocate/clients', icon: Users },
   { label: 'My Paralegals', path: '/advocate/paralegals', icon: UserCog },
   { label: 'Cases', path: '/advocate/cases', icon: Briefcase },
-  { label: 'Case Workspace', path: '/advocate/drafting', icon: PenTool },
   { label: 'Calendar', path: '/advocate/calendar', icon: Calendar },
   { label: 'Time & Billing', path: '/advocate/billing', icon: IndianRupee },
   { label: 'Client Chat', path: '/advocate/chat', icon: MessageSquare },

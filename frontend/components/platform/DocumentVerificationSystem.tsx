@@ -18,6 +18,7 @@ type Props = {
   role?: string;
   accent?: string;
   viewBase?: string;
+  onDocumentVerified?: () => void;
 };
 
 type DocumentRequest = {
@@ -31,7 +32,26 @@ type DocumentRequest = {
   rejection_reason?: string;
   client_notes?: string;
   uploaded_document?: any;
+  uploaded_at?: string;
   created_at: string;
+};
+
+const formatDateTime = (dateStr?: string | null) => {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch {
+    return dateStr;
+  }
 };
 
 
@@ -147,7 +167,7 @@ const DOCUMENT_TYPES = [
   { value: 'other', label: 'Other Document' },
 ];
 
-export default function DocumentVerificationSystem({ caseId, clientId, role, accent = '#4a1c40', viewBase }: Props) {
+export default function DocumentVerificationSystem({ caseId, clientId, role, accent = '#4a1c40', viewBase, onDocumentVerified }: Props) {
   // Helper to check if user has advocate-level permissions
   const isAdvocateRole = role === 'advocate' || role === 'super-admin' || role === 'firm-admin';
   const isClientRole = role === 'client';
@@ -355,9 +375,13 @@ export default function DocumentVerificationSystem({ caseId, clientId, role, acc
 
       if (!res.ok) throw new Error('Failed to verify');
 
-      toast.success('Document verified! Transferred to Case Documents library.');
+      toast.success('Document verified! Added to Case Filing Pack.');
       setReviewingDoc(null);
       fetchData();
+      if (onDocumentVerified) onDocumentVerified();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail: { caseId, timestamp: Date.now() } }));
+      }
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -387,6 +411,10 @@ export default function DocumentVerificationSystem({ caseId, clientId, role, acc
       toast.success('Document rejected');
       setReviewingDoc(null);
       fetchData();
+      if (onDocumentVerified) onDocumentVerified();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('documind:filing-pack-reordered', { detail: { caseId, timestamp: Date.now() } }));
+      }
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -576,18 +604,35 @@ export default function DocumentVerificationSystem({ caseId, clientId, role, acc
                       return (
                         <tr key={request.id} className="hover:bg-gray-50/60 transition-colors">
                           <td className="py-4 px-6 text-xs font-semibold text-gray-400">{slNo}</td>
-                          <td className="py-4 px-4 font-bold text-gray-900">
+                          <td className="py-4 px-4 text-gray-900 min-w-[260px]">
                             <div className="flex items-center gap-2">
-                              <span>{request.document_title}</span>
+                              <span className="font-bold text-sm text-gray-900">{request.document_title}</span>
                               {request.priority === 'high' && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">HIGH</span>
                               )}
                             </div>
-                            {request.client_notes && (
-                              <p className="text-xs text-gray-500 font-normal mt-0.5"><span className="font-semibold">Note:</span> {request.client_notes}</p>
+                            {(request.description || (request as any).advocate_notes) && (
+                              <div className="mt-2 p-2.5 rounded-lg bg-blue-50/70 border border-blue-100/90 text-xs text-blue-950 font-normal">
+                                <span className="font-bold text-[10px] uppercase tracking-wider text-blue-900 block mb-0.5">
+                                  Advocate&apos;s Description & Instructions:
+                                </span>
+                                <p className="leading-relaxed whitespace-pre-wrap text-blue-950">
+                                  {request.description || (request as any).advocate_notes}
+                                </p>
+                              </div>
                             )}
                             {request.rejection_reason && (
-                              <p className="text-xs text-red-600 font-normal mt-0.5"><span className="font-semibold">Rejection:</span> {request.rejection_reason}</p>
+                              <div className="mt-2 p-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800 font-normal">
+                                <span className="font-bold text-red-950 block text-[10px] uppercase tracking-wider mb-0.5">
+                                  Rejection Reason:
+                                </span>
+                                <p>{request.rejection_reason}</p>
+                              </div>
+                            )}
+                            {request.client_notes && (
+                              <p className="text-xs text-gray-500 font-normal mt-1.5">
+                                <span className="font-semibold text-gray-700">Client Note:</span> {request.client_notes}
+                              </p>
                             )}
                           </td>
                           <td className="py-4 px-4 text-xs font-medium text-gray-600">
@@ -604,24 +649,41 @@ export default function DocumentVerificationSystem({ caseId, clientId, role, acc
                           </td>
                           <td className="py-4 px-4 text-xs text-gray-600 font-medium">
                             {document?.uploaded_by_name ? (
-                              <span className="font-bold text-gray-900">{document.uploaded_by_name}</span>
+                              <div>
+                                <span className="font-bold text-gray-900 block">{document.uploaded_by_name}</span>
+                                {(document.uploaded_at || (request as any).uploaded_at) && (
+                                  <span className="text-[11px] text-gray-500 font-medium block mt-0.5">
+                                    {formatDateTime(document.uploaded_at || (request as any).uploaded_at)}
+                                  </span>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-gray-400 italic">Not Uploaded</span>
                             )}
                           </td>
                           <td className="py-4 px-6 text-right">
                             <div className="flex items-center justify-end gap-2">
-
+                              {/* View Action for uploaded, verified, or rejected (with file) documents */}
+                              {(request.status === 'uploaded' || request.status === 'verified' || (request.status === 'rejected' && (document || (request as any).uploaded_document_details || request.uploaded_document))) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setReviewingDoc({ request, document: document || (request as any).uploaded_document_details || (request.uploaded_document && typeof request.uploaded_document === 'object' ? request.uploaded_document : null) || { document_title: request.document_title } })}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:text-gray-900 hover:bg-gray-50 text-xs font-bold transition-all shadow-xs"
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-gray-500" />
+                                  View
+                                </button>
+                              )}
 
                               {isAdvocateRole && request.status === 'uploaded' && (
                                 <button
                                   type="button"
-                                  onClick={() => setReviewingDoc({ request, document })}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-bold hover:opacity-90 transition-all"
+                                  onClick={() => setReviewingDoc({ request, document: document || (request as any).uploaded_document_details || (request.uploaded_document && typeof request.uploaded_document === 'object' ? request.uploaded_document : null) || { document_title: request.document_title } })}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-bold hover:opacity-90 transition-all shadow-sm"
                                   style={{ backgroundColor: accent }}
                                 >
-                                  <Eye className="w-3.5 h-3.5" />
-                                  Review
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  Verify
                                 </button>
                               )}
 
@@ -629,11 +691,11 @@ export default function DocumentVerificationSystem({ caseId, clientId, role, acc
                                 <button
                                   type="button"
                                   onClick={() => setUploadingFor(request.id)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-bold transition-all shadow-sm hover:opacity-90"
-                                  style={{ backgroundColor: isAdvocateRole ? accent : '#4f46e5' }}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-white text-xs font-bold transition-all shadow-sm hover:opacity-90"
+                                  style={{ backgroundColor: isAdvocateRole ? accent : '#1f2937' }}
                                 >
                                   <Upload className="w-3.5 h-3.5" />
-                                  {isAdvocateRole ? 'Upload' : (request.status === 'rejected' ? 'Re-upload' : 'Upload')}
+                                  {isAdvocateRole ? 'Upload' : (request.status === 'rejected' ? 'Re-upload' : 'Upload Document')}
                                 </button>
                               )}
 
@@ -764,60 +826,113 @@ export default function DocumentVerificationSystem({ caseId, clientId, role, acc
       )}
 
       {/* Upload Modal (Client) */}
-      {uploadingFor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-gray-900">Upload Document</h3>
-              <button onClick={() => setUploadingFor(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {uploadingFor && (() => {
+        const activeRequest = requests.find(r => r.id === uploadingFor);
+        const typeLabel = activeRequest ? (DOCUMENT_TYPES.find(t => t.value === activeRequest.document_type)?.label || activeRequest.document_type) : '';
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Select File *</label>
-                <input
-                  type="file"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  className="w-full px-4 py-2.5 rounded-xl border-2 border-gray-300 focus:border-blue-500 focus:outline-none text-gray-900 bg-white"
-                />
-                <p className="text-xs text-gray-500 mt-2">Supported: PDF, JPG, PNG, DOC, DOCX (Max 10MB)</p>
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6 animate-in fade-in zoom-in-95">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {activeRequest?.status === 'rejected' ? 'Re-upload Document' : 'Upload Requested Document'}
+                  </h3>
+                  <p className="text-xs text-gray-500">Provide the document requested by your advocate</p>
+                </div>
+                <button onClick={() => setUploadingFor(null)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-700 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Notes (Optional)</label>
-                <textarea
-                  value={uploadNotes}
-                  onChange={(e) => setUploadNotes(e.target.value)}
-                  placeholder="Any additional information..."
-                  rows={3}
-                  className="w-full px-4 py-2.5 rounded-xl border-2 border-gray-300 focus:border-blue-500 focus:outline-none resize-none text-gray-900 bg-white placeholder-gray-400"
-                />
-              </div>
+              {activeRequest && (
+                <div className="mb-5 p-4 rounded-xl bg-purple-50/60 border border-purple-100/80 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-purple-700 block">Requested Document</span>
+                      <h4 className="text-base font-bold text-gray-900">{activeRequest.document_title}</h4>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-white text-purple-900 border border-purple-200">
+                      {typeLabel}
+                    </span>
+                  </div>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => setUploadingFor(null)}
-                  className="flex-1 px-6 py-3 rounded-xl border-2 border-gray-300 text-gray-700 font-bold hover:bg-gray-50"
-                  disabled={uploading}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleUpload(uploadingFor)}
-                  className="flex-1 px-6 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-lg flex items-center justify-center gap-2"
-                  disabled={uploading || !uploadFile}
-                >
-                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                  Upload
-                </button>
+                  {(activeRequest.description || (activeRequest as any).advocate_notes) && (
+                    <div className="mt-2 pt-2 border-t border-purple-100/60">
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-gray-500 block mb-0.5">Advocate&apos;s Description & Instructions:</span>
+                      <p className="text-xs text-gray-800 leading-relaxed font-normal whitespace-pre-wrap">
+                        {activeRequest.description || (activeRequest as any).advocate_notes}
+                      </p>
+                    </div>
+                  )}
+
+                  {activeRequest.due_date && (
+                    <div className="text-[11px] text-gray-500 flex items-center gap-1.5 pt-1">
+                      <Clock className="w-3.5 h-3.5 text-gray-400" />
+                      <span>Due Date: <strong className="text-gray-800">{new Date(activeRequest.due_date).toLocaleDateString()}</strong></span>
+                    </div>
+                  )}
+
+                  {activeRequest.rejection_reason && (
+                    <div className="mt-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
+                      <strong className="block text-[11px] uppercase tracking-wider text-red-900 mb-0.5">Previous Rejection Reason:</strong>
+                      {activeRequest.rejection_reason}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-purple-50/70 border border-purple-100 text-xs text-purple-900 font-medium">
+                  <Clock className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>Upload Date & Time: <strong className="font-bold text-purple-950">{formatDateTime(new Date().toISOString())}</strong></span>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Select File *</label>
+                  <input
+                    type="file"
+                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    className="w-full px-4 py-2.5 rounded-xl border-2 border-gray-200 focus:border-purple-600 focus:outline-none text-gray-900 bg-white file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-800 hover:file:bg-purple-200 cursor-pointer"
+                  />
+                  <p className="text-xs text-gray-500 mt-2">Supported: PDF, JPG, PNG, DOC, DOCX (Max 10MB)</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Notes for Advocate (Optional)</label>
+                  <textarea
+                    value={uploadNotes}
+                    onChange={(e) => setUploadNotes(e.target.value)}
+                    placeholder="Any notes or explanation for your advocate regarding this document..."
+                    rows={3}
+                    className="w-full px-4 py-2.5 rounded-xl border-2 border-gray-200 focus:border-purple-600 focus:outline-none resize-none text-gray-900 bg-white placeholder-gray-400 text-xs"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => setUploadingFor(null)}
+                    className="flex-1 px-6 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-bold hover:bg-gray-50 transition-colors"
+                    disabled={uploading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleUpload(uploadingFor)}
+                    className="flex-1 px-6 py-2.5 rounded-xl text-white text-sm font-bold shadow-md hover:opacity-90 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    style={{ backgroundColor: accent }}
+                    disabled={uploading || !uploadFile}
+                  >
+                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    Submit Document
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Review Modal (Advocate) */}
       {reviewingDoc && (
@@ -826,8 +941,21 @@ export default function DocumentVerificationSystem({ caseId, clientId, role, acc
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white">
               <div>
-                <h3 className="text-xl font-bold text-gray-900">{reviewingDoc.document.document_title}</h3>
-                <p className="text-sm text-gray-600 mt-1">Document Verification Review</p>
+                <h3 className="text-xl font-bold text-gray-900">
+                  {reviewingDoc.document?.document_title || reviewingDoc.request.document_title}
+                </h3>
+                <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
+                  <span>Document Verification Review</span>
+                  {(reviewingDoc.document?.uploaded_at || reviewingDoc.request?.uploaded_at) && (
+                    <>
+                      <span>•</span>
+                      <span className="inline-flex items-center gap-1 font-semibold text-gray-700">
+                        <Clock className="w-3.5 h-3.5 text-gray-400" />
+                        Uploaded: {formatDateTime(reviewingDoc.document?.uploaded_at || reviewingDoc.request?.uploaded_at)}
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
               <button
                 onClick={() => setReviewingDoc(null)}
@@ -840,13 +968,19 @@ export default function DocumentVerificationSystem({ caseId, clientId, role, acc
             {/* Document Viewer */}
             <div className="flex-1 overflow-auto bg-gray-100 p-6">
               <DocumentViewer
-                url={reviewingDoc.document.document_file || reviewingDoc.document.file_url}
-                title={reviewingDoc.document.document_title}
+                url={
+                  reviewingDoc.document?.file_url ||
+                  reviewingDoc.document?.document_file ||
+                  (reviewingDoc.request as any)?.uploaded_document_details?.file_url ||
+                  (reviewingDoc.request as any)?.uploaded_document_details?.document_file ||
+                  (typeof reviewingDoc.request?.uploaded_document === 'object' ? (reviewingDoc.request.uploaded_document as any)?.file_url || (reviewingDoc.request.uploaded_document as any)?.document_file : null)
+                }
+                title={reviewingDoc.document?.document_title || reviewingDoc.request.document_title}
               />
             </div>
 
             {/* Action Footer */}
-            {isAdvocateRole && reviewingDoc.request.status === 'uploaded' && (
+            {isAdvocateRole && reviewingDoc.request.status === 'uploaded' ? (
               <div className="flex items-center justify-between gap-4 px-6 py-5 border-t-2 border-gray-200 bg-white">
                 <p className="text-sm text-gray-600 font-medium">Review the document and take action:</p>
                 <div className="flex items-center gap-3">
@@ -874,6 +1008,21 @@ export default function DocumentVerificationSystem({ caseId, clientId, role, acc
                     Verify Document
                   </button>
                 </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-4 px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${getStatusConfig(reviewingDoc.request.status).bg} ${getStatusConfig(reviewingDoc.request.status).text} ${getStatusConfig(reviewingDoc.request.status).border}`}>
+                    {getStatusConfig(reviewingDoc.request.status).icon}
+                    {getStatusConfig(reviewingDoc.request.status).label}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setReviewingDoc(null)}
+                  className="px-6 py-2 rounded-xl bg-gray-200 text-gray-700 text-sm font-bold hover:bg-gray-300 transition-colors"
+                >
+                  Close
+                </button>
               </div>
             )}
           </div>

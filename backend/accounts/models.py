@@ -366,7 +366,7 @@ class GlobalConfiguration(models.Model):
         help_text="Allow Super Admins to self-register with a free trial"
     )
     trial_period_days = models.IntegerField(
-        default=15,
+        default=30,
         choices=TRIAL_PERIOD_CHOICES,
         help_text="Number of days for free trial period"
     )
@@ -389,7 +389,7 @@ class GlobalConfiguration(models.Model):
     def get_settings(cls):
         obj = cls.objects.first()
         if not obj:
-            obj = cls.objects.create(is_free_trial_enabled=True, trial_period_days=15)
+            obj = cls.objects.create(is_free_trial_enabled=True, trial_period_days=30)
         return obj
 
 

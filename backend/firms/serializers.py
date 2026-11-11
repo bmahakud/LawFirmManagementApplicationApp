@@ -65,11 +65,18 @@ class FirmSerializer(serializers.ModelSerializer):
                 'can_access': False
             }
         
-        if obj.subscription_end_date and obj.subscription_end_date < timezone.now():
-            days_expired = (timezone.now() - obj.subscription_end_date).days
+        if not obj.subscription_end_date:
             return {
                 'status': 'expired',
-                'message': f"Subscription expired {days_expired} day{'s' if days_expired != 1 else ''} ago",
+                'message': f"Firm '{obj.firm_name}' does not have an active subscription",
+                'can_access': False
+            }
+        
+        if obj.subscription_end_date < timezone.now():
+            days_expired = max(1, (timezone.now() - obj.subscription_end_date).days)
+            return {
+                'status': 'expired',
+                'message': f"1-month free trial expired {days_expired} day{'s' if days_expired != 1 else ''} ago (on {obj.subscription_end_date.strftime('%B %d, %Y')}). Please refill subscription.",
                 'expired_date': obj.subscription_end_date.strftime('%B %d, %Y'),
                 'days_expired': days_expired,
                 'can_access': False
@@ -78,13 +85,14 @@ class FirmSerializer(serializers.ModelSerializer):
         return {
             'status': 'active',
             'message': 'Subscription is active',
+            'expired_date': obj.subscription_end_date.strftime('%B %d, %Y'),
             'can_access': True
         }
     
     def get_days_until_expiry(self, obj):
         """Get days until subscription expires (negative if expired)"""
         if not obj.subscription_end_date:
-            return None
+            return 0
         
         from django.utils import timezone
         delta = obj.subscription_end_date - timezone.now()

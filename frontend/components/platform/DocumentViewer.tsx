@@ -7,19 +7,32 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
 import { customFetch } from '@/lib/fetch';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import CustomPDFViewer from './CustomPDFViewer';
 
 interface DocumentViewerProps {
   url?: string | null;
   title: string;
   onClose?: () => void;
+  caseId?: string;
+  caseTitle?: string;
+  isMasterPdf?: boolean;
+  onBookmarksUpdated?: () => void;
 }
 
-export default function DocumentViewer({ url, title, onClose }: DocumentViewerProps) {
+export default function DocumentViewer({
+  url,
+  title,
+  onClose,
+  caseId,
+  caseTitle,
+  isMasterPdf = false,
+  onBookmarksUpdated
+}: DocumentViewerProps) {
   const [loadError, setLoadError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [blobUrl, setBlobUrl] = useState<string>('');
+  const prevBlobUrlRef = useRef<string>('');
   const [isDownloading, setIsDownloading] = useState(false);
   const [viewerMode, setViewerMode] = useState<'custom' | 'native'>('custom');
   
@@ -107,6 +120,10 @@ export default function DocumentViewer({ url, title, onClose }: DocumentViewerPr
         const blob = await response.blob();
         if (isMounted) {
           const u = URL.createObjectURL(blob);
+          if (prevBlobUrlRef.current && prevBlobUrlRef.current !== u) {
+            URL.revokeObjectURL(prevBlobUrlRef.current);
+          }
+          prevBlobUrlRef.current = u;
           setBlobUrl(u);
           setIsLoading(false);
         }
@@ -123,11 +140,16 @@ export default function DocumentViewer({ url, title, onClose }: DocumentViewerPr
     
     return () => {
       isMounted = false;
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-      }
     };
   }, [fullUrl, safeUrl, isPDF]);
+
+  useEffect(() => {
+    return () => {
+      if (prevBlobUrlRef.current) {
+        URL.revokeObjectURL(prevBlobUrlRef.current);
+      }
+    };
+  }, []);
 
   const handleManualDownload = async () => {
     try {
@@ -297,17 +319,32 @@ export default function DocumentViewer({ url, title, onClose }: DocumentViewerPr
 
     if (isPDF) {
       const pdfTargetUrl = blobUrl || fullUrl;
+      const isInitialLoading = isLoading && !blobUrl;
+      const isRefreshing = isLoading && Boolean(blobUrl);
+
       return (
         <div className="w-full h-full relative flex-1 min-h-0 flex flex-col overflow-hidden">
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+          {/* Initial Cold Loading */}
+          {isInitialLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[2px] z-10">
               <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
-                <p className="mt-3 text-sm text-gray-600 font-medium">Loading PDF document...</p>
+                <Loader2 className="h-7 w-7 animate-spin text-black mx-auto" />
+                <p className="mt-3 text-xs text-black font-medium">Loading PDF document...</p>
               </div>
             </div>
           )}
-          {!isLoading && pdfTargetUrl && (
+
+          {/* Refreshing Overlay: Little blur so contents stay visible */}
+          {isRefreshing && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/20 backdrop-blur-[2px] z-30 transition-all pointer-events-none">
+              <div className="px-4 py-2 bg-white/95 backdrop-blur-sm border border-zinc-200 rounded-full shadow-lg flex items-center gap-2.5">
+                <Loader2 className="h-4 w-4 animate-spin text-black" />
+                <span className="text-xs font-semibold text-black">Updating document...</span>
+              </div>
+            </div>
+          )}
+
+          {pdfTargetUrl && (
             viewerMode === 'custom' ? (
               <CustomPDFViewer
                 url={pdfTargetUrl}
@@ -315,6 +352,10 @@ export default function DocumentViewer({ url, title, onClose }: DocumentViewerPr
                 onDownload={handleManualDownload}
                 onClose={onClose}
                 onSwitchToNative={() => setViewerMode('native')}
+                caseId={caseId}
+                caseTitle={caseTitle}
+                isMasterPdf={isMasterPdf}
+                onBookmarksUpdated={onBookmarksUpdated}
               />
             ) : (
               <div className="w-full h-full flex flex-col overflow-hidden">
@@ -322,7 +363,7 @@ export default function DocumentViewer({ url, title, onClose }: DocumentViewerPr
                   <span className="text-xs text-slate-500 font-medium">Native Browser Viewer</span>
                   <button
                     onClick={() => setViewerMode('custom')}
-                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-white border border-slate-200 px-2.5 py-1 rounded-lg shadow-xs hover:bg-slate-50 transition-colors"
+                    className="text-xs font-semibold text-black hover:text-zinc-700 bg-white border border-zinc-200 px-2.5 py-1 rounded-lg shadow-xs hover:bg-slate-50 transition-colors"
                   >
                     Switch to Custom Resizable Viewer
                   </button>

@@ -37,7 +37,7 @@ class FilledCourtFormSerializer(serializers.ModelSerializer):
             'id', 'template', 'template_name', 'template_category',
             'case', 'case_number', 'client', 'client_name',
             'filled_content', 'field_values', 'status', 'status_display',
-            'custom_sequence', 'annexure',
+            'custom_sequence', 'annexure', 'document_date', 'bookmark_group',
             'advocate_signed', 'advocate_signature_date', 'advocate_signature_image',
             'client_signed', 'client_signature_date', 'client_signature_image',
             'is_digitally_signed', 'digital_signature_details',

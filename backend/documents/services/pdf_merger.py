@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import json
 import uuid
 import tempfile
@@ -529,7 +530,7 @@ def generate_cover_and_index_pdf(case_obj, document_summary_list):
     case_no_style = ParagraphStyle(
         'CaseNoHeader',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName='Helvetica-Bold',
         fontSize=11,
         leading=15,
         alignment=1,  # Center
@@ -664,14 +665,64 @@ def generate_cover_and_index_pdf(case_obj, document_summary_list):
 
     elements.append(Paragraph(f"<b>{court_title}</b>", court_header_style))
 
-    # 2. Case Number Line
-    case_type = case_obj.case_type or 'W.P.(C)'
-    case_num = case_obj.case_number or '________'
+    # 2. Case Number Line (Formal Court Registration Number if registered, otherwise blank underline)
+    COURT_CASE_TYPES = {
+        '0JC', '1990', 'ABLAPL', 'A D', 'AD', 'ADMLS', 'AHO', 'ARBA', 'ARBP', 'AS', 'BLAPL', 'CA', 'CEREF',
+        'CIVIL', 'CIVIL CRIMINAL APPEAL', 'CIVIL REFERENCE', 'CIVIL REVIEW', 'CIVIL REVISION', 'CMAPL',
+        'CMP', 'CMPACT', 'CMPAT', 'CMPMC', 'COA', 'COAPL', 'COMP ACT', 'COMPAT', 'CONTAC', 'CONTAR',
+        'CONTC', 'CONTC (CP)', 'CONTC(CPB)', 'CONTC (CPC)', 'CONTC(PC)', 'CONTR', 'COPET', 'CR', 'CRA',
+        'CRLREV', 'CRL', 'CRLA', 'CRLGA', 'CRLLP', 'CRLMA', 'CRLMC', 'CRLMP', 'CRLREF', 'CRMC', 'CRP',
+        'CRREF', 'CRREV', 'CVA', 'CVREV', 'CVRVW', 'DREF', 'DSREF', 'ELA', 'EXOS', 'FA', 'FAO', 'FAOSL',
+        'GA', 'GCRA', 'GCRLA', 'GTA', 'GUAP', 'ITA', 'JAIL CRMC', 'JCR', 'JCRA', 'JCRL', 'JCRLA',
+        'JCRLMC', 'JCRREV', 'JCRMC', 'JCRRV', 'JURY REF', 'JURYREF', 'LAA', 'LPA', 'MA', 'MAC', 'MACA',
+        'MACASL', 'MATA', 'MATREF', 'MFA', 'MISS CASE', 'MJC', 'MSA', 'OA', 'OCRMC', 'OJC', 'OJC(PIL)',
+        'OR. CR. MISC. (DB)', 'OS', 'OTAPL', 'OTC', 'OTR', 'PCA', 'RFA', 'RPFAM', 'RSA', 'RVWPET',
+        'RVWPET(RP)', 'RVWPET(RPB)', 'RVWPET(RPC)', 'SA', 'SAO', 'SCA', 'SER CRMC', 'SJC', 'SL', 'SM',
+        'SM CRMC', 'SMCRMC', 'SMCRRE', 'SMCRREV', 'SMOCRMC', 'SMTRPCRL', 'SOMOTOCRREV', 'SUO MOTU CONTC',
+        'SOUMOTU', 'SOUMOTU(PIL)', 'SPA', 'SPJC', 'STREV', 'SUO CRMC', 'SUOMOTU', 'SUOMOTU CONTR',
+        'SUOMOTU CR', 'SUO MOTUCRLREV', 'SUO MOTU CRMC', 'SUO MOTU CRREV', 'SUOMOTUCRREV', 'SUO MOTU OCRMC',
+        'SUOMOTURPCRL', 'TA', 'TAX', 'TAX CASES', 'TESTIMENTARY MISC CASE', 'TREV', 'TRP(C)', 'TRPCRL',
+        'WA', 'WP(C)', 'WPCRL', 'WPC(OA)', 'WPC(OAB)', 'WPC(OAC)', 'WPC(OAP)', 'WPC(OAPC)', 'WPC(OAPP)',
+        'WPC(OAS)', 'WPC(OCA)', 'WP(C) PIL', 'WPC(T)', 'WPC(TA)', 'WPC(TAC)', 'WTA'
+    }
+
+    c_type = str(getattr(case_obj, 'case_type', '') or '').strip()
+    c_title = str(getattr(case_obj, 'case_title', '') or '').strip()
+
+    if c_title.upper() in COURT_CASE_TYPES:
+        case_type = c_title
+    elif c_type.upper() in COURT_CASE_TYPES:
+        case_type = c_type
+    elif c_type and c_type.lower() not in ['court case', 'court_case', 'other', 'pre_litigation']:
+        case_type = c_type
+    elif c_title:
+        case_type = c_title
+    else:
+        case_type = 'W.P.(C)'
+
+    is_reg = bool(getattr(case_obj, 'is_registered', False))
+    reg_num = str(getattr(case_obj, 'registration_number', '') or '').strip()
+    if reg_num.upper().startswith('D_'):
+        # D_... denotes an internal/unregistered diary code, not a formal court registration
+        is_reg = False
+
     filing_year = str(case_obj.filing_date.year) if getattr(case_obj, 'filing_date', None) else str(timezone.now().year)
-    case_no_str = f"<u>{case_type} No. &nbsp;<b>{case_num}</b>&nbsp; of {filing_year}</u>"
+
+    if is_reg and reg_num:
+        reg_upper = reg_num.upper()
+        if case_type.upper() in reg_upper:
+            # Full case string e.g. "BLAPL No. 9999 of 2026" or "BLAPL 9999/2026"
+            case_no_str = f"<u>{reg_num}</u>"
+        elif f"of {filing_year}" in reg_num.lower() or f"/{filing_year}" in reg_num:
+            case_no_str = f"<u>{case_type} No. {reg_num}</u>"
+        else:
+            case_no_str = f"<u>{case_type} No. {reg_num} of {filing_year}</u>"
+    else:
+        # Unregistered or no court registration number: show blank underline
+        case_no_str = f"<u>{case_type} No. &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; of {filing_year}</u>"
     elements.append(Paragraph(case_no_str, case_no_style))
 
-    # 3. Cause Title (Petitioner Vrs. Opposite Parties & Code No.)
+    # 3. Cause Title (Petitioner Vrs. Opposite Parties)
     petitioner = getattr(case_obj, 'petitioner_name', '') or ''
     if not petitioner and case_obj.client:
         petitioner = getattr(case_obj.client, 'get_full_name', lambda: str(case_obj.client))()
@@ -680,42 +731,16 @@ def generate_cover_and_index_pdf(case_obj, document_summary_list):
 
     respondent = getattr(case_obj, 'respondent_name', '') or 'State of Odisha & Others.'
 
-    # Code No / Reference
-    adv_code = getattr(case_obj, 'case_number', '') or ''
-    code_val = adv_code if adv_code else '________'
-    code_display = f"Code No. <u>{code_val}</u>"
-
-    # Symmetric side column widths to ensure Petitioner, Vrs., and Opp. Parties are centered exactly on the page centerline (252.5pt)
-    from reportlab.pdfgen import canvas
-    c_measure = canvas.Canvas(None)
-    c_measure.setFont('Helvetica', 10)
-    w_code = c_measure.stringWidth(f"Code No. {code_val}") + 12
-    w_side = max(110.0, min(140.0, float(w_code)))
-    w_mid = 505.0 - 2 * w_side
-
     cause_table_data = [
-        [
-            "",
-            Paragraph(f"<b>{petitioner}</b> &nbsp;&nbsp; ... &nbsp;&nbsp; <b>Petitioner</b>", cause_title_center_normal),
-            Paragraph(code_display, cause_code_style)
-        ],
-        [
-            Paragraph("<b>Vrs.</b>", cause_title_center),
-            "",
-            ""
-        ],
-        [
-            Paragraph(f"<b>{respondent}</b> &nbsp;&nbsp; .... &nbsp;&nbsp; <b>Opp. Parties</b>", cause_title_center_normal),
-            "",
-            ""
-        ]
+        [Paragraph(f"<b>{petitioner}</b> &nbsp;&nbsp; ... &nbsp;&nbsp; <b>Petitioner</b>", cause_title_center_normal)],
+        [Paragraph("<b>Vrs.</b>", cause_title_center)],
+        [Paragraph(f"<b>{respondent}</b> &nbsp;&nbsp; .... &nbsp;&nbsp; <b>Opp. Parties</b>", cause_title_center_normal)]
     ]
 
-    t_cause = Table(cause_table_data, colWidths=[w_side, w_mid, w_side])
+    t_cause = Table(cause_table_data, colWidths=[505.0])
     t_cause.setStyle(TableStyle([
-        ('SPAN', (0, 1), (2, 1)),  # Vrs. spans entire 505pt width, centered at 252.5pt
-        ('SPAN', (0, 2), (2, 2)),  # Opp. Parties spans entire 505pt width, centered at 252.5pt
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
@@ -726,26 +751,35 @@ def generate_cover_and_index_pdf(case_obj, document_summary_list):
     # 4. Underlined INDEX Title
     elements.append(Paragraph("<u><b>INDEX</b></u>", index_title_style))
 
-    # 5. 4-Column Table: SL. NO | Annexure | Description of Documents | Page
+    # 5. 4-Column Table: SL. NO | Description of Documents | Annexure | Page
     header_row = [
         Paragraph("<b>SL.<br/>NO</b>", th_center),
-        Paragraph("<b>Annexure</b>", th_center),
         Paragraph("<b>Description of Documents</b>", th_left),
+        Paragraph("<b>Annexure</b>", th_left),
         Paragraph("<b>Page</b>", th_center)
     ]
     table_rows = [header_row]
+
+    cell_annex = ParagraphStyle(
+        'CellAnnex',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=8.5,
+        leading=11.5,
+        alignment=0
+    )
 
     for idx, item in enumerate(document_summary_list, 1):
         # Column 0: SL. NO
         sl_cell = Paragraph(f"{idx}.", cell_center)
 
-        # Column 1: Annexure
-        annex_val = str(item.get('annexure', '') or '').strip()
-        annex_cell = Paragraph(f"<b>{annex_val}</b>", cell_center_bold) if annex_val else ""
-
-        # Column 2: Description of Documents
+        # Column 1: Description of Documents
         desc_title = item.get('title') or 'Untitled Document'
         desc_cell = Paragraph(desc_title, cell_left)
+
+        # Column 2: Annexure
+        annex_val = str(item.get('annexure', '') or '').strip()
+        annex_cell = Paragraph(f"<b>{annex_val}</b>", cell_annex) if annex_val else ""
 
         # Column 3: Page calculation
         t_lower = desc_title.lower()
@@ -765,17 +799,39 @@ def generate_cover_and_index_pdf(case_obj, document_summary_list):
 
         page_cell = Paragraph(f"<b>{page_str}</b>", cell_center) if page_str else ""
 
-        table_rows.append([sl_cell, annex_cell, desc_cell, page_cell])
+        table_rows.append([sl_cell, desc_cell, annex_cell, page_cell])
 
-    t_index = Table(table_rows, colWidths=[42, 78, 305, 80])
+    # Dynamic column widths: Total printable width = 505pt
+    col_sl = 36
+    col_page = 64
+    available_content_width = 505 - col_sl - col_page  # 405 pt
+
+    max_desc_len = max([len(str(item.get('title', '') or '')) for item in document_summary_list] + [24])
+    max_annex_len = max([len(str(item.get('annexure', '') or '')) for item in document_summary_list] + [8])
+
+    if max_annex_len <= 10:
+        # Very short or no annexures: Description gets majority of width
+        col_annex = 95
+        col_desc = available_content_width - col_annex  # 310 pt
+    elif max_desc_len <= 20 and max_annex_len >= 25:
+        # Short descriptions (e.g. "Petition", "Annexure 1") and long annexure text
+        col_annex = 235
+        col_desc = available_content_width - col_annex  # 170 pt
+    else:
+        # Proportional split bounded between 165 pt and 235 pt
+        ratio = max_desc_len / max(1, (max_desc_len + max_annex_len))
+        col_desc = int(max(165, min(235, available_content_width * ratio)))
+        col_annex = available_content_width - col_desc
+
+    t_index = Table(table_rows, colWidths=[col_sl, col_desc, col_annex, col_page])
     t_index.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
         ('BACKGROUND', (0, 0), (-1, -1), colors.white),
     ]))
     elements.append(t_index)
@@ -1341,11 +1397,12 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
     ).order_by('created_at')
 
     # 2. Fetch Case Documents (PDFs and Evidence Photos)
-    # Exclude master doc, .ltproj drafting project files, and unverified client requests
+    # Exclude master doc, .ltproj drafting project files, and unverified client requests (only verified documents are merged)
     documents = UserDocument.objects.filter(
         case_id=case_id,
         is_deleted=False,
-        is_in_all_documents=True
+        is_in_all_documents=True,
+        verification_status='verified'
     ).exclude(
         document_title__icontains="Master Case Filing Pack"
     ).exclude(
@@ -1389,6 +1446,8 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
                 'format': 'FORM',
                 'sequence': int(getattr(form, 'custom_sequence', 0) or 0),
                 'annexure': f_annex,
+                'document_date': form.document_date.isoformat() if getattr(form, 'document_date', None) else '',
+                'bookmark_group': getattr(form, 'bookmark_group', '') or '',
                 'created_sort_key': form.created_at.isoformat() if hasattr(form, 'created_at') and form.created_at else '',
                 'date': form.created_at.strftime('%Y-%m-%d') if hasattr(form, 'created_at') and form.created_at else 'N/A',
                 'pdf_bytes': pdf_bytes,
@@ -1443,6 +1502,8 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
                 'format': item_type,
                 'sequence': int(getattr(doc, 'custom_sequence', 0) or 0),
                 'annexure': getattr(doc, 'annexure', '') or '',
+                'document_date': doc.document_date.isoformat() if getattr(doc, 'document_date', None) else '',
+                'bookmark_group': getattr(doc, 'bookmark_group', '') or '',
                 'created_sort_key': doc.uploaded_at.isoformat() if doc.uploaded_at else '',
                 'date': doc.uploaded_at.strftime('%Y-%m-%d') if doc.uploaded_at else 'N/A',
                 'pdf_bytes': pdf_bytes,
@@ -1501,8 +1562,105 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
     writer.append(cover_reader, import_outline=False)
     writer.add_outline_item("📑 Case Overview & Table of Contents", writer.pages[0])
 
-    # 2. Append All Items in Custom Sorted Sequence with Outlines
-    filing_parent = None
+    # 2. Append All Items in Custom Sorted Sequence with Outlines & Date Sub-Bookmarks
+    def get_item_date_bookmark_group(item):
+        import re
+        from datetime import datetime
+
+        bg = str(item.get('bookmark_group') or '').strip()
+        if bg:
+            if bg.lower() in ('none', 'no_group', 'ungrouped', 'root', 'no_subbookmark', '__none__', 'direct'):
+                return '__NONE__'
+            return bg if (bg.startswith('📅') or bg.startswith('📁') or bg.startswith('📂')) else f"📅 {bg}"
+
+        d_date = item.get('document_date')
+        if d_date:
+            try:
+                if isinstance(d_date, str):
+                    dt = datetime.strptime(d_date[:10], '%Y-%m-%d')
+                    return f"📅 Date: {dt.strftime('%d/%m/%Y')}"
+                elif hasattr(d_date, 'strftime'):
+                    return f"📅 Date: {d_date.strftime('%d/%m/%Y')}"
+            except Exception:
+                return f"📅 Date: {d_date}"
+
+        full_text = f"{item.get('title', '')} {item.get('annexure', '')}"
+        m = re.search(r'(?:dated|date|dt\.?)\s*[:\-]?\s*(\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4})', full_text, re.IGNORECASE)
+        if m:
+            raw_d = m.group(1).replace('-', '/').replace('.', '/')
+            return f"📅 Date: {raw_d}"
+
+        raw_date = item.get('date') or ''
+        if raw_date and raw_date != 'N/A':
+            try:
+                dt = datetime.strptime(raw_date[:10], '%Y-%m-%d')
+                return f"📅 Date: {dt.strftime('%d/%m/%Y')}"
+            except Exception:
+                return f"📅 Date: {raw_date}"
+
+        return "📅 General Filings"
+
+    filing_parent = writer.add_outline_item(
+        "📁 Case Filings & Evidence Pack", 
+        writer.pages[1] if len(writer.pages) > 1 else writer.pages[0],
+        is_open=True
+    )
+
+    def format_bookmark_title(idx, badge_icon, title, annexure, start_page):
+        import re
+        t_str = str(title or '').strip()
+        a_str = str(annexure or '').strip()
+
+        # Clean title capitalization if user wrote "annexure 1"
+        if t_str.lower().startswith('annexure '):
+            t_str = 'Annexure ' + t_str[9:]
+        elif t_str.lower().startswith('annex '):
+            t_str = 'Annex ' + t_str[6:]
+
+        # Clean any redundant "[Annexure ...]" or "Annexure: ..." if accidentally embedded
+        clean_annex = re.sub(r'^(?:\[\s*annexure\s*:?\s*|annexure\s*:?\s*)', '', a_str, flags=re.IGNORECASE).rstrip(']').strip()
+
+        # Description of document shows 1st with no bracket; then in bracket shows the annexure what is written for that document
+        if clean_annex:
+            content = f"{t_str} [{clean_annex}]"
+        else:
+            content = t_str
+
+        return f"{idx}. {badge_icon} {content} (Page {start_page + 1})"
+
+    group_parents = {}
+
+    def get_or_create_bookmark_parent(group_title, page_idx):
+        if not group_title or group_title == '__NONE__':
+            return filing_parent
+
+        # Split by '/' or ' > ' to handle nested sub-bookmarks e.g. "new case date / Pleadings"
+        raw_segments = [s.strip() for s in re.split(r'\s*[\/>]\s*', group_title) if s.strip()]
+        if not raw_segments:
+            return filing_parent
+
+        current_parent = filing_parent
+        accumulated_path = ''
+        for depth, seg in enumerate(raw_segments):
+            accumulated_path = f"{accumulated_path} / {seg}" if accumulated_path else seg
+            if accumulated_path not in group_parents:
+                clean_title = seg.replace('📅', '').replace('📁', '').replace('📂', '').strip()
+                display_title = seg
+                if not any(display_title.startswith(em) for em in ('📅', '📁', '📂')):
+                    if depth == 0 and any(kw in clean_title.lower() for kw in ('date', '202', '201', 'hearing')):
+                        display_title = f"📅 {clean_title}"
+                    else:
+                        display_title = f"📁 {clean_title}"
+
+                group_parents[accumulated_path] = writer.add_outline_item(
+                    display_title,
+                    writer.pages[page_idx],
+                    parent=current_parent,
+                    is_open=True
+                )
+            current_parent = group_parents[accumulated_path]
+        return current_parent
+
     for idx, item in enumerate(summary_list, 1):
         try:
             reader = PdfReader(io.BytesIO(item['pdf_bytes']))
@@ -1510,17 +1668,12 @@ def _generate_merged_case_filing_pdf_locked(case_id, user=None):
             # import_outline=False prevents rogue sub-PDF bookmarks from polluting master outline
             writer.append(reader, import_outline=False)
             
-            if filing_parent is None:
-                filing_parent = writer.add_outline_item(
-                    "📁 Case Filings & Evidence Pack", 
-                    writer.pages[start_page],
-                    is_open=True
-                )
+            group_title = get_item_date_bookmark_group(item)
+            target_parent = get_or_create_bookmark_parent(group_title, start_page)
                 
             badge_icon = "🏛️" if item['format'] == 'FORM' else ("🖼️" if item['format'] == 'PHOTO' else "📄")
-            annex_str = f" [Annexure {item['annexure']}]" if item.get('annexure') else ""
-            bookmark_title = f"{idx}. {badge_icon}{annex_str} {item['title']} (Page {start_page + 1})"
-            writer.add_outline_item(bookmark_title, writer.pages[start_page], parent=filing_parent)
+            bookmark_title = format_bookmark_title(idx, badge_icon, item.get('title'), item.get('annexure'), start_page)
+            writer.add_outline_item(bookmark_title, writer.pages[start_page], parent=target_parent)
         except Exception as e:
             print(f"Error appending item {item['title']}: {e}")
 

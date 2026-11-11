@@ -116,7 +116,11 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated], url_name='lookup')
     def lookup(self, request):
-        """Lookup an existing user by email or phone number (for auto-filling)"""
+        """Lookup an existing user by email or phone number (for auto-filling) - Platform Owner only"""
+        # Strictly enforce tenant isolation: only Platform Owner can perform cross-firm lookups
+        if request.user.user_type != 'platform_owner':
+            return Response({'found': False})
+
         email = request.query_params.get('email')
         phone = request.query_params.get('phone')
         
@@ -506,11 +510,11 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            firm_id = data.get('firm')
-            if firm_id:
-                firm = Firm.objects.filter(id=firm_id).first()
-            else:
+            if user.user_type in ['super_admin', 'admin']:
                 firm = user.firm
+            else:
+                firm_id = data.get('firm')
+                firm = Firm.objects.filter(id=firm_id).first() if firm_id else user.firm
 
             if not firm:
                 return Response(
@@ -689,6 +693,11 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         
         # 2. Prevent adding an existing Super Admin to any other firm
         if existing_user and existing_user.user_type == 'super_admin' and existing_user.firm != firm:
+            if user.user_type != 'platform_owner':
+                return Response(
+                    {'error': 'A user with this email address is already registered in the system.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             return Response(
                 {'error': 'This user is a Super Admin of another firm and cannot join a different firm.'},
                 status=status.HTTP_400_BAD_REQUEST

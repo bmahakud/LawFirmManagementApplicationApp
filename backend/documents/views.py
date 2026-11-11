@@ -148,6 +148,11 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             verified_at = timezone.now()
         
         is_in_all_documents = serializer.validated_data.get('is_in_all_documents', True)
+        # Client-uploaded documents must NOT be added to Case Filing Pack until verified by an advocate
+        if user.user_type == 'client':
+            is_in_all_documents = False
+            verification_status = 'pending'
+
         is_in_other_documents = serializer.validated_data.get('is_in_other_documents', False)
 
         instance = serializer.save(
@@ -161,9 +166,9 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             is_in_other_documents=is_in_other_documents
         )
 
-        # Trigger background auto-recompilation of Master Filing Pack if this is a case document
+        # Trigger background auto-recompilation of Master Filing Pack if this is a verified case document
         case_id = instance.case_id or (getattr(instance, 'case', None) and instance.case.id)
-        if case_id and not (instance.document_title and 'Master Case Filing Pack' in instance.document_title):
+        if case_id and verification_status == 'verified' and not (instance.document_title and 'Master Case Filing Pack' in instance.document_title):
             from .services.pdf_merger import trigger_auto_recompile_master_pack
             trigger_auto_recompile_master_pack(str(case_id), user)
     
@@ -172,16 +177,32 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         user = self.request.user
         obj = self.get_object()
         
+        # Clients are strictly view-only for case documents and annexures
+        if user.user_type == 'client':
+            raise PermissionDenied("Clients are not permitted to edit case documents or annexures.")
+        
         # Advocates, admins, and super_admins can update verification status
         if 'verification_status' in self.request.data:
             if user.user_type not in ['platform_owner', 'super_admin', 'admin', 'advocate']:
                 raise PermissionDenied("Only advocates and admins can verify documents.")
             
             # Update verification details
-            if self.request.data['verification_status'] in ['verified', 'rejected']:
+            status_val = self.request.data['verification_status']
+            if status_val == 'verified':
                 serializer.save(
                     verified_by=user,
-                    verified_at=timezone.now()
+                    verified_at=timezone.now(),
+                    is_in_all_documents=True
+                )
+                if obj.case_id and not (obj.document_title and 'Master Case Filing Pack' in obj.document_title):
+                    from .services.pdf_merger import trigger_auto_recompile_master_pack
+                    trigger_auto_recompile_master_pack(str(obj.case_id), user)
+                return
+            elif status_val == 'rejected':
+                serializer.save(
+                    verified_by=user,
+                    verified_at=timezone.now(),
+                    is_in_all_documents=False
                 )
                 if obj.case_id and not (obj.document_title and 'Master Case Filing Pack' in obj.document_title):
                     from .services.pdf_merger import trigger_auto_recompile_master_pack
@@ -419,8 +440,12 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 has_permission = case.solo_advocate == user
         elif user.user_type == 'client':
             # Clients can see their own cases
-            # Use filter().exists() to check if the case's client matches any of the user's profiles
-            has_permission = user.client_profiles.filter(id=case.client_id).exists()
+            # Use filter().exists() to check if the case's client matches any of the user's profiles, or email/user_account matches
+            has_permission = (
+                user.client_profiles.filter(id=case.client_id).exists() or
+                bool(case.client and case.client.user_account_id == user.id) or
+                bool(case.client and case.client.email and case.client.email.strip().lower() == user.email.strip().lower())
+            )
         
         if not has_permission:
             raise PermissionDenied("You do not have permission to access this case.")
@@ -513,11 +538,12 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     'version': 1,
                 })
 
-            # 3. Fetch other regular documents in All Documents (excluding master, .ltproj drafts, and unverified requests)
+            # 3. Fetch other regular documents in All Documents (only verified documents, excluding master, .ltproj drafts, and unverified requests)
             other_docs = list(UserDocument.objects.filter(
                 case_id=case_id,
                 is_deleted=False,
-                is_in_all_documents=True
+                is_in_all_documents=True,
+                verification_status='verified'
             ).exclude(
                 document_title__icontains="Master Case Filing Pack"
             ).exclude(
@@ -810,15 +836,18 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 'format': 'FORM',
                 'sequence': getattr(f, 'custom_sequence', 0) or 0,
                 'annexure': f_annex,
+                'document_date': f.document_date.isoformat() if getattr(f, 'document_date', None) else '',
+                'bookmark_group': getattr(f, 'bookmark_group', '') or '',
                 'page_count': page_count,
                 'created_at': f.created_at.isoformat() if hasattr(f, 'created_at') and f.created_at else ''
             })
 
-        # 2. Case Documents (PDFs & Photos)
+        # 2. Case Documents (PDFs & Photos) - only verified documents are included in the filing pack
         docs = UserDocument.objects.filter(
             case_id=case_id,
             is_deleted=False,
-            is_in_all_documents=True
+            is_in_all_documents=True,
+            verification_status='verified'
         ).exclude(
             document_title__icontains="Master Case Filing Pack"
         ).exclude(
@@ -870,6 +899,8 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                 'format': item_type,
                 'sequence': getattr(d, 'custom_sequence', 0) or 0,
                 'annexure': getattr(d, 'annexure', '') or '',
+                'document_date': d.document_date.isoformat() if getattr(d, 'document_date', None) else '',
+                'bookmark_group': getattr(d, 'bookmark_group', '') or '',
                 'page_count': page_count,
                 'created_at': d.uploaded_at.isoformat() if d.uploaded_at else ''
             })
@@ -1079,6 +1110,12 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
         """
         Saves custom display sequence for all items in the filing pack and recompiles the Master PDF.
         """
+        if request.user.user_type == 'client':
+            return Response(
+                {"detail": "Clients are not permitted to reorder the case filing pack or edit annexures."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         case_id = request.data.get('case_id')
         ordered_items = request.data.get('ordered_items', [])
         if not case_id:
@@ -1106,6 +1143,10 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
                     update_kwargs = {'custom_sequence': target_seq}
                     if isinstance(item, dict) and 'annexure' in item:
                         update_kwargs['annexure'] = str(item.get('annexure') or '').strip()
+                    if isinstance(item, dict) and 'bookmark_group' in item:
+                        update_kwargs['bookmark_group'] = str(item.get('bookmark_group') or '').strip()
+                    if isinstance(item, dict) and 'document_date' in item and item.get('document_date'):
+                        update_kwargs['document_date'] = item.get('document_date')
 
                     if item_type == 'court_form':
                         FilledCourtForm.objects.filter(id=item_id, case_id=case_id).update(**update_kwargs)
@@ -1305,6 +1346,108 @@ class UserDocumentViewSet(viewsets.ModelViewSet):
             return Response({
                 "detail": f"Order saved, but PDF recompilation had an issue: {str(e)}"
             }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='set-bookmark-group')
+    def set_bookmark_group(self, request):
+        """
+        Assigns one or multiple documents/forms to a specific date / sub-bookmark folder
+        and automatically recompiles the Master Filing Pack PDF.
+        """
+        if request.user.user_type == 'client':
+            return Response(
+                {"detail": "Clients are not permitted to edit document bookmarks."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        case_id = request.data.get('case_id')
+        if not case_id:
+            return Response({"detail": "case_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        bookmark_group = str(request.data.get('bookmark_group') or '').strip()
+        old_bookmark_group = str(request.data.get('old_bookmark_group') or '').strip()
+        delete_bookmark_group = str(request.data.get('delete_bookmark_group') or '').strip()
+        document_date = request.data.get('document_date') or None
+        item_ids = request.data.get('item_ids') or []
+        items = request.data.get('items') or []
+
+        if not item_ids and items:
+            item_ids = [it.get('id') for it in items if isinstance(it, dict) and it.get('id')]
+        elif isinstance(item_ids, str):
+            item_ids = [item_ids]
+
+        from .models_templates import FilledCourtForm
+        update_kwargs = {'bookmark_group': bookmark_group}
+        if document_date:
+            update_kwargs['document_date'] = document_date
+
+        if delete_bookmark_group:
+            import re
+            from datetime import datetime
+            clean_del = delete_bookmark_group.replace('📅', '').strip()
+            variants = [
+                delete_bookmark_group,
+                clean_del,
+                f"📅 {clean_del}",
+                clean_del.replace('Date:', '').strip(),
+                clean_del.replace('Date: ', '').strip(),
+                f"📅 Date: {clean_del.replace('Date:', '').strip()}"
+            ]
+
+            # 1. Update any documents matching item_ids directly to 'NONE' (no sub-bookmark)
+            if item_ids:
+                UserDocument.objects.filter(case_id=case_id, id__in=item_ids).update(bookmark_group='NONE')
+                FilledCourtForm.objects.filter(case_id=case_id, id__in=item_ids).update(bookmark_group='NONE')
+
+            # 2. Update any documents matching bookmark_group variants or child paths to 'NONE'
+            UserDocument.objects.filter(case_id=case_id, bookmark_group__in=variants).update(bookmark_group='NONE')
+            FilledCourtForm.objects.filter(case_id=case_id, bookmark_group__in=variants).update(bookmark_group='NONE')
+            UserDocument.objects.filter(case_id=case_id, bookmark_group__startswith=f"{clean_del} /").update(bookmark_group='NONE')
+            FilledCourtForm.objects.filter(case_id=case_id, bookmark_group__startswith=f"{clean_del} /").update(bookmark_group='NONE')
+
+            # 3. If delete_bookmark_group contains a date (e.g. "Date: 03/11/2026") and is a top-level date folder (not a nested sub-folder),
+            # update any documents with this document_date or upload date to 'NONE' so they don't auto-group back into it
+            if '/' not in clean_del:
+                date_match = re.search(r'(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{2,4})', clean_del)
+                if date_match:
+                    raw_d = date_match.group(1).replace('.', '/').replace('-', '/')
+                    try:
+                        dt = datetime.strptime(raw_d, '%d/%m/%Y')
+                        iso_d = dt.strftime('%Y-%m-%d')
+                        UserDocument.objects.filter(case_id=case_id, document_date=iso_d).update(bookmark_group='NONE')
+                        FilledCourtForm.objects.filter(case_id=case_id, document_date=iso_d).update(bookmark_group='NONE')
+                        UserDocument.objects.filter(case_id=case_id, document_date__isnull=True, uploaded_at__date=dt.date()).update(bookmark_group='NONE')
+                        FilledCourtForm.objects.filter(case_id=case_id, document_date__isnull=True, created_at__date=dt.date()).update(bookmark_group='NONE')
+                    except Exception as date_parse_err:
+                        print(f"Error parsing date from delete_bookmark_group: {date_parse_err}")
+        elif old_bookmark_group:
+            clean_old = old_bookmark_group.replace('📅', '').strip()
+            UserDocument.objects.filter(case_id=case_id, bookmark_group__in=[old_bookmark_group, clean_old, f"📅 {clean_old}"]).update(**update_kwargs)
+            FilledCourtForm.objects.filter(case_id=case_id, bookmark_group__in=[old_bookmark_group, clean_old, f"📅 {clean_old}"]).update(**update_kwargs)
+            
+            # Also update any sub-bookmarks whose prefix starts with clean_old + " /"
+            old_prefix = f"{clean_old} /"
+            new_prefix = f"{bookmark_group} /"
+            for doc in UserDocument.objects.filter(case_id=case_id, bookmark_group__startswith=old_prefix):
+                doc.bookmark_group = new_prefix + doc.bookmark_group[len(old_prefix):]
+                doc.save(update_fields=['bookmark_group'])
+            for form in FilledCourtForm.objects.filter(case_id=case_id, bookmark_group__startswith=old_prefix):
+                form.bookmark_group = new_prefix + form.bookmark_group[len(old_prefix):]
+                form.save(update_fields=['bookmark_group'])
+        elif item_ids and bookmark_group:
+            UserDocument.objects.filter(id__in=item_ids, case_id=case_id).update(**update_kwargs)
+            FilledCourtForm.objects.filter(id__in=item_ids, case_id=case_id).update(**update_kwargs)
+
+        # Recompile Master PDF
+        from .services.pdf_merger import generate_merged_case_filing_pdf
+        master_doc = generate_merged_case_filing_pdf(str(case_id), user=request.user)
+
+        return Response({
+            "success": True,
+            "bookmark_group": bookmark_group,
+            "updated_count": len(item_ids),
+            "master_doc_id": str(master_doc.id) if master_doc else None,
+            "master_doc_url": master_doc.document_file.url if master_doc and master_doc.document_file else None
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], url_path='filing-pack-manifest', permission_classes=[permissions.AllowAny])
     def filing_pack_manifest(self, request):

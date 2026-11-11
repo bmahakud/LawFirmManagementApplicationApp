@@ -25,9 +25,8 @@ class IsSubscriptionActive(permissions.BasePermission):
         if view.__class__.__name__ in exempt_views:
             return True
             
-        # 3. Platform Owners, Partner Managers, and Super Admins can always access
-        # (Super Admins need to manage their firm even when subscription is expired)
-        if user.user_type in ['platform_owner', 'partner_manager', 'super_admin']:
+        # 3. Platform Owners and Partner Managers are platform-level and always have access
+        if user.user_type in ['platform_owner', 'partner_manager']:
             return True
             
         # 4. Check firm status
@@ -41,14 +40,16 @@ class IsSubscriptionActive(permissions.BasePermission):
             # - See dashboard with subscription notice
             # - Update their profile
             # - View subscription/billing info
+            # - Refill or renew subscription
             # - Logout
             allowed_views_when_suspended = [
                 'DashboardViewSet',
                 'GlobalConfigurationViewSet', 
                 'CustomUserViewSet',
-                'FirmViewSet',  # To view firm subscription status
-                'SubscriptionPlanViewSet',  # To see available plans
-                'FirmSubscriptionViewSet'  # To manage subscription
+                'FirmViewSet',            # To view firm subscription status
+                'SubscriptionPlanViewSet',# To see available plans
+                'FirmSubscriptionViewSet',# To refill / renew / upgrade subscription
+                'PlatformInvoiceViewSet', # To view subscription invoices
             ]
             if view.__class__.__name__ in allowed_views_when_suspended:
                 return True
@@ -59,15 +60,21 @@ class IsSubscriptionActive(permissions.BasePermission):
                     f"Your firm '{firm.firm_name}' has been suspended. "
                     "Please contact support for assistance."
                 )
-            elif firm.subscription_end_date and firm.subscription_end_date < timezone.now():
-                days_expired = (timezone.now() - firm.subscription_end_date).days
-                message = (
-                    f"Your firm's subscription expired {days_expired} day{'s' if days_expired != 1 else ''} ago "
-                    f"(on {firm.subscription_end_date.strftime('%B %d, %Y')}). "
-                    f"Please contact your administrator or support to renew your subscription."
-                )
+            elif not firm.subscription_end_date or firm.subscription_end_date < timezone.now():
+                if firm.subscription_end_date:
+                    days_expired = max(1, (timezone.now() - firm.subscription_end_date).days)
+                    message = (
+                        f"Your firm's 1-month free trial expired {days_expired} day{'s' if days_expired != 1 else ''} ago "
+                        f"(on {firm.subscription_end_date.strftime('%B %d, %Y')}). "
+                        f"Please refill or renew your subscription to continue using AntLegal."
+                    )
+                else:
+                    message = (
+                        f"Your firm '{firm.firm_name}' does not have an active subscription. "
+                        f"Please refill or activate your subscription to continue using AntLegal."
+                    )
             else:
-                message = "Your firm's subscription is not active. Please contact support."
+                message = "Your firm's subscription is not active. Please refill your subscription."
                 
             raise PermissionDenied(detail=message)
             

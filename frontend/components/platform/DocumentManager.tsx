@@ -8,9 +8,10 @@ import {
   Upload, FileText, Loader2, X, Eye, Download, Trash2, 
   CheckCircle, XCircle, Clock, Search, ChevronLeft, ChevronRight, 
   FolderOutput, FolderInput, Copy, MoreVertical, Layers, ArrowUp, ArrowDown, 
-  GripVertical, FileSpreadsheet, Sparkles, Edit2, Check, Tag
+  GripVertical, FileSpreadsheet, Sparkles, Edit2, Check, Tag, Calendar
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import DateBookmarkModal from './DateBookmarkModal';
 
 type Document = {
   id: string;
@@ -34,6 +35,8 @@ type Document = {
   annexure?: string;
   item_type?: 'court_form' | 'document';
   is_personalized_document?: boolean;
+  document_date?: string;
+  bookmark_group?: string;
 };
 
 type DocumentManagerProps = {
@@ -47,6 +50,24 @@ type DocumentManagerProps = {
   role?: string; // User role to determine if they can verify documents
   onDocumentVerified?: () => void; // Callback after verification
   section?: 'all' | 'other';
+};
+
+const formatDateTime = (dateStr?: string | null) => {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch {
+    return dateStr;
+  }
 };
 
 export default function DocumentManager({ accent, userId, clientId, caseId, showUpload = true, viewBase, userDocuments, role, onDocumentVerified, section = 'all' }: DocumentManagerProps) {
@@ -68,6 +89,10 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   const [editingAnnexureId, setEditingAnnexureId] = useState<string | null>(null);
   const [annexureInputVal, setAnnexureInputVal] = useState<string>('');
   const [savingAnnexureId, setSavingAnnexureId] = useState<string | null>(null);
+
+  // Date Sub-Bookmark Modal state
+  const [showDateBookmarkModal, setShowDateBookmarkModal] = useState(false);
+  const [bookmarkModalItemId, setBookmarkModalItemId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -109,6 +134,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
   };
 
   const isAdvocateRole = role === 'advocate' || role === 'super-admin' || role === 'firm-admin';
+  const isClientRole = role === 'client' || (typeof window !== 'undefined' && window.location.pathname.startsWith('/client'));
 
   const [uploadData, setUploadData] = useState({
     document_type: 'other',
@@ -630,7 +656,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
 
   return (
     <div className="space-y-6">
-      {showUpload && (
+      {showUpload && !isClientRole && (
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">
@@ -757,6 +783,11 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
             />
           </div>
 
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-purple-50/70 border border-purple-100 text-xs text-purple-900 font-medium">
+            <Clock className="w-4 h-4 text-purple-600 shrink-0" />
+            <span>Upload Date & Time: <strong className="font-bold text-purple-950">{formatDateTime(new Date().toISOString())}</strong></span>
+          </div>
+
           {error && (
             <div className="p-3 rounded-lg bg-red-50 border border-red-100">
               <p className="text-xs font-semibold text-red-600">{error}</p>
@@ -786,6 +817,11 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
 
       {(() => {
         const filteredDocs = documents.filter(doc => {
+          // If we are in Case Filing Pack (section === 'all'), unverified documents must NEVER be shown
+          const isMaster = doc.document_title.toLowerCase().includes('master case filing pack');
+          if (section === 'all' && !isMaster && doc.verification_status !== 'verified') {
+            return false;
+          }
           if (!searchQuery.trim()) return true;
           const q = searchQuery.toLowerCase();
           return (
@@ -838,6 +874,21 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                     <Sparkles className="w-3.5 h-3.5 text-violet-600" />
                     Organize filing order directly in table
                   </span>
+                )}
+
+                {section === 'all' && caseId && !isClientRole && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBookmarkModalItemId(undefined);
+                      setShowDateBookmarkModal(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 hover:bg-indigo-100/80 px-2.5 py-1 rounded-lg transition-colors shadow-xs mr-2"
+                    title="Organize documents into Date Sub-Bookmarks"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                    Date Bookmarks
+                  </button>
                 )}
 
                 {/* Page Size Selector */}
@@ -1044,6 +1095,43 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                             {doc.description && (
                               <p className="text-xs text-gray-500 font-normal mt-0.5">{doc.description}</p>
                             )}
+                            {!isMaster && (doc.bookmark_group || doc.document_date) && (
+                              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                {doc.bookmark_group ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!isClientRole && caseId) {
+                                        setBookmarkModalItemId(doc.id);
+                                        setShowDateBookmarkModal(true);
+                                      }
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 cursor-pointer transition-colors shadow-2xs"
+                                    title="Click to edit Date Sub-Bookmark"
+                                  >
+                                    <Calendar className="w-2.5 h-2.5" />
+                                    {doc.bookmark_group.replace(/^📅\s*/, '')}
+                                  </button>
+                                ) : doc.document_date ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!isClientRole && caseId) {
+                                        setBookmarkModalItemId(doc.id);
+                                        setShowDateBookmarkModal(true);
+                                      }
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 cursor-pointer transition-colors shadow-2xs"
+                                    title="Click to edit document date"
+                                  >
+                                    <Calendar className="w-2.5 h-2.5" />
+                                    {doc.document_date}
+                                  </button>
+                                ) : null}
+                              </div>
+                            )}
                           </td>
 
                           {/* Document Type Column */}
@@ -1069,6 +1157,14 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                           <td className="py-4 px-4 text-xs font-semibold">
                             {isMaster ? (
                               <span className="text-gray-300 font-medium select-none" title="Master Filing Pack includes all annexures">—</span>
+                            ) : isClientRole ? (
+                              doc.annexure ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider shadow-2xs">
+                                  {doc.annexure.trim().toLowerCase().startsWith('annexure') ? doc.annexure.trim() : `Annexure ${doc.annexure.trim()}`}
+                                </span>
+                              ) : (
+                                <span className="text-gray-300 font-medium">—</span>
+                              )
                             ) : editingAnnexureId === doc.id ? (
                               <div 
                                 className="annexure-inline-edit inline-flex items-center gap-1.5 bg-white p-1 rounded-lg border border-amber-400 shadow-md z-20 relative animate-in fade-in zoom-in-95"
@@ -1161,9 +1257,9 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
 
                           {/* Uploaded By Column */}
                           <td className="py-4 px-4 text-xs font-medium">
-                            <span className="font-bold text-gray-900">{doc.uploaded_by_name}</span>
-                            <span className="block text-[11px] text-gray-400 mt-0.5">
-                              {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : 'N/A'}
+                            <span className="font-bold text-gray-900 block">{doc.uploaded_by_name}</span>
+                            <span className="block text-[11px] text-gray-500 font-medium mt-0.5">
+                              {doc.uploaded_at ? formatDateTime(doc.uploaded_at) : 'N/A'}
                             </span>
                           </td>
 
@@ -1174,7 +1270,7 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
 
                           {/* Action Column */}
                           <td className="py-4 px-6 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-3.5 shrink-0">
                               {/* Verification actions */}
                               {isAdvocateRole && doc.verification_status === 'pending' && (
                                 <>
@@ -1229,23 +1325,26 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                 {isCourtForm ? 'View Form' : 'View'}
                               </Link>
 
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteDocument(doc.id, isCourtForm)}
-                                disabled={deleting === doc.id}
-                                className="w-[82px] h-8 inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50/50 text-xs font-semibold text-red-600 hover:bg-red-100/80 transition-colors disabled:opacity-50 shrink-0"
-                                title="Delete"
-                              >
-                                {deleting === doc.id ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                )}
-                                Delete
-                              </button>
+                              {/* Inline Delete Button - only for Master PDF or outside Case Filing Pack */}
+                              {!isClientRole && (isMaster || section !== 'all') && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDocument(doc.id, isCourtForm)}
+                                  disabled={deleting === doc.id}
+                                  className="w-[82px] h-8 inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50/50 text-xs font-semibold text-red-600 hover:bg-red-100/80 transition-colors disabled:opacity-50 shrink-0"
+                                  title="Delete"
+                                >
+                                  {deleting === doc.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  )}
+                                  Delete
+                                </button>
+                              )}
 
                               {/* 3-Dots Action Dropdown Menu for non-master rows */}
-                              {section === 'all' && !isMaster ? (
+                              {section === 'all' && !isMaster && !isClientRole ? (
                                 <div className={`relative inline-block text-left row-action-menu shrink-0 ${openMenuId === doc.id ? 'z-50' : ''}`}>
                                   <button
                                     type="button"
@@ -1277,6 +1376,20 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                         <Tag className="w-3.5 h-3.5 text-amber-600" />
                                         {doc.annexure ? 'Edit Annexure' : 'Add Annexure'}
                                       </button>
+                                      {caseId && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setOpenMenuId(null);
+                                            setBookmarkModalItemId(doc.id);
+                                            setShowDateBookmarkModal(true);
+                                          }}
+                                          className="w-full text-left px-4 py-2 text-xs font-bold text-indigo-900 hover:bg-indigo-50 flex items-center gap-2.5 transition-colors"
+                                        >
+                                          <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                                          Set Date / Sub-Bookmark
+                                        </button>
+                                      )}
                                       {!isCourtForm && (
                                         <>
                                           <button
@@ -1305,10 +1418,27 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
                                           </button>
                                         </>
                                       )}
+                                      <div className="my-1 border-t border-gray-100" />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenMenuId(null);
+                                          handleDeleteDocument(doc.id, isCourtForm);
+                                        }}
+                                        disabled={deleting === doc.id}
+                                        className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors disabled:opacity-50"
+                                      >
+                                        {deleting === doc.id ? (
+                                          <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
+                                        ) : (
+                                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                        )}
+                                        {isCourtForm ? 'Delete Form' : 'Delete Document'}
+                                      </button>
                                     </div>
                                   )}
                                 </div>
-                              ) : section === 'all' ? (
+                              ) : section === 'all' && !isClientRole && !isMaster ? (
                                 <div className="w-8 h-8 shrink-0" aria-hidden="true" />
                               ) : null}
                             </div>
@@ -1344,6 +1474,20 @@ export default function DocumentManager({ accent, userId, clientId, caseId, show
             </div>
           </div>
         </div>
+      )}
+
+      {/* Date Sub-Bookmark Management Modal */}
+      {caseId && (
+        <DateBookmarkModal
+          isOpen={showDateBookmarkModal}
+          onClose={() => setShowDateBookmarkModal(false)}
+          caseId={caseId}
+          accent={accent}
+          preselectedItemId={bookmarkModalItemId}
+          onSuccess={() => {
+            fetchDocuments();
+          }}
+        />
       )}
     </div>
   );

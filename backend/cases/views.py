@@ -20,7 +20,7 @@ class CaseViewSet(viewsets.ModelViewSet):
         'case_title', 'case_number', 'petitioner_name', 
         'respondent_name', 'court_name', 'cnr_number'
     ]
-    ordering_fields = ['created_at', 'next_hearing_date', 'priority']
+    ordering_fields = ['created_at', 'next_hearing_date', 'priority', 'filing_date', 'case_title', 'case_number', 'is_registered']
 
     def get_queryset(self):
         user = self.request.user
@@ -93,6 +93,14 @@ class CaseViewSet(viewsets.ModelViewSet):
         category = self.request.query_params.get('category')
         if category:
             queryset = queryset.filter(category=category)
+            
+        # Filter by registration status if provided (e.g. ?is_registered=true / false)
+        is_registered = self.request.query_params.get('is_registered')
+        if is_registered is not None:
+            if is_registered.lower() in ['true', '1', 'registered']:
+                queryset = queryset.filter(is_registered=True)
+            elif is_registered.lower() in ['false', '0', 'unregistered']:
+                queryset = queryset.filter(is_registered=False)
             
         return queryset
 
@@ -185,6 +193,54 @@ class CaseViewSet(viewsets.ModelViewSet):
                 previous_status=old_status,
                 new_status=new_status
             )
+
+        # Automatically recompile Master Case Filing PDF if it exists, so changes to
+        # registration number, case type, party names, etc., are immediately updated in the PDF.
+        try:
+            from documents.models import UserDocument
+            from documents.services.pdf_merger import generate_merged_case_filing_pdf
+            if UserDocument.objects.filter(case_id=case.id, document_title__icontains='Master Case Filing Pack').exists():
+                generate_merged_case_filing_pdf(str(case.id), self.request.user)
+        except Exception as e:
+            logger.warning(f"Failed to recompile master filing PDF on case update: {e}")
+
+    def destroy(self, request, *args, **kwargs):
+        user = request.user
+        from rest_framework.exceptions import PermissionDenied
+        
+        # Only advocates, firm admins, super admins, and platform owners can delete cases
+        if user.user_type not in ['advocate', 'admin', 'super_admin', 'platform_owner']:
+            raise PermissionDenied("You do not have permission to delete cases.")
+            
+        instance = self.get_object()
+        
+        # Verify access for advocates
+        if user.user_type == 'advocate':
+            if user.firm:
+                if instance.firm != user.firm or (instance.assigned_advocate != user and not user.is_staff):
+                    raise PermissionDenied("You can only delete cases assigned to you.")
+            else:
+                if instance.solo_advocate != user:
+                    raise PermissionDenied("You can only delete your own cases.")
+        elif user.user_type == 'admin':
+            if instance.firm != user.firm:
+                raise PermissionDenied("You can only delete cases in your law firm.")
+                
+        case_title = instance.case_title or instance.case_number or str(instance.id)
+        try:
+            from audit.models import AuditLog
+            AuditLog.objects.create(
+                user=user,
+                action='delete',
+                resource_type='case',
+                resource_id=str(instance.id),
+                details=f"Deleted case: {case_title}"
+            )
+        except Exception:
+            pass
+            
+        instance.delete()
+        return Response({"detail": f"Case '{case_title}' deleted successfully.", "deleted": True}, status=status.HTTP_200_OK)
 
 class HearingViewSet(viewsets.ModelViewSet):
     queryset = Hearing.objects.all()

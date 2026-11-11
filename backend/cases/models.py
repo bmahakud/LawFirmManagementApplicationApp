@@ -90,6 +90,16 @@ class Case(models.Model):
     
     case_title = models.CharField(max_length=255, blank=True)
     case_number = models.CharField(max_length=100, blank=True) # Manual entry might not have it yet
+    is_registered = models.BooleanField(
+        default=True,
+        help_text="Designates whether the case is formally registered or unregistered (diary stage)"
+    )
+    registration_number = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Court registration number if registered, or diary number (D_...) if unregistered"
+    )
     case_type = models.CharField(max_length=100) # e.g., C.C., Sessions Case, etc.
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='created')
@@ -132,6 +142,19 @@ class Case(models.Model):
         return f"{self.case_title or self.case_number} ({self.case_number})"
 
     def save(self, *args, **kwargs):
+        # Auto-format unregistered registration_number if marked unregistered and not set
+        if self.is_registered is False:
+            import datetime
+            year = datetime.date.today().year
+            if not self.registration_number:
+                base_ref = self.case_number.strip() if self.case_number else "101"
+                self.registration_number = f"D_{base_ref}_{year}"
+            elif not self.registration_number.strip().upper().startswith('D_'):
+                clean_num = self.registration_number.strip()
+                self.registration_number = f"D_{clean_num}_{year}"
+        elif self.registration_number and self.registration_number.strip().upper().startswith('D_'):
+            self.is_registered = False
+
         if not self.case_title and self.case_number:
             self.case_title = f"Case {self.case_number}"
         

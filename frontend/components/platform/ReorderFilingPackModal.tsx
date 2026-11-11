@@ -5,7 +5,7 @@ import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 import { 
   X, ArrowUp, ArrowDown, GripVertical, Check, Loader2, 
-  FileText, Image as ImageIcon, FileSpreadsheet, RefreshCw, Layers
+  FileText, Image as ImageIcon, FileSpreadsheet, RefreshCw, Layers, Calendar
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -19,6 +19,8 @@ export type FilingItem = {
   annexure?: string;
   created_at: string;
   date?: string;
+  document_date?: string;
+  bookmark_group?: string;
   order_index?: number;
   page_count?: number;
   start_page?: number;
@@ -154,7 +156,9 @@ export default function ReorderFilingPackModal({
           type: item.type,
           page_count: item.page_count || 1,
           sequence: index + 1,
-          annexure: item.annexure || ''
+          annexure: item.annexure || '',
+          bookmark_group: item.bookmark_group || '',
+          document_date: item.document_date || null
         }))
       };
 
@@ -370,6 +374,12 @@ export default function ReorderFilingPackModal({
                           {item.date && (
                             <span className="text-[11px] text-slate-400 font-medium">
                               {item.date}
+                            </span>
+                          )}
+                          {(item.bookmark_group || item.document_date) && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                              <Calendar className="w-2.5 h-2.5" />
+                              {(item.bookmark_group || item.document_date || '').replace(/^📅\s*/, '')}
                             </span>
                           )}
                         </div>

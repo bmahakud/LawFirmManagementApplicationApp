@@ -86,7 +86,9 @@ const Badge = ({ children, variant = 'default' }: { children: React.ReactNode, v
     high: 'bg-red-50 text-red-600 border-red-100',
     completed: 'bg-green-50 text-green-700 border-green-100',
     pending: 'bg-blue-50 text-blue-700 border-blue-100',
-    draft: 'bg-gray-100 text-gray-700 border-gray-200'
+    draft: 'bg-gray-100 text-gray-700 border-gray-200',
+    registered: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold',
+    unregistered: 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${variants[variant?.toLowerCase()] || variants.default}`}>
@@ -95,16 +97,72 @@ const Badge = ({ children, variant = 'default' }: { children: React.ReactNode, v
   );
 };
 
-const CardHeader = ({ title, icon: Icon, action }: { title: string, icon?: any, action?: boolean }) => (
-  <div className="flex items-center justify-between mb-4">
-    <div className="flex items-center gap-2">
-      {Icon && <Icon className="w-5 h-5 text-purple-800" />}
-      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-      <Info className="w-4 h-4 text-gray-400 ml-1" />
+const CARD_SECTION_DESCRIPTIONS: Record<string, string> = {
+  'Matter Summary': 'Provides an executive overview of this legal matter, including case title, advocate reference number, court registration / diary status, case category, priority level, and substantive case description.',
+  'Parties': 'Lists all key individuals and legal entities involved in the dispute, including the petitioner/complainant, respondent/accused, opposing legal counsel, and the client representation capacity.',
+  'Court Information': 'Contains the judicial jurisdiction details such as court name and bench, district, state, court hall number, presiding judge, formal filing date, CNR number, and next hearing date.',
+  'Assignments': 'Shows the internal law firm staffing for this matter, including the primary client account, firm branch location, handling lead advocate, assigned paralegal, or solo advocate in charge.',
+  'Economics & Status': 'Displays the commercial and fee structure for the case, including billing type (hourly/retainer/flat fee), total fees, estimated dispute value, and hearing appearance charges.',
+  'Activity Snapshot': 'Shows an audit trail of chronological case updates, status transitions, hearing adjustments, and recent case file modifications.'
+};
+
+const CardHeader = ({ title, icon: Icon, description }: { title: string; icon?: any; description?: string }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const timeoutRef = useRef<any>(null);
+  const desc = description || CARD_SECTION_DESCRIPTIONS[title] || `Details and information regarding ${title.toLowerCase()}.`;
+
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-2">
+        {Icon && <Icon className="w-5 h-5 text-purple-800" />}
+        <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+        
+        {/* Info button with interactive hover tooltip */}
+        <div 
+          className="relative inline-flex items-center"
+          onMouseEnter={() => {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            setIsOpen(true);
+          }}
+          onMouseLeave={() => {
+            timeoutRef.current = setTimeout(() => setIsOpen(false), 120);
+          }}
+        >
+          <button
+            type="button"
+            className="p-1 rounded-md text-gray-400 hover:text-purple-700 hover:bg-purple-50 transition-colors cursor-pointer focus:outline-none"
+            aria-label={`About ${title}`}
+          >
+            <Info className="w-4 h-4" />
+          </button>
+
+          {isOpen && (
+            <div 
+              className="absolute left-0 top-full mt-1.5 z-50 w-72 sm:w-80 p-3 bg-white/95 backdrop-blur-md rounded-xl border border-purple-100 shadow-xl shadow-purple-950/10 text-gray-800 pointer-events-none animate-in fade-in zoom-in-95 duration-150"
+            >
+              <div className="flex items-start gap-2.5">
+                <div className="p-1 rounded-md bg-purple-50 text-purple-700 border border-purple-100 mt-0.5 shrink-0">
+                  <Info className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-xs text-gray-900">{title}</span>
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200/50">
+                      Section Guide
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 leading-relaxed font-normal">
+                    {desc}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
-    {action && <Edit2 className="w-4 h-4 text-gray-400 cursor-pointer hover:text-purple-700" />}
-  </div>
-);
+  );
+};
 
 const Field = ({ label, value, isBadge = false, badgeVariant = '' }: { label: string, value: React.ReactNode, isBadge?: boolean, badgeVariant?: string }) => (
   <div className="flex flex-col gap-1 mb-4">
@@ -221,13 +279,17 @@ export function CaseWorkspace({
 
   const [activeTab, setActiveTab] = useState(() => {
     if (initialTabFromUrl === 'Court Forms') return 'Documents';
-    return initialTabFromUrl || (caseId && typeof window !== 'undefined' ? sessionStorage.getItem(`lastCaseTab_${caseId}`) : null) || 'Overview';
+    const tab = initialTabFromUrl || (caseId && typeof window !== 'undefined' ? sessionStorage.getItem(`lastCaseTab_${caseId}`) : null) || 'Overview';
+    if (role === 'client' && tab === 'Drafting') return 'Overview';
+    return tab;
   });
   const [docSubTab, setDocSubTab] = useState<'client' | 'case' | 'other' | 'court_forms' | 'personalized_templates'>(() => {
-    const validSubTabs = ['client', 'case', 'other', 'court_forms', 'personalized_templates'];
+    const validSubTabs = role === 'client'
+      ? ['client', 'case']
+      : ['client', 'case', 'other', 'court_forms', 'personalized_templates'];
     const fromUrl = initialSubTabFromUrl && validSubTabs.includes(initialSubTabFromUrl) ? (initialSubTabFromUrl as any) : null;
     const fromSession = caseId && typeof window !== 'undefined' ? (sessionStorage.getItem(`lastCaseSubTab_${caseId}`) as any) : null;
-    if (initialFormId || newBlank || initialTabFromUrl === 'Court Forms') return 'court_forms';
+    if (role !== 'client' && (initialFormId || newBlank || initialTabFromUrl === 'Court Forms')) return 'court_forms';
     return fromUrl || (fromSession && validSubTabs.includes(fromSession) ? fromSession : null) || 'case';
   });
   const [caseData, setCaseData] = useState<CaseData | null>(null);
@@ -236,16 +298,35 @@ export function CaseWorkspace({
   const [templatesLoading, setTemplatesLoading] = useState(false);
 
   useEffect(() => {
+    if (role === 'client' && activeTab === 'Drafting') {
+      setActiveTab('Overview');
+    }
+  }, [role, activeTab]);
+
+  useEffect(() => {
+    if (role === 'client' && !['case', 'client'].includes(docSubTab)) {
+      setDocSubTab('case');
+    }
+  }, [role, docSubTab]);
+
+  useEffect(() => {
     if (initialTabFromUrl === 'Court Forms') {
       setActiveTab('Documents');
-      setDocSubTab('court_forms');
+      setDocSubTab(role === 'client' ? 'case' : 'court_forms');
     } else if (initialTabFromUrl) {
-      setActiveTab(initialTabFromUrl);
+      if (role === 'client' && initialTabFromUrl === 'Drafting') {
+        setActiveTab('Overview');
+      } else {
+        setActiveTab(initialTabFromUrl);
+      }
     }
-    if (initialSubTabFromUrl && ['client', 'case', 'other', 'court_forms', 'personalized_templates'].includes(initialSubTabFromUrl)) {
+    const validSubTabs = role === 'client'
+      ? ['client', 'case']
+      : ['client', 'case', 'other', 'court_forms', 'personalized_templates'];
+    if (initialSubTabFromUrl && validSubTabs.includes(initialSubTabFromUrl)) {
       setDocSubTab(initialSubTabFromUrl as any);
     }
-  }, [initialTabFromUrl, initialSubTabFromUrl]);
+  }, [initialTabFromUrl, initialSubTabFromUrl, role]);
 
   useEffect(() => {
     if (caseId && activeTab && typeof window !== 'undefined') {
@@ -309,7 +390,7 @@ export function CaseWorkspace({
     { name: 'Overview', icon: Briefcase },
     { name: 'Hearings', icon: Calendar },
     { name: 'Documents', icon: FileText },
-    { name: 'Drafting', icon: PenTool },
+    ...(role !== 'client' ? [{ name: 'Drafting', icon: PenTool }] : []),
     { name: 'Billing', icon: CreditCard },
   ];
 
@@ -356,7 +437,10 @@ export function CaseWorkspace({
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900 mb-2 capitalize">{caseData.case_title}</h1>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <Badge variant={caseData.is_registered === false || caseData.case_number?.toUpperCase().startsWith('D_') ? 'unregistered' : 'registered'}>
+                  {caseData.is_registered === false || caseData.case_number?.toUpperCase().startsWith('D_') ? 'Unregistered (Diary)' : 'Registered Case'}
+                </Badge>
                 <Badge variant="default">{formatTitleCase(caseData.category)}</Badge>
                 <Badge variant="default">{formatTitleCase(caseData.case_type)}</Badge>
               </div>
@@ -364,9 +448,21 @@ export function CaseWorkspace({
           </div>
 
           <div className="flex flex-wrap gap-8">
-            <div className="flex flex-col text-center">
+            <div className="flex flex-col text-center items-center">
               <span className="text-xs text-gray-500 font-medium mb-1">Case No.</span>
-              <span className="text-sm font-bold text-gray-900">{caseData.case_number}</span>
+              <span className="text-sm font-bold text-gray-900">{caseData.case_number || '—'}</span>
+              <span className="text-[10px] text-gray-400 font-medium">Advocate Ref</span>
+            </div>
+            <div className="flex flex-col text-center items-center">
+              <span className="text-xs text-gray-500 font-medium mb-1">
+                {caseData.is_registered === false ? 'Diary No. (Unreg)' : 'Court Reg No.'}
+              </span>
+              <span className="text-sm font-bold text-gray-900">
+                {caseData.registration_number || (caseData.is_registered === false ? '—' : 'Pending')}
+              </span>
+              <span className="text-[10px] text-gray-400 font-medium">
+                {caseData.is_registered === false ? 'Unregistered Diary' : 'Court Registered'}
+              </span>
             </div>
             <div className="flex flex-col text-center">
               <span className="text-xs text-gray-500 font-medium mb-1">Client</span>
@@ -420,16 +516,26 @@ export function CaseWorkspace({
 
             {/* Matter Summary */}
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm col-span-1 md:col-span-2">
-              <CardHeader title="Matter Summary" icon={Briefcase} action />
+              <CardHeader title="Matter Summary" icon={Briefcase} />
               <div className="grid grid-cols-2 gap-x-8 gap-y-2">
                 <Field label="Case Title" value={caseData.case_title} />
-                <Field label="Stage" value={formatTitleCase(caseData.stage)} isBadge badgeVariant="default" />
-                <Field label="Case Number" value={caseData.case_number} />
-                <Field label="Status" value={formatTitleCase(caseData.status)} isBadge badgeVariant={caseData.status} />
+                <Field label="Case Number (Advocate Ref)" value={caseData.case_number || '—'} />
+                <Field 
+                  label="Registration Status" 
+                  value={caseData.is_registered === false ? "Unregistered (Diary Stage)" : "Registered Case"} 
+                />
+                <Field 
+                  label={caseData.is_registered === false ? "Diary / Unregistered No." : "Court Registration No."} 
+                  value={caseData.registration_number || (caseData.is_registered === false ? '—' : 'Pending Filing')} 
+                />
+                <Field label="Stage" value={formatTitleCase(caseData.stage)} />
+                <Field label="Status" value={formatTitleCase(caseData.status)} />
+                <Field label="Priority" value={formatTitleCase(caseData.priority)} />
                 <Field label="Case Type" value={formatTitleCase(caseData.case_type)} />
-                <Field label="Priority" value={formatTitleCase(caseData.priority)} isBadge badgeVariant={caseData.priority} />
-                <Field label="Category" value={formatTitleCase(caseData.category)} isBadge badgeVariant="default" />
-                <Field label="Description" value={caseData.description} />
+                <Field label="Category" value={formatTitleCase(caseData.category)} />
+                <div className="col-span-2">
+                  <Field label="Description" value={caseData.description} />
+                </div>
               </div>
             </div>
 
@@ -459,7 +565,7 @@ export function CaseWorkspace({
 
             {/* Assignments */}
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-              <CardHeader title="Assignments" icon={Users} action />
+              <CardHeader title="Assignments" icon={Users} />
               <div className="grid grid-cols-2 gap-x-4">
                 <Field label="Client" value={caseData.client_name} />
                 <Field label="Branch" value={caseData.branch_name} />
@@ -516,96 +622,136 @@ export function CaseWorkspace({
 
         {/* --- OTHER TABS (Structural Mockups to match photos) --- */}
         {activeTab === 'Billing' && (
-          <div className="flex flex-col lg:flex-row gap-6">
-            <div className="flex-1 flex flex-col gap-6">
-              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Billing Summary</h3>
-                <p className="text-sm text-gray-500 mb-6">Overview of financial details and billing information for this case.</p>
-                <div className="flex flex-wrap gap-4">
-                  {[
-                    { label: 'Billing Type', val: formatTitleCase(caseData.billing_type), icon: Clock },
-                    { label: 'Estimated Value', val: formatCurrency(caseData.estimated_value), icon: FileText },
-                    { label: 'Total Fee', val: formatCurrency(caseData.total_fee), icon: CreditCard },
-                    { label: 'Hearing Fee', val: formatCurrency(caseData.hearing_fee), icon: FileText },
-                    { label: 'Additional Expenses', val: '₹ 0.00', icon: CreditCard },
-                  ].map((item, i) => (
-                    <div key={i} className="flex-1 min-w-[150px] p-4 bg-gray-50 rounded-lg border border-gray-100 flex items-center justify-between">
-                      <div>
-                        <span className="block text-xs text-gray-500 mb-1">{item.label}</span>
-                        <span className="text-base font-bold text-gray-900">{item.val}</span>
-                      </div>
-                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-700">
-                        <item.icon className="w-4 h-4" />
-                      </div>
-                    </div>
-                  ))}
+          role === 'client' ? (
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 md:p-14 text-center max-w-3xl mx-auto my-6">
+              <div className="w-16 h-16 rounded-2xl bg-purple-50 text-purple-700 flex items-center justify-center mx-auto mb-5 border border-purple-100 shadow-inner">
+                <CreditCard className="w-8 h-8" />
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 mb-4 uppercase tracking-wider">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                Coming Soon
+              </span>
+              <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                Client Billing & Invoicing
+              </h3>
+              <p className="text-sm text-gray-600 leading-relaxed max-w-xl mx-auto mb-8">
+                Online fee payments, invoice tracking, and downloadable tax receipts are coming soon to your client portal. All case billing milestones and retainers are currently managed directly by your legal counsel.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left border-t border-gray-100 pt-8">
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                  <div className="font-bold text-xs text-gray-900 mb-1">Instant Online Payments</div>
+                  <div className="text-xs text-gray-500">Secure UPI, NetBanking, and Card payments directly through your client dashboard.</div>
+                </div>
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                  <div className="font-bold text-xs text-gray-900 mb-1">Itemized Invoices</div>
+                  <div className="text-xs text-gray-500">Transparent breakdowns of professional fees, court filing charges, and disbursements.</div>
+                </div>
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                  <div className="font-bold text-xs text-gray-900 mb-1">Tax Receipts</div>
+                  <div className="text-xs text-gray-500">Download official payment acknowledgment certificates and GST receipts anytime.</div>
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                <div className="flex justify-between items-center mb-6">
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">Invoices & Payments</h3>
-                    <p className="text-sm text-gray-500">Track invoices, payments and outstanding amounts.</p>
+              {caseData.advocate_name && (
+                <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-center gap-2 text-xs text-gray-500">
+                  <span>Assigned Advocate:</span>
+                  <span className="font-bold text-gray-900">{caseData.advocate_name}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col lg:flex-row gap-6">
+              <div className="flex-1 flex flex-col gap-6">
+                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                  <h3 className="text-lg font-bold text-gray-900 mb-4">Billing Summary</h3>
+                  <p className="text-sm text-gray-500 mb-6">Overview of financial details and billing information for this case.</p>
+                  <div className="flex flex-wrap gap-4">
+                    {[
+                      { label: 'Billing Type', val: formatTitleCase(caseData.billing_type), icon: Clock },
+                      { label: 'Estimated Value', val: formatCurrency(caseData.estimated_value), icon: FileText },
+                      { label: 'Total Fee', val: formatCurrency(caseData.total_fee), icon: CreditCard },
+                      { label: 'Hearing Fee', val: formatCurrency(caseData.hearing_fee), icon: FileText },
+                      { label: 'Additional Expenses', val: '₹ 0.00', icon: CreditCard },
+                    ].map((item, i) => (
+                      <div key={i} className="flex-1 min-w-[150px] p-4 bg-gray-50 rounded-lg border border-gray-100 flex items-center justify-between">
+                        <div>
+                          <span className="block text-xs text-gray-500 mb-1">{item.label}</span>
+                          <span className="text-base font-bold text-gray-900">{item.val}</span>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-700">
+                          <item.icon className="w-4 h-4" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <button className="px-4 py-2 bg-[#311042] text-white rounded-lg text-sm font-medium flex items-center gap-2">
-                    <Plus className="w-4 h-4" /> Create Invoice
-                  </button>
                 </div>
-                {/* Mock Table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200">
-                      <tr>
-                        <th className="px-4 py-3">Invoice No.</th>
-                        <th className="px-4 py-3">Date</th>
-                        <th className="px-4 py-3">Description</th>
-                        <th className="px-4 py-3">Amount</th>
-                        <th className="px-4 py-3">Paid</th>
-                        <th className="px-4 py-3">Due</th>
-                        <th className="px-4 py-3">Status</th>
-                        <th className="px-4 py-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {[1, 2, 3].map((i) => (
-                        <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium">INV-000{i}</td>
-                          <td className="px-4 py-3 text-gray-500">28 Apr 2026</td>
-                          <td className="px-4 py-3 text-gray-500">Initial Case Filing...</td>
-                          <td className="px-4 py-3">₹ 2,000.00</td>
-                          <td className="px-4 py-3">₹ 2,000.00</td>
-                          <td className="px-4 py-3">₹ 0.00</td>
-                          <td className="px-4 py-3"><Badge variant={i === 2 ? 'pending' : 'completed'}>{i === 2 ? 'Partial' : 'Paid'}</Badge></td>
-                          <td className="px-4 py-3 text-right flex justify-end gap-2 text-gray-400">
-                            <Eye className="w-4 h-4 cursor-pointer hover:text-gray-900" />
-                            <Download className="w-4 h-4 cursor-pointer hover:text-gray-900" />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
 
-            <div className="w-full lg:w-[320px] flex flex-col gap-6">
-              <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                <h4 className="font-semibold text-gray-900 mb-4">Balance Overview</h4>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between"><span className="text-gray-500">Total Billed</span><span className="font-medium text-gray-900">₹ 7,500.00</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">Total Paid</span><span className="font-medium text-green-600">₹ 3,950.00</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">Outstanding</span><span className="font-medium text-orange-600">₹ 3,550.00</span></div>
-                  <div className="flex justify-between border-t pt-2"><span className="text-gray-500">Overdue</span><span className="font-medium text-red-600">₹ 750.00</span></div>
+                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                  <div className="flex justify-between items-center mb-6">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">Invoices & Payments</h3>
+                      <p className="text-sm text-gray-500">Track invoices, payments and outstanding amounts.</p>
+                    </div>
+                    <button className="px-4 py-2 bg-[#311042] text-white rounded-lg text-sm font-medium flex items-center gap-2">
+                      <Plus className="w-4 h-4" /> Create Invoice
+                    </button>
+                  </div>
+                  {/* Mock Table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200">
+                        <tr>
+                          <th className="px-4 py-3">Invoice No.</th>
+                          <th className="px-4 py-3">Date</th>
+                          <th className="px-4 py-3">Description</th>
+                          <th className="px-4 py-3">Amount</th>
+                          <th className="px-4 py-3">Paid</th>
+                          <th className="px-4 py-3">Due</th>
+                          <th className="px-4 py-3">Status</th>
+                          <th className="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {[1, 2, 3].map((i) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-medium">INV-000{i}</td>
+                            <td className="px-4 py-3 text-gray-500">28 Apr 2026</td>
+                            <td className="px-4 py-3 text-gray-500">Initial Case Filing...</td>
+                            <td className="px-4 py-3">₹ 2,000.00</td>
+                            <td className="px-4 py-3">₹ 2,000.00</td>
+                            <td className="px-4 py-3">₹ 0.00</td>
+                            <td className="px-4 py-3"><Badge variant={i === 2 ? 'pending' : 'completed'}>{i === 2 ? 'Partial' : 'Paid'}</Badge></td>
+                            <td className="px-4 py-3 text-right flex justify-end gap-2 text-gray-400">
+                              <Eye className="w-4 h-4 cursor-pointer hover:text-gray-900" />
+                              <Download className="w-4 h-4 cursor-pointer hover:text-gray-900" />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-              <div className="bg-purple-50/50 p-5 rounded-xl border border-purple-100 text-sm">
-                <h4 className="font-semibold text-gray-900 mb-2">Need Help?</h4>
-                <p className="text-gray-500 mb-3">For any billing related queries.</p>
-                <a href="#" className="text-purple-700 font-medium hover:underline flex items-center gap-1">Contact Support <ChevronRight className="w-3 h-3" /></a>
+
+              <div className="w-full lg:w-[320px] flex flex-col gap-6">
+                <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                  <h4 className="font-semibold text-gray-900 mb-4">Balance Overview</h4>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between"><span className="text-gray-500">Total Billed</span><span className="font-medium text-gray-900">₹ 7,500.00</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Total Paid</span><span className="font-medium text-green-600">₹ 3,950.00</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Outstanding</span><span className="font-medium text-orange-600">₹ 3,550.00</span></div>
+                    <div className="flex justify-between border-t pt-2"><span className="text-gray-500">Overdue</span><span className="font-medium text-red-600">₹ 750.00</span></div>
+                  </div>
+                </div>
+                <div className="bg-purple-50/50 p-5 rounded-xl border border-purple-100 text-sm">
+                  <h4 className="font-semibold text-gray-900 mb-2">Need Help?</h4>
+                  <p className="text-gray-500 mb-3">For any billing related queries.</p>
+                  <a href="#" className="text-purple-700 font-medium hover:underline flex items-center gap-1">Contact Support <ChevronRight className="w-3 h-3" /></a>
+                </div>
               </div>
             </div>
-          </div>
+          )
         )}
 
         {activeTab === 'Documents' && (
@@ -688,119 +834,123 @@ export function CaseWorkspace({
                 </span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setDocSubTab('other');
-                  setActiveFormId(null);
-                  if (typeof window !== 'undefined') {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('tab', 'Documents');
-                    url.searchParams.set('subtab', 'other');
-                    url.searchParams.delete('formId');
-                    url.searchParams.delete('newBlank');
-                    window.history.replaceState({}, '', url.toString());
-                  }
-                }}
-                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'other'
-                    ? 'text-gray-900 font-bold'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                style={docSubTab === 'other' ? { borderBottomColor: accent, color: accent } : {}}
-              >
-                <FileText className="w-4 h-4 shrink-0" />
-                <span>Supporting Files</span>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Supporting Files information"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleShowTabInfo('other', e);
-                  }}
-                  onMouseEnter={(e) => handleShowTabInfo('other', e)}
-                  onMouseLeave={handleHideTabInfo}
-                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
-                >
-                  <Info className="w-3.5 h-3.5" />
-                </span>
-              </button>
+              {role !== 'client' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocSubTab('other');
+                      setActiveFormId(null);
+                      if (typeof window !== 'undefined') {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('tab', 'Documents');
+                        url.searchParams.set('subtab', 'other');
+                        url.searchParams.delete('formId');
+                        url.searchParams.delete('newBlank');
+                        window.history.replaceState({}, '', url.toString());
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'other'
+                        ? 'text-gray-900 font-bold'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    style={docSubTab === 'other' ? { borderBottomColor: accent, color: accent } : {}}
+                  >
+                    <FileText className="w-4 h-4 shrink-0" />
+                    <span>Supporting Files</span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Supporting Files information"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleShowTabInfo('other', e);
+                      }}
+                      onMouseEnter={(e) => handleShowTabInfo('other', e)}
+                      onMouseLeave={handleHideTabInfo}
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                    </span>
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setDocSubTab('court_forms');
-                  setActiveFormId(null);
-                  if (typeof window !== 'undefined') {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('tab', 'Documents');
-                    url.searchParams.set('subtab', 'court_forms');
-                    url.searchParams.delete('formId');
-                    url.searchParams.delete('newBlank');
-                    window.history.replaceState({}, '', url.toString());
-                  }
-                }}
-                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'court_forms'
-                    ? 'text-gray-900 font-bold'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                style={docSubTab === 'court_forms' ? { borderBottomColor: accent, color: accent } : {}}
-              >
-                <ClipboardList className="w-4 h-4 shrink-0" />
-                <span>Court Forms</span>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Court Forms information"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleShowTabInfo('court_forms', e);
-                  }}
-                  onMouseEnter={(e) => handleShowTabInfo('court_forms', e)}
-                  onMouseLeave={handleHideTabInfo}
-                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
-                >
-                  <Info className="w-3.5 h-3.5" />
-                </span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocSubTab('court_forms');
+                      setActiveFormId(null);
+                      if (typeof window !== 'undefined') {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('tab', 'Documents');
+                        url.searchParams.set('subtab', 'court_forms');
+                        url.searchParams.delete('formId');
+                        url.searchParams.delete('newBlank');
+                        window.history.replaceState({}, '', url.toString());
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'court_forms'
+                        ? 'text-gray-900 font-bold'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    style={docSubTab === 'court_forms' ? { borderBottomColor: accent, color: accent } : {}}
+                  >
+                    <ClipboardList className="w-4 h-4 shrink-0" />
+                    <span>Court Forms</span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Court Forms information"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleShowTabInfo('court_forms', e);
+                      }}
+                      onMouseEnter={(e) => handleShowTabInfo('court_forms', e)}
+                      onMouseLeave={handleHideTabInfo}
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                    </span>
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setDocSubTab('personalized_templates');
-                  setActiveFormId(null);
-                  if (typeof window !== 'undefined') {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('tab', 'Documents');
-                    url.searchParams.set('subtab', 'personalized_templates');
-                    url.searchParams.delete('formId');
-                    url.searchParams.delete('newBlank');
-                    window.history.replaceState({}, '', url.toString());
-                  }
-                }}
-                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'personalized_templates'
-                    ? 'text-gray-900 font-bold'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                style={docSubTab === 'personalized_templates' ? { borderBottomColor: accent, color: accent } : {}}
-              >
-                <Sparkles className="w-4 h-4 shrink-0" />
-                <span>Personalized Templates</span>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Personalized Templates information"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleShowTabInfo('personalized_templates', e);
-                  }}
-                  onMouseEnter={(e) => handleShowTabInfo('personalized_templates', e)}
-                  onMouseLeave={handleHideTabInfo}
-                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
-                >
-                  <Info className="w-3.5 h-3.5" />
-                </span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocSubTab('personalized_templates');
+                      setActiveFormId(null);
+                      if (typeof window !== 'undefined') {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('tab', 'Documents');
+                        url.searchParams.set('subtab', 'personalized_templates');
+                        url.searchParams.delete('formId');
+                        url.searchParams.delete('newBlank');
+                        window.history.replaceState({}, '', url.toString());
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'personalized_templates'
+                        ? 'text-gray-900 font-bold'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    style={docSubTab === 'personalized_templates' ? { borderBottomColor: accent, color: accent } : {}}
+                  >
+                    <Sparkles className="w-4 h-4 shrink-0" />
+                    <span>Personalized Templates</span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Personalized Templates information"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleShowTabInfo('personalized_templates', e);
+                      }}
+                      onMouseEnter={(e) => handleShowTabInfo('personalized_templates', e)}
+                      onMouseLeave={handleHideTabInfo}
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-purple-700 hover:bg-purple-100 transition-colors ml-0.5 cursor-help"
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                    </span>
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Tab Info Tooltip Popup */}
@@ -854,10 +1004,11 @@ export function CaseWorkspace({
                   clientId={caseData.client || caseData.client_id}
                   viewBase={viewBase.replace('/cases', '/documents')}
                   role={role}
+                  showUpload={role !== 'client'}
                   section="all"
                 />
               </div>
-            ) : docSubTab === 'other' ? (
+            ) : docSubTab === 'other' && role !== 'client' ? (
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <FileText className="w-5 h-5 text-purple-700" />
@@ -870,10 +1021,11 @@ export function CaseWorkspace({
                   clientId={caseData.client || caseData.client_id}
                   viewBase={viewBase.replace('/cases', '/documents')}
                   role={role}
+                  showUpload={true}
                   section="other"
                 />
               </div>
-            ) : docSubTab === 'court_forms' ? (
+            ) : docSubTab === 'court_forms' && role !== 'client' ? (
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <PDFCourtFormEditor
                   key={activeFormId ? `form-${activeFormId}` : 'court-forms-list'}
@@ -885,7 +1037,7 @@ export function CaseWorkspace({
                   newBlank={activeFormId ? false : newBlank}
                 />
               </div>
-            ) : docSubTab === 'personalized_templates' ? (
+            ) : docSubTab === 'personalized_templates' && role !== 'client' ? (
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <PersonalizedTemplatesManager
                   caseId={caseId}
@@ -909,7 +1061,7 @@ export function CaseWorkspace({
           </div>
         )}
 
-        {activeTab === 'Drafting' && (
+        {activeTab === 'Drafting' && role !== 'client' && (
           <div className="bg-white rounded-xl shadow-sm">
             <DocuMindIntegration caseId={caseId} />
           </div>

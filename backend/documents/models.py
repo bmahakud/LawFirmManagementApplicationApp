@@ -213,6 +213,8 @@ class UserDocument(models.Model):
     version = models.IntegerField(default=1, help_text="Version number of this document")
     custom_sequence = models.IntegerField(default=0, help_text="Manual override for filing pack document ordering")
     annexure = models.CharField(max_length=100, blank=True, default='', help_text="Court annexure label, e.g. '1', '2 series', '3', or blank")
+    document_date = models.DateField(null=True, blank=True, help_text="Date of court order, filing, or document")
+    bookmark_group = models.CharField(max_length=150, blank=True, default='', help_text="Custom sub-bookmark or date folder label in master filing pack")
     parent_document = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,

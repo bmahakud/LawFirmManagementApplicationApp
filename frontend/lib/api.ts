@@ -85,6 +85,7 @@ export const API = {
     GENERATE_MERGED_PDF: "/api/documents/generate-merged-pdf/",
     FILING_PACK_ITEMS: (caseId: string) => `/api/documents/filing-pack-items/?case_id=${encodeURIComponent(caseId)}`,
     REORDER_FILING_PACK: "/api/documents/reorder-filing-pack/",
+    SET_BOOKMARK_GROUP: "/api/documents/set-bookmark-group/",
     TEMPLATES: "/api/documents/templates/",
     TEMPLATES_OBJ: {
       LIST: "/api/documents/templates/",
@@ -103,7 +104,7 @@ export const API = {
       DETAIL: (id: string) => `/api/documents/filled-templates/${id}/`,
       BY_CASE: (caseId: string) => `/api/documents/filled-templates/by_case/?case_id=${caseId}`,
       SHARE: (id: string) => `/api/documents/filled-templates/${id}/share_with_client/`,
-      CLIENT_SIGN: (id: string) => `/api/documents/filled-templates/${id}/client_sign/`,
+        CLIENT_SIGN: (id: string) => `/api/documents/filled-templates/${id}/client_sign/`,
       ADVOCATE_SIGN: (id: string) => `/api/documents/filled-templates/${id}/advocate_sign/`,
       GENERATE_PDF: (id: string) => `/api/documents/filled-templates/${id}/generate_pdf/`,
       SIGNING_VIEW: (id: string) => `/api/documents/filled-templates/${id}/signing_view/`,
@@ -243,6 +244,7 @@ export const API = {
   SUBSCRIPTIONS: {
     ACTIVATE: "/api/subscriptions/firm-subscriptions/activate/",
     UPGRADE: "/api/subscriptions/firm-subscriptions/upgrade/",
+    REFILL: "/api/subscriptions/firm-subscriptions/refill/",
     STATUS: "/api/subscriptions/firm-subscriptions/status/",
     PLANS: {
       LIST: "/api/subscriptions/plans/",
@@ -261,7 +263,7 @@ export const API = {
 };
 
 export const SUBSCRIPTION_PLANS = [
-  { id: 'da973639-6c65-48ec-b23f-09568671748f', name: 'Trial', price: '₹0', period: '14 days' },
+  { id: 'da973639-6c65-48ec-b23f-09568671748f', name: 'Trial', price: '₹0', period: '1 month (30 days)' },
   { id: 'd6b8bcb2-37d5-49fe-b6b5-76081ac38a1d', name: 'Basic', price: '₹999', period: 'month' },
   { id: '81d8de45-4415-42f8-8864-8e2b7d9d7812', name: 'Business', price: '₹2,499', period: 'month' },
   { id: '4f468d40-a761-4e26-a7f5-a4f8e45c7534', name: 'Enterprise', price: 'Custom', period: '' },

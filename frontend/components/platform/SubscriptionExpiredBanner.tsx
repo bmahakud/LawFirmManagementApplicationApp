@@ -48,10 +48,10 @@ export default function SubscriptionExpiredBanner({
                 Contact Support
               </a>
               <a
-                href="/super-admin/subscriptions"
+                href="/super-admin/finance/subscriptions"
                 className="ml-3 inline-flex items-center px-4 py-2 bg-white text-red-700 text-sm font-medium rounded-lg border border-red-200 hover:bg-red-50 transition-colors"
               >
-                View Subscription Details
+                Refill / Renew Subscription
               </a>
             </div>
           )}

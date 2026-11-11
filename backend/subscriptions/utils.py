@@ -160,11 +160,17 @@ def get_subscription_status(firm):
         plan = subscription.plan
         
         if not subscription.is_valid:
+            from django.utils import timezone
+            is_expired = bool(subscription.end_date and subscription.end_date <= timezone.now())
+            days_expired = max(1, (timezone.now() - subscription.end_date).days) if (subscription.end_date and is_expired) else 0
             return {
                 'is_valid': False,
-                'plan_name': None,
-                'status': subscription.status,
-                'message': 'Subscription expired or inactive'
+                'plan_name': plan.name if plan else 'Trial',
+                'plan_type': plan.plan_type if plan else 'trial',
+                'status': 'expired' if is_expired else subscription.status,
+                'end_date': subscription.end_date,
+                'days_expired': days_expired,
+                'message': f"Subscription expired {days_expired} day{'s' if days_expired != 1 else ''} ago" if is_expired else 'Subscription expired or inactive'
             }
         
         usage = get_firm_usage(firm)

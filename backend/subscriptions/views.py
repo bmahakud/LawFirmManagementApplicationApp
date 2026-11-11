@@ -288,14 +288,6 @@ class FirmSubscriptionViewSet(viewsets.ModelViewSet):
         payment_method = request.data.get('payment_method', 'manual')
         payment_reference = request.data.get('payment_reference', '')
 
-        if not plan_id:
-            return Response({'error': 'plan_id is required'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
-        except SubscriptionPlan.DoesNotExist:
-            return Response({'error': 'Plan not found or inactive'}, status=status.HTTP_404_NOT_FOUND)
-
         try:
             duration_months = int(duration_months)
             if duration_months not in [1, 3, 6, 12]:
@@ -303,7 +295,7 @@ class FirmSubscriptionViewSet(viewsets.ModelViewSet):
                     {'error': 'duration_months must be 1, 3, 6, or 12'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-        except ValueError:
+        except (ValueError, TypeError):
             return Response({'error': 'Invalid duration_months'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Resolve firm
@@ -321,12 +313,28 @@ class FirmSubscriptionViewSet(viewsets.ModelViewSet):
             if not firm:
                 return Response({'error': 'You are not associated with a firm'}, status=status.HTTP_400_BAD_REQUEST)
 
+        subscription = FirmSubscription.objects.filter(firm=firm).first()
+
+        # If plan_id is not specified, refill with existing plan or default active plan
+        if not plan_id:
+            if subscription and subscription.plan:
+                plan = subscription.plan
+            else:
+                plan = SubscriptionPlan.objects.filter(is_active=True).first()
+            if not plan:
+                return Response({'error': 'No active subscription plan found to refill'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            try:
+                plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
+            except SubscriptionPlan.DoesNotExist:
+                return Response({'error': 'Plan not found or inactive'}, status=status.HTTP_404_NOT_FOUND)
+
         from datetime import timedelta
         now = timezone.now()
-        new_end_date = now + timedelta(days=duration_months * 30)
+        base_date = subscription.end_date if (subscription and subscription.end_date and subscription.end_date > now) else now
+        new_end_date = base_date + timedelta(days=duration_months * 30)
 
-        subscription = FirmSubscription.objects.filter(firm=firm).first()
-        old_plan = subscription.plan.name if subscription else None
+        old_plan = subscription.plan.name if subscription and subscription.plan else None
 
         if subscription:
             subscription.plan = plan
@@ -417,6 +425,15 @@ class FirmSubscriptionViewSet(viewsets.ModelViewSet):
                 'status': platform_invoice.status
             }
         }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='refill')
+    def refill(self, request):
+        """
+        Refill a firm's subscription for 1 or more months.
+        POST /api/subscriptions/firm-subscriptions/refill/
+        Body: { "duration_months": 1, "payment_method": "bank_transfer", "payment_reference": "TXN123" }
+        """
+        return self.upgrade(request)
 
     @action(detail=False, methods=['post'])
     def renew(self, request):

@@ -6,11 +6,13 @@ import {
   Briefcase, Save, X, Loader2, AlertCircle, 
   ChevronRight, Calendar, Hash, Scale, 
   Building2, Users, CreditCard, FileText,
-  User, CheckCircle2, Info
+  User, CheckCircle2, Info, Trash2, AlertTriangle
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 import { useTopbarTitle } from './TopbarContext';
+import CaseTypeSelect from './CaseTypeSelect';
 
 // --- Types ---
 interface Option { value: string; label: string }
@@ -113,6 +115,9 @@ export function CaseEditWorkspace({ viewBase }: { viewBase: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
 
   useTopbarTitle('Edit Case', 'Update matter details');
 
@@ -127,9 +132,12 @@ export function CaseEditWorkspace({ viewBase }: { viewBase: string }) {
         const data = await caseRes.json();
         if (!caseRes.ok) throw new Error(data.detail || 'Failed to fetch case.');
 
+        const isUnreg = data.is_registered === false;
         setForm({
           case_title: data.case_title ?? '',
           case_number: data.case_number ?? '',
+          is_registered: !isUnreg,
+          registration_number: data.registration_number ?? '',
           case_type: data.case_type ?? '',
           description: data.description ?? '',
           case_summary: data.case_summary ?? '',
@@ -203,6 +211,37 @@ export function CaseEditWorkspace({ viewBase }: { viewBase: string }) {
     }
   };
 
+  const handleDeleteCase = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await customFetch(API.CASES.DETAIL(caseId), {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        let errMessage = 'Failed to delete case.';
+        try {
+          const data = await res.json();
+          if (data?.detail) errMessage = data.detail;
+        } catch {}
+        throw new Error(errMessage);
+      }
+
+      setDeleteSuccess(true);
+      toast.success('Case deleted successfully');
+
+      // Auto redirect to cases list after confirmation dialog
+      setTimeout(() => {
+        router.push(viewBase);
+      }, 1500);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete case.');
+      setError(err.message || 'Failed to delete case.');
+      setDeleting(false);
+    }
+  };
+
   if (loading || !form) return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-800"></div>
@@ -237,6 +276,17 @@ export function CaseEditWorkspace({ viewBase }: { viewBase: string }) {
           <div className="flex items-center gap-3">
             <button 
               type="button" 
+              onClick={() => {
+                setDeleteSuccess(false);
+                setShowDeleteModal(true);
+              }}
+              className="px-5 py-2.5 bg-red-50 hover:bg-red-100/80 border border-red-200 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
+            >
+              <Trash2 className="w-4 h-4 text-red-600" />
+              Delete Case
+            </button>
+            <button 
+              type="button" 
               onClick={() => router.push(`${viewBase}/${caseId}`)}
               className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all"
             >
@@ -266,17 +316,106 @@ export function CaseEditWorkspace({ viewBase }: { viewBase: string }) {
           {/* Section: Case Information */}
           <div className="space-y-6">
             <SectionHeader title="Case Information" icon={Info} />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="p-4 bg-purple-50/40 rounded-2xl border border-purple-100/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <span className="text-xs font-bold text-gray-800 uppercase tracking-wider block">Registration Status</span>
+                <span className="text-xs text-gray-500">Specify whether this matter is formally registered in court or at unregistered diary stage.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm({
+                      ...form,
+                      is_registered: true,
+                      registration_number: form.registration_number?.startsWith('D_') ? '' : form.registration_number
+                    });
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                    form.is_registered
+                      ? 'bg-[#311042] text-white border-[#311042] shadow-sm'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Registered Case
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const year = new Date().getFullYear();
+                    const baseRef = form.case_number?.trim() || '101';
+                    setForm({
+                      ...form,
+                      is_registered: false,
+                      registration_number: form.registration_number && form.registration_number.startsWith('D_')
+                        ? form.registration_number
+                        : `D_${baseRef}_${year}`
+                    });
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                    !form.is_registered
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <Hash className="w-3.5 h-3.5" />
+                  Unregistered (Diary)
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <CaseTypeSelect
+                required
+                value={form.case_type}
+                onChange={(val: string) => setForm({ ...form, case_type: val })}
+              />
               <Input label="Case Title" required value={form.case_title} onChange={(e: any) => setForm({...form, case_title: e.target.value})} />
-              <Input label="Case Number" required value={form.case_number} onChange={(e: any) => setForm({...form, case_number: e.target.value})} />
-              <Select label="Case Type" required value={form.case_type} onChange={(e: any) => setForm({...form, case_type: e.target.value})} options={[{value: 'Intellectual Property', label: 'Intellectual Property'}, {value: 'Civil', label: 'Civil'}, {value: 'Criminal', label: 'Criminal'}]} />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Field 1: Advocate Case Number */}
+              <div className="flex flex-col gap-1 w-full">
+                <Input 
+                  label="Case Number (Advocate Ref)" 
+                  value={form.case_number} 
+                  placeholder="e.g. 2026-TS-67 or MURD999"
+                  onChange={(e: any) => {
+                    const val = e.target.value;
+                    const year = new Date().getFullYear();
+                    const isAutoDiary = !form.is_registered && (!form.registration_number || form.registration_number.startsWith('D_'));
+                    setForm({
+                      ...form, 
+                      case_number: val,
+                      registration_number: isAutoDiary ? `D_${val.trim() || '101'}_${year}` : form.registration_number
+                    });
+                  }} 
+                />
+                <span className="text-[10px] text-gray-400 pl-1">
+                  Advocate internal case / matter reference number
+                </span>
+              </div>
+
+              {/* Field 2: Court Registration / Diary Number */}
+              <div className="flex flex-col gap-1 w-full">
+                <Input 
+                  label={form.is_registered ? "Court Registration No. (Optional)" : "Diary / Unregistered No."} 
+                  value={form.registration_number} 
+                  placeholder={form.is_registered ? "e.g. WP/452/2026 or leave blank" : `D_${form.case_number?.trim() || '101'}_${new Date().getFullYear()}`}
+                  onChange={(e: any) => setForm({ ...form, registration_number: e.target.value })} 
+                />
+                <span className="text-[10px] text-gray-400 pl-1">
+                  {form.is_registered ? 'Official court case number (optional)' : 'Auto-formatted as (D_case no_case year), editable'}
+                </span>
+              </div>
               <Select label="Category" required value={form.category} onChange={(e: any) => setForm({...form, category: e.target.value})} options={[{value: 'court_case', label: 'Court Case'}, {value: 'pre_litigation', label: 'Pre-litigation'}]} />
+              <Select label="Stage" required value={form.stage} onChange={(e: any) => setForm({...form, stage: e.target.value})} options={[{value: 'case_filing', label: 'Case Filing'}, {value: 'notice', label: 'Notice'}, {value: 'evidence', label: 'Evidence'}, {value: 'arguments', label: 'Arguments'}, {value: 'judgment', label: 'Judgment'}]} />
               <div className="lg:col-span-2">
                 <Input label="Description" value={form.description} onChange={(e: any) => setForm({...form, description: e.target.value})} />
               </div>
               <Select label="Status" required value={form.status} onChange={(e: any) => setForm({...form, status: e.target.value})} options={[{value: 'open', label: 'Open'}, {value: 'in_progress', label: 'In Progress'}, {value: 'closed', label: 'Closed'}]} />
               <Select label="Priority" required value={form.priority} onChange={(e: any) => setForm({...form, priority: e.target.value})} options={[{value: 'low', label: 'Low'}, {value: 'medium', label: 'Medium'}, {value: 'high', label: 'High'}]} />
-              <Select label="Stage" required value={form.stage} onChange={(e: any) => setForm({...form, stage: e.target.value})} options={[{value: 'case_filing', label: 'Case Filing'}, {value: 'notice', label: 'Notice'}, {value: 'evidence', label: 'Evidence'}, {value: 'arguments', label: 'Arguments'}, {value: 'judgment', label: 'Judgment'}]} />
             </div>
           </div>
 
@@ -344,6 +483,97 @@ export function CaseEditWorkspace({ viewBase }: { viewBase: string }) {
 
         </div>
       </form>
+
+      {/* Delete Confirmation Dialogue */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-gray-100 animate-in zoom-in-95 duration-150">
+            {!deleteSuccess ? (
+              <>
+                <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 mb-4">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Confirm Delete</h3>
+                <p className="text-sm text-gray-500 mb-4 leading-relaxed">
+                  Are you sure you want to delete this case? This action cannot be undone and will permanently remove this matter and all its associated records.
+                </p>
+
+                {form && (
+                  <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-200/80 mb-6 space-y-1 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400 font-medium">Case Title:</span>
+                      <strong className="text-gray-800 text-right truncate max-w-[200px]">{form.case_title || 'Untitled Case'}</strong>
+                    </div>
+                    {form.case_number && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-400 font-medium">Case Ref:</span>
+                        <span className="text-gray-700 font-semibold">{form.case_number}</span>
+                      </div>
+                    )}
+                    {form.case_type && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-400 font-medium">Case Type:</span>
+                        <span className="text-gray-700 font-semibold">{form.case_type}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => setShowDeleteModal(false)}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-bold hover:bg-gray-50 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={handleDeleteCase}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {deleting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        Confirm Delete
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4 space-y-4">
+                <div className="w-14 h-14 rounded-full bg-green-50 border border-green-200 flex items-center justify-center text-green-600 mx-auto">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-1">Case Deleted Successfully</h3>
+                  <p className="text-xs text-gray-500">
+                    The case has been permanently deleted from the system. Redirecting you to the cases list...
+                  </p>
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => router.push(viewBase)}
+                    className="w-full px-6 py-2.5 rounded-xl bg-[#311042] text-white text-sm font-bold hover:bg-[#461a5e] transition-colors cursor-pointer"
+                  >
+                    Back to Cases
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

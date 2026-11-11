@@ -6,12 +6,15 @@ import {
   Briefcase, User, Users, Store, AlertCircle, Loader2, CheckCircle2,
   ChevronDown, Save, X, Hash, Building2, Scale, ArrowLeft, Pencil,
   Calendar, Activity, FileText, Gavel, Clock, Copy, Check,
+  Trash2, AlertTriangle
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 import { Panel, SplitPanels, classNames } from './ui';
 import Link from 'next/link';
 import { useTopbarTitle } from './TopbarContext';
+import CaseTypeSelect from './CaseTypeSelect';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 interface Option { value: string; label: string }
@@ -458,6 +461,9 @@ export function CaseEditForm({ viewBase }: { viewBase: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
 
   useEffect(() => {
     const loadAll = async () => {
@@ -580,6 +586,36 @@ export function CaseEditForm({ viewBase }: { viewBase: string }) {
     }
   };
 
+  const handleDeleteCase = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await customFetch(API.CASES.DETAIL(caseId), {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        let errMessage = 'Failed to delete case.';
+        try {
+          const data = await res.json();
+          if (data?.detail) errMessage = data.detail;
+        } catch {}
+        throw new Error(errMessage);
+      }
+
+      setDeleteSuccess(true);
+      toast.success('Case deleted successfully');
+
+      setTimeout(() => {
+        router.push(viewBase);
+      }, 1500);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete case.');
+      setError(err.message || 'Failed to delete case.');
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center p-20 bg-white rounded-2xl border border-gray-100 shadow-sm">
@@ -650,6 +686,15 @@ export function CaseEditForm({ viewBase }: { viewBase: string }) {
               {/* Matter Identity */}
               <Panel title="Matter Identity" subtitle="Primary title and legal classification.">
                 <div className="space-y-4">
+                  {/* Field 1: Case Type (Dropdown at Top) */}
+                  <CaseTypeSelect
+                    required={MANDATORY_FIELDS.case_type}
+                    value={form.case_type}
+                    onChange={val => set('case_type', val)}
+                    error={fieldErrors.case_type ? fieldErrors.case_type[0] : undefined}
+                  />
+
+                  {/* Field 2: Case Title */}
                   <div className="flex flex-col gap-1.5">
                     <FieldLabel required={MANDATORY_FIELDS.case_title}>Case Title</FieldLabel>
                     <div className="relative group">
@@ -670,20 +715,12 @@ export function CaseEditForm({ viewBase }: { viewBase: string }) {
                     {fieldErrors.case_title && <p className="text-[10px] text-red-500 font-bold ml-1">{fieldErrors.case_title[0]}</p>}
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <FieldLabel>Case Number</FieldLabel>
-                      <div className="relative">
-                        <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input value={form.case_number} onChange={e => set('case_number', e.target.value)} placeholder="2026-IP-003" className={inp('pl-11')} />
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <FieldLabel required={MANDATORY_FIELDS.case_type}>Case Type</FieldLabel>
-                      <div className="relative">
-                        <Scale className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input required value={form.case_type} onChange={e => set('case_type', e.target.value)} placeholder="e.g. Intellectual Property" className={inp('pl-11')} />
-                      </div>
+                  {/* Field 3: Case Number */}
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel>Case Number</FieldLabel>
+                    <div className="relative">
+                      <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input value={form.case_number} onChange={e => set('case_number', e.target.value)} placeholder="2026-IP-003" className={inp('pl-11')} />
                     </div>
                   </div>
 
@@ -941,11 +978,22 @@ export function CaseEditForm({ viewBase }: { viewBase: string }) {
               </Panel>
 
               {/* Actions */}
-              <div className="flex gap-4 pt-2">
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteSuccess(false);
+                    setShowDeleteModal(true);
+                  }}
+                  className="px-4 h-12 flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 text-red-600 font-bold text-sm hover:bg-red-100 transition-all cursor-pointer shadow-xs"
+                >
+                  <Trash2 className="w-4 h-4 text-red-600" />
+                  Delete Case
+                </button>
                 <button
                   type="button"
                   onClick={() => router.push(`${viewBase}/${caseId}`)}
-                  className="flex-1 h-12 flex items-center justify-center gap-2 rounded-xl border border-gray-200 text-gray-500 font-bold text-sm hover:bg-gray-50 transition-all"
+                  className="flex-1 h-12 flex items-center justify-center gap-2 rounded-xl border border-gray-200 text-gray-500 font-bold text-sm hover:bg-gray-50 transition-all cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                   Cancel
@@ -953,7 +1001,7 @@ export function CaseEditForm({ viewBase }: { viewBase: string }) {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-[2] h-12 flex items-center justify-center gap-2 rounded-xl bg-[#0e2340] text-white font-bold text-sm hover:bg-[#162d4d] transition-all shadow-lg shadow-[#0e2340]/10 disabled:opacity-50"
+                  className="flex-[2] h-12 flex items-center justify-center gap-2 rounded-xl bg-[#0e2340] text-white font-bold text-sm hover:bg-[#162d4d] transition-all shadow-lg shadow-[#0e2340]/10 disabled:opacity-50 cursor-pointer"
                 >
                   {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                   Save Changes
@@ -963,6 +1011,97 @@ export function CaseEditForm({ viewBase }: { viewBase: string }) {
           }
         />
       </form>
+
+      {/* Delete Confirmation Dialogue */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-gray-100 animate-in zoom-in-95 duration-150">
+            {!deleteSuccess ? (
+              <>
+                <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 mb-4">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Confirm Delete</h3>
+                <p className="text-sm text-gray-500 mb-4 leading-relaxed">
+                  Are you sure you want to delete this case? This action cannot be undone and will permanently remove this matter and all its associated records.
+                </p>
+
+                {form && (
+                  <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-200/80 mb-6 space-y-1 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400 font-medium">Case Title:</span>
+                      <strong className="text-gray-800 text-right truncate max-w-[200px]">{form.case_title || 'Untitled Case'}</strong>
+                    </div>
+                    {form.case_number && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-400 font-medium">Case Ref:</span>
+                        <span className="text-gray-700 font-semibold">{form.case_number}</span>
+                      </div>
+                    )}
+                    {form.case_type && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-400 font-medium">Case Type:</span>
+                        <span className="text-gray-700 font-semibold">{form.case_type}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => setShowDeleteModal(false)}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-bold hover:bg-gray-50 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={handleDeleteCase}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {deleting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        Confirm Delete
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4 space-y-4">
+                <div className="w-14 h-14 rounded-full bg-green-50 border border-green-200 flex items-center justify-center text-green-600 mx-auto">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-1">Case Deleted Successfully</h3>
+                  <p className="text-xs text-gray-500">
+                    The case has been permanently deleted from the system. Redirecting you to the cases list...
+                  </p>
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => router.push(viewBase)}
+                    className="w-full px-6 py-2.5 rounded-xl bg-[#0e2340] text-white text-sm font-bold hover:bg-[#162d4d] transition-colors cursor-pointer"
+                  >
+                    Back to Cases
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

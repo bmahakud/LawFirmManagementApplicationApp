@@ -23,7 +23,7 @@ class UserDocumentSerializer(serializers.ModelSerializer):
             'verified_by_name', 'verification_notes', 'verified_at',
             'is_in_all_documents', 'is_in_other_documents', 'is_copied',
             'is_deleted', 'deleted_at', 'deleted_by', 'deleted_by_name',
-            'version', 'custom_sequence', 'annexure', 'parent_document', 'uploaded_at', 'updated_at',
+            'version', 'custom_sequence', 'annexure', 'document_date', 'bookmark_group', 'parent_document', 'uploaded_at', 'updated_at',
             'filing_pack_manifest', 'is_recompiling', 'is_personalized_document'
         ]
         read_only_fields = [

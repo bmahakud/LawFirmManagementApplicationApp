@@ -142,6 +142,8 @@ class FilledCourtForm(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     custom_sequence = models.IntegerField(default=0, help_text="Manual override for document ordering")
     annexure = models.CharField(max_length=100, blank=True, default='', help_text="Court annexure label, e.g. '1', '2 series', '3', or blank")
+    document_date = models.DateField(null=True, blank=True, help_text="Date of court order, filing, or document")
+    bookmark_group = models.CharField(max_length=150, blank=True, default='', help_text="Custom sub-bookmark or date folder label in master filing pack")
     
     # Signatures
     advocate_signed = models.BooleanField(default=False)

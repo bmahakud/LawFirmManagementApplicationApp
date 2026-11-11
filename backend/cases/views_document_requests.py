@@ -34,12 +34,12 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
         
         if user.user_type == 'client':
             # Clients see requests for their cases
+            from django.db.models import Q
             client_profiles = user.client_profiles.all()
-            if client_profiles.exists():
-                return CaseDocumentRequest.objects.filter(
-                    case__client__in=client_profiles
-                )
-            return CaseDocumentRequest.objects.none()
+            q = Q(case__client__in=client_profiles) | Q(case__client__user_account=user)
+            if getattr(user, 'email', None):
+                q |= Q(case__client__email__iexact=user.email.strip())
+            return CaseDocumentRequest.objects.filter(q).distinct()
         
         if user.user_type == 'advocate':
             # Advocates see requests for cases they're assigned to
@@ -317,12 +317,15 @@ class CaseDocumentRequestViewSet(viewsets.ModelViewSet):
                     from documents.services.pdf_merger import trigger_auto_recompile_master_pack
                     trigger_auto_recompile_master_pack(str(document.case_id), user)
             
-            # Automatically delete the document request so it leaves Client Specific Documents and transfers to Case Documents
-            document_request.delete()
+            # Mark document request as verified so it remains visible with green badge in Client Requests
+            document_request.status = 'verified'
+            document_request.save()
             
+            serializer = self.get_serializer(document_request)
             return Response({
-                'message': 'Document verified successfully. Request removed from pending list and transferred to Case Documents library.',
-                'verified': True
+                'message': 'Document verified successfully. Transferred to Case Documents library.',
+                'verified': True,
+                'request': serializer.data
             })
             
         else:  # reject

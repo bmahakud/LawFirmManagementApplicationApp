@@ -7,8 +7,12 @@ import {
   Search, X, Download, Printer, Hand, MousePointer,
   PanelLeftClose, PanelLeftOpen, Bookmark, FileText,
   Folder, FolderOpen, Loader2, ArrowLeftRight, ArrowUpDown,
-  Filter, Check, ExternalLink
+  Filter, Check, ExternalLink, Calendar, Plus, BookmarkPlus,
+  Edit2, Trash2, GripVertical, FolderPlus, FolderInput
 } from 'lucide-react';
+import { customFetch } from '@/lib/fetch';
+import { API } from '@/lib/api';
+import { toast } from 'react-hot-toast';
 
 interface OutlineItem {
   id: string;
@@ -16,6 +20,7 @@ interface OutlineItem {
   pageNumber: number | null;
   items?: OutlineItem[];
   level: number;
+  fullPath?: string;
 }
 
 interface CustomPDFViewerProps {
@@ -24,6 +29,10 @@ interface CustomPDFViewerProps {
   onDownload?: () => void;
   onClose?: () => void;
   onSwitchToNative?: () => void;
+  caseId?: string;
+  caseTitle?: string;
+  isMasterPdf?: boolean;
+  onBookmarksUpdated?: () => void;
 }
 
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
@@ -33,7 +42,11 @@ export default function CustomPDFViewer({
   title = 'Document',
   onDownload,
   onClose,
-  onSwitchToNative
+  onSwitchToNative,
+  caseId,
+  caseTitle,
+  isMasterPdf = false,
+  onBookmarksUpdated
 }: CustomPDFViewerProps) {
   // Document state
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -42,6 +55,22 @@ export default function CustomPDFViewer({
   const [pageInputVal, setPageInputVal] = useState<string>('1');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState<number>(0);
+
+  // Direct Bookmarks Management & Drag/Drop state
+  const [filingItems, setFilingItems] = useState<any[]>([]);
+  const [isUpdatingBookmarks, setIsUpdatingBookmarks] = useState<boolean>(false);
+  const [draggedDoc, setDraggedDoc] = useState<{ id: string; title: string } | null>(null);
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderVal, setEditingFolderVal] = useState<string>('');
+  const [isAddingFolder, setIsAddingFolder] = useState<boolean>(false);
+  const [newFolderVal, setNewFolderVal] = useState<string>('');
+  const [parentFolderSelection, setParentFolderSelection] = useState<string>('');
+  const [addingSubFolderParent, setAddingSubFolderParent] = useState<string | null>(null);
+  const [newSubFolderVal, setNewSubFolderVal] = useState<string>('');
+  const [customFolders, setCustomFolders] = useState<string[]>([]);
+  const [quickMoveMenuDocId, setQuickMoveMenuDocId] = useState<string | null>(null);
 
   // Layout & UI state
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
@@ -94,6 +123,318 @@ export default function CustomPDFViewer({
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
+  // Fetch filing items to map outline elements to real DB items
+  const fetchFilingItems = useCallback(async () => {
+    if (!caseId) return;
+    try {
+      const res = await customFetch(API.DOCUMENTS.FILING_PACK_ITEMS(caseId));
+      if (res.ok) {
+        const data = await res.json();
+        setFilingItems(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch filing pack items for bookmark sync:', err);
+    }
+  }, [caseId]);
+
+  useEffect(() => {
+    if (caseId) {
+      fetchFilingItems();
+    }
+  }, [caseId, fetchFilingItems, reloadNonce]);
+
+  // Match outline leaf item to database filing item
+  const getFilingItemForOutline = useCallback(
+    (item: OutlineItem) => {
+      if (!filingItems.length) return null;
+
+      // 1. Match by sequence number at the start: "1. 📄 others (Page 2)" -> 1
+      const seqMatch = item.title.match(/^(\d+)\./);
+      if (seqMatch) {
+        const seq = parseInt(seqMatch[1], 10);
+        const found = filingItems.find(
+          (fi) => fi.sequence === seq || fi.order_index === seq
+        );
+        if (found) return found;
+      }
+
+      // 2. Match by start page
+      if (item.pageNumber) {
+        const found = filingItems.find((fi) => fi.start_page === item.pageNumber);
+        if (found) return found;
+      }
+
+      // 3. Fallback: match by title text
+      const cleanTitle = item.title
+        .replace(/^\d+\.\s*/, '')
+        .replace(/\(Page\s*\d+\)/i, '')
+        .replace(/\[[^\]]*\]/g, '')
+        .trim()
+        .toLowerCase();
+
+      return (
+        filingItems.find(
+          (fi) =>
+            fi.title.toLowerCase().includes(cleanTitle) ||
+            cleanTitle.includes(fi.title.toLowerCase())
+        ) || null
+      );
+    },
+    [filingItems]
+  );
+
+  // Collect all unique folder titles present in the tree or custom folders
+  const allFolderTitles = useMemo(() => {
+    const set = new Set<string>();
+    const extractFolders = (items: OutlineItem[], parentPath: string = '') => {
+      items.forEach((it) => {
+        const isFolder =
+          it.title.startsWith('📅') ||
+          it.title.startsWith('📁') ||
+          it.title.startsWith('📂') ||
+          it.title.toLowerCase().startsWith('date:') ||
+          Boolean(it.items && it.items.length > 0 && it.level > 0);
+
+        if (isFolder && !it.title.includes('Case Filings & Evidence Pack')) {
+          const clean = it.title
+            .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+            .replace(/\s*\(Page\s*\d+\)\s*$/i, '')
+            .trim();
+          const currentPath = parentPath ? `${parentPath} / ${clean}` : clean;
+          set.add(currentPath);
+          if (it.items) extractFolders(it.items, currentPath);
+        } else if (it.items) {
+          extractFolders(it.items, parentPath);
+        }
+      });
+    };
+    extractFolders(outline);
+    customFolders.forEach((cf) => {
+      const clean = cf
+        .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+        .trim();
+      if (!clean.includes('Case Filings & Evidence Pack')) {
+        set.add(clean);
+      }
+    });
+    return Array.from(set);
+  }, [outline, customFolders]);
+
+  // Move document to folder directly (drag & drop or quick move)
+  const handleMoveItemToFolder = async (docId: string, folderTitle: string) => {
+    if (!caseId || isUpdatingBookmarks) return;
+    let cleanGroup = folderTitle.replace(/^📅\s*/, '').trim();
+    if (
+      cleanGroup.toLowerCase().includes('case filings & evidence pack') ||
+      cleanGroup.toLowerCase().includes('no sub-bookmark') ||
+      cleanGroup === 'NONE' ||
+      cleanGroup === '__NONE__'
+    ) {
+      cleanGroup = 'NONE';
+    }
+
+    try {
+      setIsUpdatingBookmarks(true);
+      const isNone = cleanGroup === 'NONE';
+      const toastId = toast.loading(
+        isNone
+          ? 'Moving file directly under Case Filings (No Sub-Bookmark)...'
+          : `Moving file into "${cleanGroup || 'Auto Date'}"...`
+      );
+      const res = await customFetch(API.DOCUMENTS.SET_BOOKMARK_GROUP, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          case_id: caseId,
+          bookmark_group: cleanGroup,
+          item_ids: [docId]
+        })
+      });
+      if (res.ok) {
+        toast.success(
+          isNone
+            ? 'Moved directly under Case Filings (No Sub-Bookmark)! Master PDF updated.'
+            : `Moved to "${cleanGroup || 'Auto Date'}"! Master PDF updated.`,
+          { id: toastId }
+        );
+        setReloadNonce((n) => n + 1);
+        if (onBookmarksUpdated) onBookmarksUpdated();
+      } else {
+        toast.error('Failed to move bookmark item.', { id: toastId });
+      }
+    } catch (err) {
+      console.error('Error moving bookmark item:', err);
+      toast.error('Network error moving bookmark item.');
+    } finally {
+      setIsUpdatingBookmarks(false);
+      setDragOverFolder(null);
+      setQuickMoveMenuDocId(null);
+    }
+  };
+
+  // Rename folder directly inline
+  const handleRenameFolder = async (oldFolderTitle: string, newFolderTitle: string, itemIds: string[]) => {
+    if (!caseId || !newFolderTitle.trim() || isUpdatingBookmarks) return;
+    const cleanNew = newFolderTitle.replace(/^📅\s*/, '').trim();
+    const cleanOld = oldFolderTitle.replace(/^📅\s*/, '').trim();
+    if (cleanNew === cleanOld) {
+      setEditingFolderId(null);
+      return;
+    }
+
+    try {
+      setIsUpdatingBookmarks(true);
+      const toastId = toast.loading(`Renaming folder to "${cleanNew}"...`);
+      const res = await customFetch(API.DOCUMENTS.SET_BOOKMARK_GROUP, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          case_id: caseId,
+          old_bookmark_group: oldFolderTitle,
+          bookmark_group: cleanNew,
+          item_ids: itemIds
+        })
+      });
+      if (res.ok) {
+        toast.success(`Renamed to "${cleanNew}"! Master PDF updated.`, { id: toastId });
+        setEditingFolderId(null);
+        setCustomFolders((prev) =>
+          prev.map((f) => (f === oldFolderTitle || f === `📅 ${cleanOld}` ? `📅 ${cleanNew}` : f))
+        );
+        setReloadNonce((n) => n + 1);
+        if (onBookmarksUpdated) onBookmarksUpdated();
+      } else {
+        toast.error('Failed to rename bookmark folder.', { id: toastId });
+      }
+    } catch (err) {
+      console.error('Error renaming bookmark folder:', err);
+      toast.error('Network error renaming bookmark folder.');
+    } finally {
+      setIsUpdatingBookmarks(false);
+    }
+  };
+
+  // Delete bookmark folder directly
+  const handleDeleteFolder = async (folderTitle: string, itemIds?: string[]) => {
+    if (!caseId || isUpdatingBookmarks) return;
+    const clean = folderTitle.replace(/^📅\s*/, '').trim();
+    if (!window.confirm(`Delete "${clean}" bookmark? Files inside will be moved to root without a sub-bookmark.`)) return;
+
+    try {
+      setIsUpdatingBookmarks(true);
+      const toastId = toast.loading(`Deleting bookmark "${clean}"...`);
+      const res = await customFetch(API.DOCUMENTS.SET_BOOKMARK_GROUP, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          case_id: caseId,
+          delete_bookmark_group: folderTitle,
+          item_ids: itemIds || []
+        })
+      });
+      if (res.ok) {
+        toast.success(`Bookmark "${clean}" deleted! Master PDF updated.`, { id: toastId });
+        setCustomFolders((prev) =>
+          prev.filter((f) => f !== folderTitle && f !== clean && f !== `📅 ${clean}`)
+        );
+        setReloadNonce((n) => n + 1);
+        if (onBookmarksUpdated) onBookmarksUpdated();
+      } else {
+        toast.error('Failed to delete bookmark.', { id: toastId });
+      }
+    } catch (err) {
+      console.error('Error deleting bookmark:', err);
+      toast.error('Network error deleting bookmark.');
+    } finally {
+      setIsUpdatingBookmarks(false);
+    }
+  };
+
+  // Create new folder directly in bookmark UI
+  const handleCreateNewFolder = () => {
+    const trimmed = newFolderVal.trim();
+    if (!trimmed) return;
+    const cleanChild = trimmed
+      .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+      .trim();
+
+    let fullPath = cleanChild;
+    if (parentFolderSelection) {
+      const cleanParent = parentFolderSelection
+        .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+        .trim();
+      fullPath = `${cleanParent} / ${cleanChild}`;
+    }
+
+    if (!customFolders.includes(fullPath)) {
+      setCustomFolders((prev) => [...prev, fullPath]);
+    }
+    setNewFolderVal('');
+    setParentFolderSelection('');
+    setIsAddingFolder(false);
+    toast.success(
+      parentFolderSelection
+        ? `Sub-bookmark "${cleanChild}" added under "${parentFolderSelection}"! Drag files into it below.`
+        : `Sub-bookmark "${cleanChild}" created! Drag files into it below.`
+    );
+  };
+
+  // Add sub-bookmark directly inside an existing folder
+  const handleCreateNestedFolder = (parentItem: OutlineItem) => {
+    const trimmed = newSubFolderVal.trim();
+    if (!trimmed) return;
+    const cleanParent = (parentItem.fullPath || parentItem.title)
+      .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+      .replace(/\s*\(Page\s*\d+\)\s*$/i, '')
+      .trim();
+    const cleanChild = trimmed
+      .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+      .trim();
+
+    const nestedPath = `${cleanParent} / ${cleanChild}`;
+    if (!customFolders.includes(nestedPath)) {
+      setCustomFolders((prev) => [...prev, nestedPath]);
+    }
+    setNewSubFolderVal('');
+    setAddingSubFolderParent(null);
+    setExpandedKeys((prev) => new Set(prev).add(parentItem.id));
+    toast.success(`Sub-bookmark "${cleanChild}" added under "${cleanParent}"! Drag files into it below.`);
+  };
+
+  // Save renamed folder name (preserves full parent path for nested folders)
+  const saveFolderRename = (item: OutlineItem) => {
+    const cleanNewNode = editingFolderVal
+      .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+      .trim();
+    if (!cleanNewNode) {
+      setEditingFolderId(null);
+      return;
+    }
+    const fullOldPath = (item.fullPath || item.title)
+      .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+      .replace(/\s*\(Page\s*\d+\)\s*$/i, '')
+      .trim();
+
+    let fullNewPath = cleanNewNode;
+    if (fullOldPath.includes(' / ')) {
+      const parts = fullOldPath.split(' / ');
+      parts[parts.length - 1] = cleanNewNode;
+      fullNewPath = parts.join(' / ');
+    }
+
+    const collectChildIds = (it: OutlineItem): string[] => {
+      const ids: string[] = [];
+      const match = getFilingItemForOutline(it);
+      if (match?.id) ids.push(match.id);
+      if (it.items) {
+        it.items.forEach((child) => ids.push(...collectChildIds(child)));
+      }
+      return ids;
+    };
+    const childIds = collectChildIds(item);
+    handleRenameFolder(fullOldPath, fullNewPath, childIds);
+  };
+
   // 1. Initialize PDF.js and Load Document
   useEffect(() => {
     let isMounted = true;
@@ -131,8 +472,9 @@ export default function CustomPDFViewer({
 
         setPdfDoc(doc);
         setNumPages(doc.numPages);
-        setCurrentPage(1);
-        setPageInputVal('1');
+        const preservePage = currentPageRef.current && currentPageRef.current <= doc.numPages ? currentPageRef.current : 1;
+        setCurrentPage(preservePage);
+        setPageInputVal(String(preservePage));
 
         // Extract bookmarks / outline
         try {
@@ -189,14 +531,15 @@ export default function CustomPDFViewer({
         loadingTask.destroy?.().catch(() => { });
       }
     };
-  }, [url]);
+  }, [url, reloadNonce]);
 
   // Helper: Parse PDF.js Outline items recursively
   const parseOutlineRecursive = async (
     doc: any,
     items: any[],
     level: number = 0,
-    prefix: string = 'bm'
+    prefix: string = 'bm',
+    parentPath: string = ''
   ): Promise<OutlineItem[]> => {
     if (!items || !Array.isArray(items)) return [];
     const results: OutlineItem[] = [];
@@ -234,17 +577,32 @@ export default function CustomPDFViewer({
         }
       }
 
+      // Compute hierarchical fullPath for folders
+      const isRoot = (it.title || '').toLowerCase().includes('case filings & evidence pack');
+      const cleanTitle = (it.title || '')
+        .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+        .replace(/\s*\(Page\s*\d+\)\s*$/i, '')
+        .trim();
+
+      const itemPath = isRoot ? '' : parentPath ? `${parentPath} / ${cleanTitle}` : cleanTitle;
+
       const children =
         it.items && it.items.length > 0
-          ? await parseOutlineRecursive(doc, it.items, level + 1, id)
+          ? await parseOutlineRecursive(doc, it.items, level + 1, id, itemPath)
           : undefined;
+
+      // If parent folder has no direct page target, fallback to first child page
+      if (!pageNum && children && children.length > 0 && children[0].pageNumber) {
+        pageNum = children[0].pageNumber;
+      }
 
       results.push({
         id,
         title: it.title || 'Untitled Section',
         pageNumber: pageNum,
         items: children,
-        level
+        level,
+        fullPath: itemPath
       });
     }
 
@@ -498,7 +856,7 @@ export default function CustomPDFViewer({
   // 4. Zoom Calculations (Fit-Width, Fit-Page, Custom)
   const calculateFitScale = useCallback(
     async (mode: 'fit-width' | 'fit-page') => {
-      if (!pdfDoc || !scrollContainerRef.current) return;
+      if (!pdfDoc || pdfDoc.destroyed || !pdfDoc._transport || !scrollContainerRef.current) return;
       try {
         capturePageAnchor();
         const page1 = await pdfDoc.getPage(1);
@@ -754,6 +1112,7 @@ export default function CustomPDFViewer({
 
     try {
       for (let p = 1; p <= numPages; p++) {
+        if (!pdfDoc || pdfDoc.destroyed || !pdfDoc._transport) break;
         const page = await pdfDoc.getPage(p);
         const content = await page.getTextContent();
         const fullText = content.items.map((it: any) => it.str).join(' ');
@@ -855,16 +1214,170 @@ export default function CustomPDFViewer({
     return outline.map(filterItem).filter(Boolean) as OutlineItem[];
   }, [outline, outlineSearch]);
 
-  // Outline Tree Item Component
+  // Helper to parse clean Google-style outline labels
+  const parseBookmarkDisplay = useCallback((rawTitle: string, isFolder: boolean = false) => {
+    // 1. Table of Contents
+    if (rawTitle.toLowerCase().includes('case overview & table of contents')) {
+      return {
+        type: 'toc' as const,
+        docName: 'Case Overview & Table of Contents'
+      };
+    }
+
+    // 2. Root filing pack
+    if (rawTitle.toLowerCase().includes('case filings & evidence pack')) {
+      return {
+        type: 'root' as const,
+        docName: 'Case Filings & Evidence Pack'
+      };
+    }
+
+    // 3. Folder (Date or custom sub-bookmark folder)
+    const isFolderTitle =
+      isFolder ||
+      rawTitle.startsWith('📅') ||
+      rawTitle.startsWith('📁') ||
+      rawTitle.startsWith('📂') ||
+      rawTitle.toLowerCase().startsWith('date:');
+
+    if (isFolderTitle) {
+      const cleanFolder = rawTitle
+        .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+        .replace(/\s*\(Page\s*\d+\)\s*$/i, '')
+        .trim();
+      return {
+        type: 'date' as const,
+        docName: cleanFolder || 'Bookmark Folder'
+      };
+    }
+
+    // 4. Leaf Document
+    const isForm = rawTitle.includes('🏛️') || rawTitle.toLowerCase().includes('form');
+    const isPhoto = rawTitle.includes('🖼️') || rawTitle.toLowerCase().includes('photo');
+
+    // Strip emojis and trailing (Page X)
+    let clean = rawTitle
+      .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .replace(/\s*\(Page\s*\d+\)\s*$/i, '')
+      .trim();
+
+    // Extract sequence number e.g. "4. Annexure 2 [The true copy...]"
+    const seqMatch = clean.match(/^(\d+)\.\s*(.*)$/);
+    let seqNumber = '';
+    let rest = clean;
+    if (seqMatch) {
+      seqNumber = seqMatch[1];
+      rest = seqMatch[2].trim();
+    }
+
+    // Extract bracket content [Annexure description]
+    const bracketMatch = rest.match(/^(.*?)\s*\[(.*?)\]\s*$/);
+    let docName = rest;
+    let annexureText = '';
+    if (bracketMatch) {
+      docName = bracketMatch[1].trim();
+      annexureText = bracketMatch[2].trim();
+    }
+
+    return {
+      type: 'doc' as const,
+      seqNumber,
+      docName,
+      annexureText,
+      isForm,
+      isPhoto
+    };
+  }, []);
+
+  // Outline Tree Item Component with Direct Drag & Drop, Inline Rename, Sub-Bookmark Creator & Quick Move
   const renderOutlineItem = (item: OutlineItem) => {
-    const hasChildren = item.items && item.items.length > 0;
+    const isRootFilingFolder = item.title.includes('Case Filings & Evidence Pack');
+    const isFolder =
+      !isRootFilingFolder &&
+      (Boolean(item.items && item.items.length > 0) ||
+        item.title.startsWith('📅') ||
+        item.title.startsWith('📁') ||
+        item.title.startsWith('📂') ||
+        item.title.toLowerCase().startsWith('date:') ||
+        customFolders.includes(item.fullPath || item.title));
+
+    const isDateFolder =
+      isFolder && (item.title.startsWith('📅') || item.title.toLowerCase().startsWith('date:'));
+    const isSubFolder = isFolder && !isDateFolder;
+
+    // Clean path of this item for matching children
+    const myCleanPath = (item.fullPath || item.title)
+      .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+      .replace(/\s*\(Page\s*\d+\)\s*$/i, '')
+      .trim();
+
+    // Any empty custom sub-folders nested inside this folder
+    const matchingCustomSubFolders = isFolder
+      ? customFolders.filter((cf) => {
+          const parent = cf.includes(' / ') ? cf.substring(0, cf.lastIndexOf(' / ')).trim() : '';
+          return (
+            parent === myCleanPath &&
+            !item.items?.some((ch) => (ch.fullPath || ch.title).includes(cf.split(' / ').pop()!))
+          );
+        })
+      : [];
+
+    const hasChildren = Boolean((item.items && item.items.length > 0) || matchingCustomSubFolders.length > 0);
     const isExpanded = expandedKeys.has(item.id);
     const isCurrentPage = item.pageNumber === currentPage;
+    const targetKey = item.fullPath || item.title;
+    const isDropTarget = dragOverFolder === targetKey;
+
+    const parsed = parseBookmarkDisplay(item.title, isFolder);
+    const isToc = parsed.type === 'toc';
+    const isBookmarkNode = isRootFilingFolder || isFolder || isToc;
+
+    // Is this a leaf document?
+    const isLeafDocument = !isBookmarkNode;
+    const matchingDoc = isLeafDocument ? getFilingItemForOutline(item) : null;
+    const isQuickMoveOpen = Boolean(matchingDoc && quickMoveMenuDocId === matchingDoc.id);
 
     return (
-      <div key={item.id} className="select-none text-xs">
+      <div key={item.id} className="select-none text-xs relative group/item">
         <div
+          draggable={Boolean(caseId && isLeafDocument && matchingDoc)}
+          onDragStart={(e) => {
+            if (matchingDoc) {
+              e.dataTransfer.setData('text/plain', matchingDoc.id);
+              e.dataTransfer.effectAllowed = 'move';
+              setDraggedDoc({ id: matchingDoc.id, title: item.title });
+            }
+          }}
+          onDragEnd={() => {
+            setDraggedDoc(null);
+            setDragOverFolder(null);
+          }}
+          onDragOver={(e) => {
+            if (draggedDoc && (isFolder || isRootFilingFolder)) {
+              e.preventDefault();
+              e.stopPropagation();
+              if (dragOverFolder !== targetKey) {
+                setDragOverFolder(targetKey);
+              }
+            }
+          }}
+          onDragLeave={(e) => {
+            if (dragOverFolder === targetKey) {
+              setDragOverFolder(null);
+            }
+          }}
+          onDrop={(e) => {
+            if (isFolder || isRootFilingFolder) {
+              e.preventDefault();
+              e.stopPropagation();
+              const docId = e.dataTransfer.getData('text/plain') || draggedDoc?.id;
+              if (docId) {
+                handleMoveItemToFolder(docId, isRootFilingFolder ? 'NONE' : targetKey);
+              }
+            }
+          }}
           onClick={() => {
+            if (editingFolderId === item.id) return;
             if (item.pageNumber) {
               scrollToPage(item.pageNumber);
             } else if (hasChildren) {
@@ -876,57 +1389,411 @@ export default function CustomPDFViewer({
               });
             }
           }}
-          className={`flex items-center gap-1.5 py-1.5 px-2 rounded-lg cursor-pointer transition-all group ${isCurrentPage
-            ? 'bg-slate-100 text-slate-900 font-semibold shadow-xs'
-            : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          style={{ paddingLeft: `${Math.max(6, item.level * 16 + 6)}px` }}
-          title={`${item.title}${item.pageNumber ? ` (Page ${item.pageNumber})` : ''}`}
+          className={`flex items-center gap-2 py-1 px-2 mx-1 rounded-md cursor-pointer transition-colors ${
+            isDropTarget
+              ? 'bg-[#630515]/10 ring-2 ring-[#630515] font-bold'
+              : isCurrentPage
+                ? 'bg-zinc-100 text-black font-semibold'
+                : 'text-black hover:bg-zinc-50'
+          }`}
+          style={{ paddingLeft: `${Math.max(6, item.level * 14 + 6)}px` }}
         >
+          {/* Grip Icon for draggable documents */}
+          {caseId && isLeafDocument && matchingDoc && (
+            <div
+              className="w-3.5 h-3.5 flex items-center justify-center text-zinc-400 opacity-0 group-hover/item:opacity-100 hover:text-black cursor-grab active:cursor-grabbing shrink-0 transition-opacity"
+              title="Drag and drop to move"
+            >
+              <GripVertical className="w-3 h-3 text-black" />
+            </div>
+          )}
+
           {/* Chevron for expand/collapse */}
           {hasChildren ? (
             <button
               onClick={(e) => toggleExpand(item.id, e)}
-              className="w-4 h-4 flex items-center justify-center rounded hover:bg-slate-200 text-slate-500 hover:text-slate-800 shrink-0"
+              className="w-4 h-4 flex items-center justify-center rounded hover:bg-zinc-200 text-[#630515] shrink-0 transition-transform"
             >
               {isExpanded ? (
-                <ChevronDown className="w-3.5 h-3.5" />
+                <ChevronDown className="w-3.5 h-3.5 text-[#630515]" />
               ) : (
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronRight className="w-3.5 h-3.5 text-[#630515]" />
               )}
             </button>
-          ) : (
+          ) : !isLeafDocument ? (
             <span className="w-4 shrink-0" />
-          )}
+          ) : null}
 
-          {/* Folder or Bookmark Icon */}
-          {hasChildren ? (
+          {/* Icons: Bookmark & Sub-Bookmark in #630515, Documents in black */}
+          {isToc ? (
+            <Bookmark className="w-4 h-4 text-[#630515] shrink-0" />
+          ) : isRootFilingFolder ? (
             isExpanded ? (
-              <FolderOpen className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <FolderOpen className="w-4 h-4 text-[#630515] shrink-0" />
             ) : (
-              <Folder className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <Folder className="w-4 h-4 text-[#630515] shrink-0" />
             )
+          ) : isDateFolder ? (
+            <Calendar className="w-4 h-4 text-[#630515] shrink-0" />
+          ) : isSubFolder ? (
+            <Folder className="w-4 h-4 text-[#630515] shrink-0" />
           ) : (
-            <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <FileText className="w-4 h-4 text-black shrink-0" />
           )}
 
-          {/* Bookmark Title: Lies cleanly in ONE line because of resizable sidebar! */}
-          <span className="truncate flex-1 font-medium tracking-tight">
-            {item.title}
-          </span>
+          {/* Title or Inline Edit Form */}
+          {editingFolderId === item.id ? (
+            <div
+              className="flex items-center gap-1 flex-1 min-w-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="text"
+                autoFocus
+                value={editingFolderVal}
+                onChange={(e) => setEditingFolderVal(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveFolderRename(item);
+                  } else if (e.key === 'Escape') {
+                    setEditingFolderId(null);
+                  }
+                }}
+                className="w-full text-xs font-semibold px-2 py-1 bg-white border border-[#630515] rounded text-[#630515] outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => saveFolderRename(item)}
+                className="p-1 rounded text-[#630515] hover:bg-[#630515]/10 transition-colors shrink-0"
+                title="Save name"
+              >
+                <Check className="w-3.5 h-3.5 text-[#630515]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingFolderId(null)}
+                className="p-1 rounded text-zinc-500 hover:text-black hover:bg-zinc-200 transition-colors shrink-0"
+                title="Cancel"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div
+              onDoubleClick={(e) => {
+                if (caseId && isFolder) {
+                  e.stopPropagation();
+                  setEditingFolderId(item.id);
+                  const nodeTitle =
+                    (item.fullPath ? item.fullPath.split(' / ').pop() : item.title) || item.title;
+                  setEditingFolderVal(
+                    nodeTitle
+                      .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+                      .trim()
+                  );
+                }
+              }}
+              className="flex flex-col min-w-0 flex-1 leading-snug"
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                {parsed.seqNumber && (
+                  <span className="text-xs font-bold font-mono shrink-0 text-black">
+                    {parsed.seqNumber}.
+                  </span>
+                )}
+                <span
+                  className={`text-xs tracking-tight truncate ${
+                    isBookmarkNode
+                      ? 'font-bold text-[#630515]'
+                      : 'font-semibold text-black'
+                  }`}
+                >
+                  {parsed.docName}
+                </span>
+                {isFolder && (item.items || matchingCustomSubFolders.length > 0) && (
+                  <span className="text-[11px] text-[#630515] font-semibold font-mono shrink-0">
+                    ({(item.items?.length || 0) + matchingCustomSubFolders.length})
+                  </span>
+                )}
+              </div>
+              {parsed.annexureText && (
+                <span
+                  className="text-xs text-black font-normal truncate block text-left mt-0.5 tracking-tight"
+                  title={parsed.annexureText}
+                >
+                  [{parsed.annexureText}]
+                </span>
+              )}
+            </div>
+          )}
 
-          {/* Page Badge */}
+          {/* Drop target badge */}
+          {isDropTarget && (
+            <span className="text-[10px] bg-[#630515] text-white px-2 py-0.5 rounded font-medium shrink-0">
+              {isRootFilingFolder ? 'Drop here (No Sub-Bookmark)' : 'Drop here'}
+            </span>
+          )}
+
+          {/* Action on Folder Hover: Add Sub-Bookmark (+), Rename (Edit2), Delete (Trash2) */}
+          {caseId && isFolder && editingFolderId !== item.id && (
+            <div className="opacity-0 group-hover/item:opacity-100 flex items-center gap-1 shrink-0 transition-opacity">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAddingSubFolderParent(addingSubFolderParent === item.id ? null : item.id);
+                  setNewSubFolderVal('');
+                  setExpandedKeys((prev) => new Set(prev).add(item.id));
+                }}
+                className="p-1 text-[#630515] hover:bg-[#630515]/10 rounded transition-colors"
+                title="Add sub-bookmark inside this folder"
+              >
+                <Plus className="w-3 h-3 text-[#630515] stroke-[2.5]" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingFolderId(item.id);
+                  const nodeTitle =
+                    (item.fullPath ? item.fullPath.split(' / ').pop() : item.title) || item.title;
+                  setEditingFolderVal(
+                    nodeTitle
+                      .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+                      .trim()
+                  );
+                }}
+                className="p-1 text-[#630515] hover:bg-[#630515]/10 rounded transition-colors"
+                title="Rename bookmark folder"
+              >
+                <Edit2 className="w-3 h-3 text-[#630515]" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const collectChildIds = (it: OutlineItem): string[] => {
+                    const ids: string[] = [];
+                    const match = getFilingItemForOutline(it);
+                    if (match?.id) ids.push(match.id);
+                    if (it.items) it.items.forEach((child) => ids.push(...collectChildIds(child)));
+                    return ids;
+                  };
+                  const childIds = collectChildIds(item);
+                  handleDeleteFolder(item.fullPath || item.title, childIds);
+                }}
+                className="p-1 text-[#630515] hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                title="Delete bookmark folder"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          {/* Action on Document Leaf Hover: Simple Move button */}
+          {caseId && isLeafDocument && matchingDoc && (
+            <div className="opacity-0 group-hover/item:opacity-100 flex items-center shrink-0 transition-opacity">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setQuickMoveMenuDocId(
+                    quickMoveMenuDocId === matchingDoc.id ? null : matchingDoc.id
+                  );
+                }}
+                className="px-2 py-0.5 text-[10px] font-medium text-black bg-white hover:bg-zinc-100 border border-zinc-300 rounded shadow-2xs transition-colors"
+                title="Move document into another Date Sub-Bookmark"
+              >
+                Move
+              </button>
+            </div>
+          )}
+
+          {/* Simple Page Badge */}
           {item.pageNumber && (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200/80 shrink-0 group-hover:bg-white group-hover:border-slate-300">
+            <span className="text-[11px] font-mono font-medium px-1.5 py-0.5 rounded bg-zinc-100 text-black border border-zinc-200 shrink-0">
               p. {item.pageNumber}
             </span>
           )}
         </div>
 
-        {/* Children items */}
+        {/* Inline Sub-Bookmark Creator under this folder */}
+        {addingSubFolderParent === item.id && (
+          <div
+            className="my-1.5 ml-6 mr-1 p-2.5 bg-[#630515]/5 border border-[#630515]/20 rounded-lg space-y-1.5 animate-in fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-[#630515] flex items-center gap-1">
+                <FolderPlus className="w-3.5 h-3.5 text-[#630515]" />
+                Add sub-bookmark under &quot;{parsed.docName}&quot;
+              </span>
+              <button
+                type="button"
+                onClick={() => setAddingSubFolderParent(null)}
+                className="text-zinc-400 hover:text-[#630515] p-0.5 rounded"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                autoFocus
+                placeholder="e.g. Pleadings, Annexures, Evidence..."
+                value={newSubFolderVal}
+                onChange={(e) => setNewSubFolderVal(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateNestedFolder(item);
+                  if (e.key === 'Escape') setAddingSubFolderParent(null);
+                }}
+                className="flex-1 text-xs px-2.5 py-1 bg-white border border-zinc-300 rounded text-black placeholder:text-zinc-400 outline-none focus:border-[#630515] font-medium"
+              />
+              <button
+                type="button"
+                onClick={() => handleCreateNestedFolder(item)}
+                disabled={!newSubFolderVal.trim()}
+                className="px-2.5 py-1 text-xs font-semibold bg-[#630515] text-white rounded hover:bg-[#4d0410] disabled:opacity-40 transition-colors shadow-2xs active:scale-95"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Move Dropdown Popover */}
+        {isQuickMoveOpen && matchingDoc && (
+          <div
+            className="my-1 ml-6 p-2 bg-white rounded-xl shadow-lg border border-zinc-200 z-30 animate-in fade-in space-y-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-1 border-b border-zinc-100">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-black">
+                Move Document:
+              </span>
+              <button
+                type="button"
+                onClick={() => setQuickMoveMenuDocId(null)}
+                className="text-black hover:text-zinc-600 p-0.5"
+              >
+                <X className="w-3 h-3 text-black" />
+              </button>
+            </div>
+            <div className="max-h-52 overflow-y-auto space-y-0.5 custom-scrollbar">
+              {/* Option: No Sub-Bookmark (Direct under Case Filings root) */}
+              <button
+                type="button"
+                onClick={() => handleMoveItemToFolder(matchingDoc.id, 'NONE')}
+                className="w-full text-left px-2 py-1.5 text-xs font-semibold text-black hover:bg-zinc-100 rounded-lg transition-colors flex items-center gap-2 border border-zinc-200"
+                title="Remove from any sub-bookmark folder and place directly under Case Filings"
+              >
+                <Folder className="w-3.5 h-3.5 text-black shrink-0" />
+                <div className="flex flex-col min-w-0">
+                  <span className="truncate font-bold text-black">No Sub-Bookmark</span>
+                  <span className="text-[10px] text-zinc-600 font-normal">
+                    Directly under Case Filings root
+                  </span>
+                </div>
+              </button>
+
+              <div className="my-1 border-t border-zinc-100" />
+              <div className="text-[9px] font-bold uppercase tracking-wider text-[#630515] px-1 pb-0.5">
+                Sub-Bookmarks:
+              </div>
+
+              {allFolderTitles.map((fTitle) => {
+                const parts = fTitle.split(' / ');
+                const isNested = parts.length > 1;
+                const leafName = parts[parts.length - 1];
+                const parentName = parts.slice(0, -1).join(' / ');
+                return (
+                  <button
+                    key={fTitle}
+                    type="button"
+                    onClick={() => handleMoveItemToFolder(matchingDoc.id, fTitle)}
+                    style={{ paddingLeft: `${Math.max(8, (parts.length - 1) * 14 + 8)}px` }}
+                    className="w-full text-left py-1 pr-2 text-xs font-semibold text-black hover:bg-[#630515]/5 rounded-lg transition-colors flex items-center gap-1.5"
+                  >
+                    {isNested ? (
+                      <Folder className="w-3 h-3 text-[#630515] shrink-0" />
+                    ) : (
+                      <Calendar className="w-3 h-3 text-[#630515] shrink-0" />
+                    )}
+                    <span className="truncate text-black">
+                      {isNested ? `↳ ${leafName}` : fTitle}
+                    </span>
+                    {isNested && (
+                      <span className="text-[10px] text-zinc-500 font-normal shrink-0 truncate ml-auto">
+                        ({parentName})
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              <div className="my-1 border-t border-zinc-100" />
+              <button
+                type="button"
+                onClick={() => handleMoveItemToFolder(matchingDoc.id, '')}
+                className="w-full text-left px-2 py-1 text-xs font-semibold text-black hover:bg-zinc-100 rounded-lg transition-colors"
+              >
+                Reset to Auto Date Grouping
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Children items with simple hierarchy guide line */}
         {hasChildren && isExpanded && (
-          <div className="flex flex-col">
-            {item.items!.map(renderOutlineItem)}
+          <div className="ml-3 pl-2 border-l border-zinc-200 space-y-0.5 my-0.5">
+            {/* Any empty custom sub-folders nested inside this folder */}
+            {matchingCustomSubFolders.map((cf) => {
+              const subTitle = cf.split(' / ').pop()!;
+              const isDropTarget = dragOverFolder === cf;
+              return (
+                <div
+                  key={cf}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (dragOverFolder !== cf) setDragOverFolder(cf);
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverFolder === cf) setDragOverFolder(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const docId = e.dataTransfer.getData('text/plain') || draggedDoc?.id;
+                    if (docId) handleMoveItemToFolder(docId, cf);
+                  }}
+                  className={`my-1 p-1.5 rounded-lg border border-dashed transition-all flex items-center justify-between gap-2 ${
+                    isDropTarget
+                      ? 'bg-[#630515]/10 ring-2 ring-[#630515] border-[#630515]'
+                      : 'bg-[#630515]/5 border-[#630515]/30 hover:bg-[#630515]/10 text-[#630515]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Folder className="w-3.5 h-3.5 text-[#630515] shrink-0" />
+                    <span className="text-xs font-semibold text-[#630515] truncate">{subTitle}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[10px] font-semibold text-[#630515] bg-white border border-[#630515]/30 px-1.5 py-0.5 rounded shadow-2xs">
+                      Drop file here
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCustomFolders((prev) => prev.filter((f) => f !== cf))}
+                      className="p-1 text-zinc-400 hover:text-red-700 rounded"
+                      title="Remove empty sub-bookmark"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {item.items && item.items.map(renderOutlineItem)}
           </div>
         )}
       </div>
@@ -938,7 +1805,7 @@ export default function CustomPDFViewer({
       ref={viewerContainerRef}
       className={`flex flex-col w-full bg-slate-100 select-none overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none h-screen' : 'relative rounded-2xl h-full min-h-0'
         }`}
-      style={{ fontFamily: 'var(--font-geist-sans), system-ui, sans-serif' }}
+      style={{ fontFamily: "var(--font-google), 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif" }}
     >
       {/* ========================================================================= */}
       {/* 1. TOP TOOLBAR (Google Native PDF Style, Clean Light Theme, UI Matching)   */}
@@ -1278,21 +2145,23 @@ export default function CustomPDFViewer({
             style={{ width: `${sidebarWidth}px` }}
             className="h-full flex flex-col min-w-0 shrink-0"
           >
-            {/* Sidebar Tab Header */}
-            <div className="px-3 pt-2.5 pb-2 border-b border-slate-200/80 bg-slate-50/70 flex items-center justify-between gap-1.5 shrink-0">
-              <div className="flex items-center gap-1 bg-slate-200/70 p-0.5 rounded-lg flex-1">
+            {/* Sidebar Tab Header (Google Material 3 Segmented Control) */}
+            <div className="px-3 pt-3 pb-2 border-b border-slate-200/80 bg-slate-50/70 flex items-center justify-between gap-1.5 shrink-0">
+              <div className="flex items-center gap-1 bg-zinc-200/70 p-1 rounded-lg flex-1 border border-zinc-200">
                 <button
                   onClick={() => setActiveTab('outline')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-1 px-2 rounded-md text-xs font-semibold transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-1 px-2.5 rounded text-xs font-semibold transition-all ${
                     activeTab === 'outline'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white text-black shadow-xs'
+                      : 'text-zinc-600 hover:text-black'
                   }`}
                 >
-                  <Bookmark className="w-3.5 h-3.5" />
+                  <Bookmark className="w-3.5 h-3.5 text-black" />
                   <span>Bookmarks</span>
                   {outline.length > 0 && (
-                    <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded-full border border-slate-200">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                      activeTab === 'outline' ? 'bg-zinc-200 text-black' : 'bg-zinc-100 text-zinc-600'
+                    }`}>
                       {outline.length}
                     </span>
                   )}
@@ -1305,15 +2174,17 @@ export default function CustomPDFViewer({
                       scrollThumbnailIntoView(currentPageRef.current, { behavior: 'smooth', block: 'center' });
                     }, 50);
                   }}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-1 px-2 rounded-md text-xs font-semibold transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-1 px-2.5 rounded text-xs font-semibold transition-all ${
                     activeTab === 'thumbnails'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white text-black shadow-xs'
+                      : 'text-zinc-600 hover:text-black'
                   }`}
                 >
-                  <FileText className="w-3.5 h-3.5" />
+                  <FileText className="w-3.5 h-3.5 text-black" />
                   <span>Pages</span>
-                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded-full border border-slate-200">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                    activeTab === 'thumbnails' ? 'bg-zinc-200 text-black' : 'bg-zinc-100 text-zinc-600'
+                  }`}>
                     {numPages}
                   </span>
                 </button>
@@ -1326,8 +2197,8 @@ export default function CustomPDFViewer({
                     onClick={toggleExpandGrid}
                     className={`p-1.5 rounded-lg border transition-all flex items-center gap-1 text-[11px] font-medium ${
                       isExpandedGrid
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        ? 'bg-zinc-100 border-zinc-300 text-black hover:bg-zinc-200'
+                        : 'bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-black'
                     }`}
                     title={isExpandedGrid ? 'Minimize Grid to Compact View (3 Columns)' : 'Expand to Multi-Page Grid View (5+ Columns)'}
                   >
@@ -1350,7 +2221,7 @@ export default function CustomPDFViewer({
                     capturePageAnchor();
                     setSidebarOpen(false);
                   }}
-                  className="p-1.5 rounded-lg border border-transparent hover:border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-white transition-all"
+                  className="p-1.5 rounded-lg border border-transparent hover:border-zinc-200 text-zinc-400 hover:text-black hover:bg-white transition-all"
                   title="Minimize Sidebar (Collapse)"
                 >
                   <PanelLeftClose className="w-3.5 h-3.5" />
@@ -1361,30 +2232,219 @@ export default function CustomPDFViewer({
             {/* Tab 1: Bookmarks / Outline Tree */}
             {activeTab === 'outline' && (
               <div className="flex-1 min-h-0 flex flex-col bg-white overflow-hidden">
-                {/* Bookmarks Search / Filter Bar */}
-                <div className="px-3 py-2 border-b border-slate-100 bg-white shrink-0">
-                  <div className="relative flex items-center">
-                    <Filter className="w-3 h-3 text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <input
-                      type="text"
-                      placeholder="Filter bookmarks..."
-                      value={outlineSearch}
-                      onChange={(e) => setOutlineSearch(e.target.value)}
-                      className="w-full text-xs pl-7 pr-7 py-1 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200/80 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 transition-colors"
-                    />
-                    {outlineSearch && (
+                {/* Bookmarks Search / Filter Bar & Sub-Bookmark Creator */}
+                <div className="px-3 py-2 border-b border-zinc-200 bg-white shrink-0 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1 flex items-center">
+                      <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search bookmarks..."
+                        value={outlineSearch}
+                        onChange={(e) => setOutlineSearch(e.target.value)}
+                        className="w-full text-xs pl-8 pr-7 py-1.5 bg-white border border-zinc-300 rounded-lg text-black placeholder:text-zinc-400 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all font-medium"
+                      />
+                      {outlineSearch && (
+                        <button
+                          onClick={() => setOutlineSearch('')}
+                          className="absolute right-2 text-zinc-400 hover:text-black"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    {caseId && (
                       <button
-                        onClick={() => setOutlineSearch('')}
-                        className="absolute right-2 text-slate-400 hover:text-slate-600"
+                        type="button"
+                        onClick={() => setIsAddingFolder((prev) => !prev)}
+                        className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-2xs active:scale-95 ${
+                          isAddingFolder
+                            ? 'bg-[#630515] text-white'
+                            : 'bg-white hover:bg-[#630515]/5 text-[#630515] border border-[#630515]/30'
+                        }`}
+                        title="Create a new Date Sub-Bookmark folder directly in the bookmark tree"
                       >
-                        <X className="w-3 h-3" />
+                        <Plus className="w-3.5 h-3.5 text-current" />
+                        <span>Sub-Bookmark</span>
                       </button>
                     )}
                   </div>
+
+                  {/* Inline Add Sub-Bookmark Bar */}
+                  {isAddingFolder && (
+                    <div className="p-3 bg-[#630515]/5 border border-[#630515]/20 rounded-xl space-y-2 animate-in fade-in shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-[#630515] flex items-center gap-1.5">
+                          <FolderPlus className="w-3.5 h-3.5 text-[#630515]" />
+                          New Sub-Bookmark Folder
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingFolder(false);
+                            setParentFolderSelection('');
+                          }}
+                          className="text-zinc-400 hover:text-black p-0.5 rounded"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {allFolderTitles.length > 0 && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-black block">
+                            Nest Under Parent (Optional):
+                          </label>
+                          <select
+                            value={parentFolderSelection}
+                            onChange={(e) => setParentFolderSelection(e.target.value)}
+                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-zinc-300 rounded-lg text-black outline-none font-medium focus:border-[#630515]"
+                          >
+                            <option value="">📁 Case Filings & Evidence Pack (Root level)</option>
+                            {allFolderTitles.map((fTitle) => {
+                              const depth = fTitle.split('/').length - 1;
+                              return (
+                                <option key={fTitle} value={fTitle}>
+                                  {'\u00A0\u00A0'.repeat(depth)}↳ Sub-bookmark in: {fTitle}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder={
+                            parentFolderSelection
+                              ? `Sub-bookmark name in "${parentFolderSelection.split('/').pop()?.trim()}"...`
+                              : "e.g. Order Dated 07.12.2024, Pleadings..."
+                          }
+                          value={newFolderVal}
+                          onChange={(e) => setNewFolderVal(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleCreateNewFolder();
+                            if (e.key === 'Escape') {
+                              setIsAddingFolder(false);
+                              setParentFolderSelection('');
+                            }
+                          }}
+                          className="flex-1 text-xs px-3 py-1.5 bg-white border border-zinc-300 rounded-lg text-black placeholder:text-zinc-400 outline-none focus:border-[#630515] font-medium"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCreateNewFolder}
+                          disabled={!newFolderVal.trim()}
+                          className="px-3.5 py-1.5 text-xs font-semibold bg-[#630515] text-white rounded-lg hover:bg-[#4d0410] disabled:opacity-40 transition-colors shadow-xs active:scale-95"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-zinc-500 block leading-tight">
+                        {parentFolderSelection
+                          ? `Creates a sub-bookmark nested inside "${parentFolderSelection}". Drag or move files into it.`
+                          : "Type folder name or date, click Add, then drag or move files into it."}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Real-time PDF recompilation banner */}
+                  {isUpdatingBookmarks && (
+                    <div className="px-3 py-1.5 bg-black text-white text-xs font-semibold flex items-center justify-center gap-2 shrink-0 animate-in fade-in rounded-lg shadow-xs">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                      <span>Updating Master PDF bookmarks...</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Bookmark Items List (Independently scrollable!) */}
                 <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-0.5 custom-scrollbar">
+                  {/* Empty Custom Folders Waiting for Files (Top level or unattached) */}
+                  {customFolders
+                    .filter((cf) => {
+                      const parent = cf.includes(' / ') ? cf.substring(0, cf.lastIndexOf(' / ')).trim() : '';
+                      const parentExistsInTree =
+                        parent &&
+                        outline.some(function check(it): boolean {
+                          const itPath = (it.fullPath || it.title)
+                            .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+                            .replace(/\s*\(Page\s*\d+\)\s*$/i, '')
+                            .trim();
+                          return itPath === parent || Boolean(it.items && it.items.some(check));
+                        });
+                      if (parentExistsInTree) return false;
+
+                      return !outline.some(function checkSelf(it): boolean {
+                        const itPath = (it.fullPath || it.title)
+                          .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/gu, '')
+                          .replace(/\s*\(Page\s*\d+\)\s*$/i, '')
+                          .trim();
+                        return itPath === cf || Boolean(it.items && it.items.some(checkSelf));
+                      });
+                    })
+                    .map((cf) => {
+                      const isDropTarget = dragOverFolder === cf;
+                      const isNested = cf.includes(' / ');
+                      const parts = cf.split(' / ');
+                      const leaf = parts[parts.length - 1];
+                      const parent = parts.slice(0, -1).join(' / ');
+                      return (
+                        <div
+                          key={cf}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (dragOverFolder !== cf) setDragOverFolder(cf);
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverFolder === cf) setDragOverFolder(null);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const docId = e.dataTransfer.getData('text/plain') || draggedDoc?.id;
+                            if (docId) handleMoveItemToFolder(docId, cf);
+                          }}
+                          className={`my-1 mx-1.5 p-2 rounded-lg border border-dashed transition-all flex items-center justify-between gap-2 ${
+                            isDropTarget
+                              ? 'bg-[#630515]/10 ring-2 ring-[#630515] border-[#630515]'
+                              : 'bg-[#630515]/5 border-[#630515]/30 hover:bg-[#630515]/10 text-[#630515]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {isNested ? (
+                              <Folder className="w-4 h-4 text-[#630515] shrink-0" />
+                            ) : (
+                              <Calendar className="w-4 h-4 text-[#630515] shrink-0" />
+                            )}
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-semibold text-[#630515] truncate">{leaf}</span>
+                              {isNested && (
+                                <span className="text-[10px] text-zinc-500 truncate">
+                                  under {parent}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[10px] font-semibold text-[#630515] bg-white border border-[#630515]/30 px-2 py-0.5 rounded shadow-2xs">
+                              Drop file here
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setCustomFolders((prev) => prev.filter((f) => f !== cf))}
+                              className="p-1 text-zinc-400 hover:text-red-600 rounded"
+                              title="Remove empty folder"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
                   {filteredOutline.length > 0 ? (
                     filteredOutline.map(renderOutlineItem)
                   ) : (
@@ -1396,7 +2456,7 @@ export default function CustomPDFViewer({
                       </p>
                       <button
                         onClick={() => setActiveTab('thumbnails')}
-                        className="mt-3 text-xs font-semibold text-indigo-600 hover:underline"
+                        className="mt-3 text-xs font-semibold text-black underline hover:text-zinc-700"
                       >
                         Switch to Page Thumbnails →
                       </button>
@@ -1415,7 +2475,7 @@ export default function CustomPDFViewer({
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-2 items-start transition-all">
                   {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
                     <ThumbnailItem
-                      key={pageNum}
+                      key={`${reloadNonce}-${pageNum}`}
                       pdfDoc={pdfDoc}
                       pageNum={pageNum}
                       rotation={rotation}
@@ -1479,14 +2539,24 @@ export default function CustomPDFViewer({
           onMouseDown={handleMouseDownPan}
           onMouseMove={handleMouseMovePan}
           onMouseUp={handleMouseUpPan}
-          className={`flex-1 min-h-0 h-full overflow-y-auto overflow-x-auto p-4 sm:p-6 flex flex-col items-center gap-6 ${isHandTool ? 'cursor-grab' : 'cursor-default'
+          className={`flex-1 min-h-0 h-full overflow-y-auto overflow-x-auto p-4 sm:p-6 flex flex-col items-center gap-6 relative ${isHandTool ? 'cursor-grab' : 'cursor-default'
             }`}
         >
-          {isLoading && (
+          {/* Cold initial load */}
+          {isLoading && !pdfDoc && (
             <div className="flex flex-col items-center justify-center my-auto py-20 text-center">
-              <Loader2 className="w-9 h-9 animate-spin text-indigo-600 mb-3" />
-              <p className="text-sm font-semibold text-slate-800">Rendering document...</p>
-              <p className="text-xs text-slate-500 mt-1">Preparing high-definition pages</p>
+              <Loader2 className="w-8 h-8 animate-spin text-black mb-3" />
+              <p className="text-xs font-semibold text-black">Rendering document...</p>
+            </div>
+          )}
+
+          {/* Refreshing overlay: little blur so contents stay visible */}
+          {isLoading && pdfDoc && (
+            <div className="absolute inset-0 z-30 flex items-start justify-center pt-6 bg-white/20 backdrop-blur-[2px] pointer-events-none transition-all">
+              <div className="px-4 py-2 bg-white/95 backdrop-blur-sm border border-zinc-200 rounded-full shadow-lg flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-black" />
+                <span className="text-xs font-semibold text-black">Updating document...</span>
+              </div>
             </div>
           )}
 
@@ -1506,7 +2576,7 @@ export default function CustomPDFViewer({
                 </button>
                 <button
                   onClick={() => window.open(url, '_blank')}
-                  className="flex-1 py-2 rounded-lg bg-[#0e2340] text-white text-xs font-semibold hover:opacity-90"
+                  className="flex-1 py-2 rounded-lg bg-black text-white text-xs font-semibold hover:bg-zinc-800"
                 >
                   Open Direct URL
                 </button>
@@ -1514,12 +2584,11 @@ export default function CustomPDFViewer({
             </div>
           )}
 
-          {!isLoading &&
-            !loadError &&
+          {!loadError &&
             pdfDoc &&
             Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
               <PDFPageCanvas
-                key={pageNum}
+                key={`${reloadNonce}-${pageNum}`}
                 ref={(el) => {
                   if (el) pageRefs.current.set(pageNum, el);
                   else pageRefs.current.delete(pageNum);
@@ -1563,14 +2632,19 @@ const PDFPageCanvas = React.forwardRef<HTMLDivElement, PDFPageCanvasProps>(
     // Initial page dimension measurement
     useEffect(() => {
       let isMounted = true;
-      pdfDoc
-        .getPage(pageNum)
-        .then((page: any) => {
-          if (!isMounted) return;
-          const vp = page.getViewport({ scale: 1, rotation });
-          setPageDims({ width: vp.width, height: vp.height });
-        })
-        .catch(() => { });
+      if (!pdfDoc || pdfDoc.destroyed || !pdfDoc._transport || !pdfDoc._transport?.messageHandler) return;
+      try {
+        pdfDoc
+          .getPage(pageNum)
+          .then((page: any) => {
+            if (!isMounted) return;
+            const vp = page.getViewport({ scale: 1, rotation });
+            setPageDims({ width: vp.width, height: vp.height });
+          })
+          .catch(() => { });
+      } catch (e) {
+        // synchronously caught if worker transport was destroyed
+      }
       return () => {
         isMounted = false;
       };
@@ -1601,19 +2675,25 @@ const PDFPageCanvas = React.forwardRef<HTMLDivElement, PDFPageCanvasProps>(
 
     // Render Canvas & Text Layer when visible
     useEffect(() => {
-      if (!isVisible || !pdfDoc) return;
+      if (!isVisible || !pdfDoc || pdfDoc.destroyed || !pdfDoc._transport || !pdfDoc._transport?.messageHandler) return;
       let isMounted = true;
 
       const renderPage = async () => {
         try {
+          if (!pdfDoc || pdfDoc.destroyed || !pdfDoc._transport || !pdfDoc._transport?.messageHandler) return;
           if (renderTaskRef.current) {
             try {
               renderTaskRef.current.cancel();
             } catch (e) { }
           }
 
-          const page = await pdfDoc.getPage(pageNum);
-          if (!isMounted) return;
+          let page: any = null;
+          try {
+            page = await pdfDoc.getPage(pageNum);
+          } catch (e) {
+            return;
+          }
+          if (!isMounted || !page || page.destroyed || !page._transport?.messageHandler) return;
 
           const canvas = canvasRef.current;
           if (!canvas) return;
@@ -1651,7 +2731,11 @@ const PDFPageCanvas = React.forwardRef<HTMLDivElement, PDFPageCanvasProps>(
 
           const task = page.render(renderContext);
           renderTaskRef.current = task;
-          await task.promise;
+          await task.promise.catch((err: any) => {
+            if (err?.name !== 'RenderingCancelledException') {
+              // ignore
+            }
+          });
 
           if (isMounted) {
             setIsRendered(true);
@@ -1664,15 +2748,17 @@ const PDFPageCanvas = React.forwardRef<HTMLDivElement, PDFPageCanvasProps>(
               textDiv.style.height = `${Math.floor(viewport.height)}px`;
 
               try {
-                const textContent = await page.getTextContent();
-                const pdfjs = (window as any).pdfjsLib;
-                if (pdfjs && pdfjs.TextLayer) {
-                  const textLayer = new pdfjs.TextLayer({
-                    textContentSource: textContent,
-                    container: textDiv,
-                    viewport
-                  });
-                  await textLayer.render();
+                if (!page.destroyed && page._transport?.messageHandler) {
+                  const textContent = await page.getTextContent();
+                  const pdfjs = (window as any).pdfjsLib;
+                  if (pdfjs && pdfjs.TextLayer) {
+                    const textLayer = new pdfjs.TextLayer({
+                      textContentSource: textContent,
+                      container: textDiv,
+                      viewport
+                    });
+                    await textLayer.render();
+                  }
                 }
               } catch (textErr) {
                 // Text layer fallback / ignore
@@ -1686,7 +2772,7 @@ const PDFPageCanvas = React.forwardRef<HTMLDivElement, PDFPageCanvasProps>(
         }
       };
 
-      renderPage();
+      renderPage().catch(() => {});
 
       return () => {
         isMounted = false;
@@ -1786,48 +2872,50 @@ function ThumbnailItem({ pdfDoc, pageNum, rotation = 0, isCurrent, onClick, cont
 
   // Render thumbnail canvas once visible
   useEffect(() => {
-    if (!isVisible || !pdfDoc) return;
+    if (!isVisible || !pdfDoc || pdfDoc.destroyed || !pdfDoc._transport || !pdfDoc._transport?.messageHandler) return;
     let isMounted = true;
 
-    pdfDoc
-      .getPage(pageNum)
-      .then((page: any) => {
-        if (!isMounted) return;
-        const vp = page.getViewport({ scale: 0.25, rotation });
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+    try {
+      pdfDoc
+        .getPage(pageNum)
+        .then((page: any) => {
+          if (!isMounted || !page || page.destroyed || !page._transport?.messageHandler) return;
+          const vp = page.getViewport({ scale: 0.25, rotation });
+          const canvas = canvasRef.current;
+          if (!canvas) return;
 
-        canvas.width = Math.floor(vp.width);
-        canvas.height = Math.floor(vp.height);
-        canvas.style.backgroundColor = '#ffffff';
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+          canvas.width = Math.floor(vp.width);
+          canvas.height = Math.floor(vp.height);
+          canvas.style.backgroundColor = '#ffffff';
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
 
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        if (renderTaskRef.current) {
-          try {
-            renderTaskRef.current.cancel();
-          } catch (e) {}
-        }
+          if (renderTaskRef.current) {
+            try {
+              renderTaskRef.current.cancel();
+            } catch (e) {}
+          }
 
-        const task = page.render({ canvasContext: ctx, viewport: vp, background: 'rgb(255, 255, 255)' });
-        renderTaskRef.current = task;
+          const task = page.render({ canvasContext: ctx, viewport: vp, background: 'rgb(255, 255, 255)' });
+          renderTaskRef.current = task;
 
-        task.promise
-          .then(() => {
-            if (isMounted) setRendered(true);
-          })
-          .catch((err: any) => {
-            if (err?.name !== 'RenderingCancelledException') {
-              console.warn(`Thumbnail render failed for page ${pageNum}:`, err);
-            }
-          });
-      })
-      .catch((e: any) => {
-        console.warn(`Error getting page ${pageNum} for thumbnail:`, e);
-      });
+          task.promise
+            .then(() => {
+              if (isMounted) setRendered(true);
+            })
+            .catch((err: any) => {
+              if (err?.name !== 'RenderingCancelledException') {
+                console.warn(`Thumbnail render failed for page ${pageNum}:`, err);
+              }
+            });
+        })
+        .catch(() => { });
+    } catch (e) {
+      // synchronously caught if transport was destroyed
+    }
 
     return () => {
       isMounted = false;

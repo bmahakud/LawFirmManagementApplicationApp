@@ -42,7 +42,7 @@ class CaseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'firm', 'branch', 'branch_name', 'solo_advocate', 'solo_advocate_name',
             'client', 'client_name', 'assigned_advocate', 'advocate_name', 'assigned_advocate_name',
-            'assigned_paralegal', 'paralegal_name', 'case_title', 'case_number',
+            'assigned_paralegal', 'paralegal_name', 'case_title', 'case_number', 'is_registered', 'registration_number',
             'case_type', 'description', 'status', 'category', 'priority', 'stage',
             'case_summary', 'billing_type', 'estimated_value', 'total_fee', 'hearing_fee', 'additional_expenses',
             'payment_terms', 'loe_notes',
