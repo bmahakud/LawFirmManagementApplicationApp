@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -18,9 +18,68 @@ const plusJakartaSans = Plus_Jakarta_Sans({
   weight: ["400", "500", "600", "700", "800"],
 });
 
+const baseUrl = process.env.NEXT_PUBLIC_LAWFIRM_APP_URL || 'https://antlegal.anthemgt.com';
+
+export const viewport: Viewport = {
+  themeColor: "#0e2340",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
+
 export const metadata: Metadata = {
-  title: "LawFirm",
-  description: "LawFirm Management System",
+  metadataBase: new URL(baseUrl),
+  title: {
+    default: "AntLegal | Modern Law Firm Management Suite & AI Operating System",
+    template: "%s | AntLegal",
+  },
+  description: "AntLegal is the complete operating system for modern law firms. Streamline client intake, AI-powered OCR document drafting, automated court hearing calendars, and seamless legal billing.",
+  applicationName: "AntLegal",
+  authors: [{ name: "AntLegal Inc.", url: baseUrl }],
+  creator: "AntLegal Inc.",
+  publisher: "AntLegal Inc.",
+  keywords: [
+    "law firm management software",
+    "legal practice management",
+    "AI legal document automation",
+    "case management software",
+    "court hearing tracking",
+    "legal OCR data extraction",
+    "law firm billing and payments",
+    "advocate case management",
+    "paralegal workload management",
+    "modern legal technology",
+    "AntLegal",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: baseUrl,
+    siteName: "AntLegal",
+    title: "AntLegal | Modern Law Firm Management Suite",
+    description: "The complete AI-powered operating system for modern law firms. Manage cases, automate OCR drafting, track hearings, and streamline legal billing.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AntLegal | Modern Law Firm Management Suite",
+    description: "The complete AI-powered operating system for modern law firms. Case management, OCR drafting, hearing calendars, and secure billing.",
+    creator: "@AntLegal",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  category: "Legal Technology",
 };
 
 import { Toaster } from 'react-hot-toast';

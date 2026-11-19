@@ -245,7 +245,7 @@ export default function LoginPage() {
           style={{ background: 'radial-gradient(circle at bottom left, #f2ece1 0%, transparent 40%)' }}></div>
 
         {/* FLOATING CARD */}
-        <div className="relative z-10 w-full max-w-[480px] xl:max-w-[520px] bg-white rounded-[20px] sm:rounded-[24px] p-5 sm:p-6 xl:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 my-auto shrink max-h-[calc(100vh-48px)] overflow-y-auto">
+        <div className="relative z-10 w-full max-w-[400px] xl:max-w-[400px] bg-white rounded-[20px] sm:rounded-[24px] p-5 sm:p-6 xl:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 my-auto shrink max-h-[calc(100vh-48px)] overflow-y-auto">
 
           <motion.div
             initial={{ opacity: 0, y: 15 }}

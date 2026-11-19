@@ -24,14 +24,23 @@ export function PageSection({
   title,
   description,
   actions,
+  frameless = false,
 }: {
   eyebrow?: string;
   title: string;
   description?: string;
   actions?: ReactNode;
+  frameless?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between">
+    <div
+      className={classNames(
+        'flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between',
+        frameless
+          ? 'pt-1'
+          : 'rounded-2xl border border-gray-100 bg-white p-6 shadow-sm'
+      )}
+    >
       <div className="max-w-3xl">
         {eyebrow ? (
           <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400">{eyebrow}</p>

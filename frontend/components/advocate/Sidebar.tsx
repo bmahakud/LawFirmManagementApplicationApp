@@ -7,7 +7,7 @@ import {
   Scale, LayoutDashboard, Briefcase, FileText,
   Calendar, MessageSquare, LogOut, ChevronRight, Users, Plus,
   UserCheck, Settings, X, IndianRupee, UserCog, Building2, ChevronDown,
-  Check, RefreshCw, ArrowLeftRight, PanelLeftClose, PanelLeftOpen
+  Check, RefreshCw, ArrowLeftRight, PanelLeftClose, PanelLeftOpen, Target
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTopbar } from '@/components/platform/TopbarContext';
@@ -17,8 +17,9 @@ import { API } from '@/lib/api';
 const navItems = [
   { label: 'Dashboard', path: '/advocate/dashboard', icon: LayoutDashboard },
   { label: 'My Clients', path: '/advocate/clients', icon: Users },
-  { label: 'My Paralegals', path: '/advocate/paralegals', icon: UserCog },
+  { label: 'CRM & Leads', path: '/advocate/crm', icon: Target },
   { label: 'Cases', path: '/advocate/cases', icon: Briefcase },
+  { label: 'My Paralegals', path: '/advocate/paralegals', icon: UserCog },
   { label: 'Calendar', path: '/advocate/calendar', icon: Calendar },
   { label: 'Time & Billing', path: '/advocate/billing', icon: IndianRupee },
   { label: 'Client Chat', path: '/advocate/chat', icon: MessageSquare },

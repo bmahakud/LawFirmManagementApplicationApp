@@ -10,9 +10,11 @@ import {
   Plus, MoreVertical, Eye, Download, Edit2,
   Trash2, File, ChevronLeft, ChevronRight,
   Info, Users, Scale, FileOutput, CheckCircle2,
-  ArrowRight, Loader2, UserCheck, Folder, Sparkles
+  ArrowRight, Loader2, UserCheck, Folder, Sparkles,
+  Building2, Save, X, AlertCircle, Hash
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'react-hot-toast';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 import { useTopbarTitle } from './TopbarContext';
@@ -21,12 +23,17 @@ import DocumentVerificationSystem from './DocumentVerificationSystem';
 import PDFCourtFormEditor from './PDFCourtFormEditor';
 import PersonalizedTemplatesManager from './PersonalizedTemplatesManager';
 import { DocuMindIntegration } from './DocuMindIntegration';
+import CaseTypeSelect from './CaseTypeSelect';
 
 // --- Types ---
 interface CaseData {
   id: string;
   case_title: string;
   case_number: string;
+  is_registered?: boolean;
+  registration_number?: string;
+  is_lead_converted?: boolean;
+  originating_lead_id?: string | null;
   case_type: string;
   category: string;
   stage: string;
@@ -77,6 +84,14 @@ const formatTitleCase = (str: string) => {
   return str.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
+const STATE_OPTIONS = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana',
+  'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+  'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana',
+  'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Andaman and Nicobar Islands', 'Chandigarh',
+  'Dadra and Nagar Haveli and Daman and Diu', 'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+];
+
 // --- Sub-components ---
 const Badge = ({ children, variant = 'default' }: { children: React.ReactNode, variant?: string }) => {
   const variants: any = {
@@ -116,9 +131,9 @@ const CardHeader = ({ title, icon: Icon, description }: { title: string; icon?: 
       <div className="flex items-center gap-2">
         {Icon && <Icon className="w-5 h-5 text-purple-800" />}
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-        
+
         {/* Info button with interactive hover tooltip */}
-        <div 
+        <div
           className="relative inline-flex items-center"
           onMouseEnter={() => {
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -137,7 +152,7 @@ const CardHeader = ({ title, icon: Icon, description }: { title: string; icon?: 
           </button>
 
           {isOpen && (
-            <div 
+            <div
               className="absolute left-0 top-full mt-1.5 z-50 w-72 sm:w-80 p-3 bg-white/95 backdrop-blur-md rounded-xl border border-purple-100 shadow-xl shadow-purple-950/10 text-gray-800 pointer-events-none animate-in fade-in zoom-in-95 duration-150"
             >
               <div className="flex items-start gap-2.5">
@@ -297,6 +312,104 @@ export function CaseWorkspace({
   const [templates, setTemplates] = useState<any[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
 
+  // --- Incomplete Case Details Modal (for CRM Finalized Cases) ---
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [detailsForm, setDetailsForm] = useState({
+    court_name: '',
+    court_no: '',
+    judge_name: '',
+    district: '',
+    state: '',
+    case_number: '',
+    is_registered: true,
+    registration_number: '',
+    cnr_number: '',
+    case_type: '',
+    filing_date: '',
+    next_hearing_date: '',
+    petitioner_name: '',
+    respondent_name: '',
+    opposing_counsel: '',
+    representing: 'petitioner',
+    description: '',
+  });
+
+  const isLeadConverted = Boolean(caseData?.is_lead_converted || caseData?.originating_lead_id);
+  const isMissingRequiredDetails = isLeadConverted && (!caseData?.court_name || !caseData?.filing_date);
+
+  useEffect(() => {
+    if (!caseData) return;
+    setDetailsForm({
+      court_name: caseData.court_name || '',
+      court_no: caseData.court_no || '',
+      judge_name: caseData.judge_name || '',
+      district: caseData.district || '',
+      state: caseData.state || '',
+      case_number: caseData.case_number || '',
+      is_registered: caseData.is_registered ?? true,
+      registration_number: caseData.registration_number || '',
+      cnr_number: caseData.cnr_number || '',
+      case_type: caseData.case_type || '',
+      filing_date: caseData.filing_date ? caseData.filing_date.split('T')[0] : new Date().toISOString().split('T')[0],
+      next_hearing_date: caseData.next_hearing_date ? caseData.next_hearing_date.split('T')[0] : '',
+      petitioner_name: caseData.petitioner_name || caseData.client_name || '',
+      respondent_name: caseData.respondent_name || '',
+      opposing_counsel: caseData.opposing_counsel || '',
+      representing: caseData.representing || 'petitioner',
+      description: caseData.description || '',
+    });
+
+    const isConverted = Boolean(caseData.is_lead_converted || caseData.originating_lead_id);
+    const isMissingCore = !caseData.court_name || !caseData.filing_date;
+    const hasSkipped = typeof window !== 'undefined' && sessionStorage.getItem(`skippedCaseSetup_${caseData.id}`) === 'true';
+
+    if (role !== 'client' && isConverted && isMissingCore && !hasSkipped) {
+      setShowDetailsModal(true);
+    }
+  }, [caseData, role]);
+
+  const handleSkip = () => {
+    if (typeof window !== 'undefined' && caseData) {
+      sessionStorage.setItem(`skippedCaseSetup_${caseData.id}`, 'true');
+    }
+    setShowDetailsModal(false);
+  };
+
+  const handleSaveDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingDetails(true);
+    setDetailsError(null);
+
+    try {
+      const payload: any = { ...detailsForm };
+      Object.keys(payload).forEach((k) => {
+        if (payload[k] === '') payload[k] = null;
+      });
+
+      const res = await customFetch(API.CASES.DETAIL(caseId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.error || 'Failed to update case details');
+      }
+
+      setCaseData(data);
+      setShowDetailsModal(false);
+      toast.success('Case details saved successfully!');
+    } catch (err: any) {
+      setDetailsError(err.message || 'Error updating case details');
+      toast.error(err.message || 'Failed to save details');
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
   useEffect(() => {
     if (role === 'client' && activeTab === 'Drafting') {
       setActiveTab('Overview');
@@ -410,10 +523,14 @@ export function CaseWorkspace({
           <span className="text-gray-900 font-bold">Case Detail</span>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
-          {role !== 'client' && (
-            <>
-
-            </>
+          {role !== 'client' && isMissingRequiredDetails && (
+            <button
+              onClick={() => setShowDetailsModal(true)}
+              className="px-4 py-2 bg-[#4a1c40] hover:bg-[#381430] text-white rounded-lg text-sm font-semibold flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Add Details</span>
+            </button>
           )}
 
           {role !== 'client' && (
@@ -427,6 +544,35 @@ export function CaseWorkspace({
           )}
         </div>
       </div>
+
+      {/* Required Case Details Incomplete Alert Banner */}
+      {role !== 'client' && isMissingRequiredDetails && (
+        <div className="bg-gradient-to-r from-purple-50 via-white to-amber-50/40 border border-purple-200/80 rounded-2xl p-4 sm:p-5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#4a1c40] text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Scale className="w-5 h-5 text-amber-300" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-sm font-bold text-slate-900">Required Case Details Pending</h4>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                  CRM Finalized Case
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                This case was created from a CRM lead and is missing required court, filing, and registration details to be fully active.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowDetailsModal(true)}
+            className="px-4 py-2.5 bg-[#4a1c40] hover:bg-[#381430] text-white text-xs font-semibold rounded-xl shadow-xs transition-all shrink-0 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Add Details</span>
+          </button>
+        </div>
+      )}
 
       {/* Case Header Card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
@@ -520,13 +666,13 @@ export function CaseWorkspace({
               <div className="grid grid-cols-2 gap-x-8 gap-y-2">
                 <Field label="Case Title" value={caseData.case_title} />
                 <Field label="Case Number (Advocate Ref)" value={caseData.case_number || '—'} />
-                <Field 
-                  label="Registration Status" 
-                  value={caseData.is_registered === false ? "Unregistered (Diary Stage)" : "Registered Case"} 
+                <Field
+                  label="Registration Status"
+                  value={caseData.is_registered === false ? "Unregistered (Diary Stage)" : "Registered Case"}
                 />
-                <Field 
-                  label={caseData.is_registered === false ? "Diary / Unregistered No." : "Court Registration No."} 
-                  value={caseData.registration_number || (caseData.is_registered === false ? '—' : 'Pending Filing')} 
+                <Field
+                  label={caseData.is_registered === false ? "Diary / Unregistered No." : "Court Registration No."}
+                  value={caseData.registration_number || (caseData.is_registered === false ? '—' : 'Pending Filing')}
                 />
                 <Field label="Stage" value={formatTitleCase(caseData.stage)} />
                 <Field label="Status" value={formatTitleCase(caseData.status)} />
@@ -773,8 +919,8 @@ export function CaseWorkspace({
                   }
                 }}
                 className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'case'
-                    ? 'text-gray-900 font-bold'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'text-gray-900 font-bold'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 style={docSubTab === 'case' ? { borderBottomColor: accent, color: accent } : {}}
               >
@@ -811,8 +957,8 @@ export function CaseWorkspace({
                   }
                 }}
                 className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'client'
-                    ? 'text-gray-900 font-bold'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'text-gray-900 font-bold'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 style={docSubTab === 'client' ? { borderBottomColor: accent, color: accent } : {}}
               >
@@ -851,8 +997,8 @@ export function CaseWorkspace({
                       }
                     }}
                     className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'other'
-                        ? 'text-gray-900 font-bold'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'text-gray-900 font-bold'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                       }`}
                     style={docSubTab === 'other' ? { borderBottomColor: accent, color: accent } : {}}
                   >
@@ -889,8 +1035,8 @@ export function CaseWorkspace({
                       }
                     }}
                     className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'court_forms'
-                        ? 'text-gray-900 font-bold'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'text-gray-900 font-bold'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                       }`}
                     style={docSubTab === 'court_forms' ? { borderBottomColor: accent, color: accent } : {}}
                   >
@@ -927,8 +1073,8 @@ export function CaseWorkspace({
                       }
                     }}
                     className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${docSubTab === 'personalized_templates'
-                        ? 'text-gray-900 font-bold'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'text-gray-900 font-bold'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                       }`}
                     style={docSubTab === 'personalized_templates' ? { borderBottomColor: accent, color: accent } : {}}
                   >
@@ -1078,6 +1224,358 @@ export function CaseWorkspace({
           </div>
         )}
       </div>
+
+      {/* ─── REQUIRED CASE DETAILS PROMPT MODAL ─── */}
+      {showDetailsModal && caseData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full my-8 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-100 bg-linear-to-r from-purple-50/70 via-white to-amber-50/40 flex items-start justify-between">
+              <div className="flex items-start gap-3.5">
+
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-slate-900">Please Fill Up Required Case Details</h3>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-100 text-[#4a1c40]">
+                      Finalized Case File
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    This case was finalized from a CRM lead. Enter the required court, registration, and filing particulars to make this a fully active matter record.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSkip}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Skip for now"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Error Banner */}
+            {detailsError && (
+              <div className="mx-6 mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                <span>{detailsError}</span>
+              </div>
+            )}
+
+            {/* Modal Scrollable Form Body */}
+            <form id="case-details-form" onSubmit={handleSaveDetails} className="p-6 overflow-y-auto space-y-6 flex-1">
+              {/* Section 1: Court Information */}
+              <div className="space-y-3.5">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <Building2 className="w-4 h-4 text-[#4a1c40]" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                    Court & Jurisdiction Details
+                  </h4>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Court Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={detailsForm.court_name}
+                    onChange={(e) => setDetailsForm({ ...detailsForm, court_name: e.target.value })}
+                    placeholder="e.g. High Court of Orissa, Cuttack or District & Sessions Court"
+                    className="w-full h-11 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Court Room / Bench No
+                    </label>
+                    <input
+                      type="text"
+                      value={detailsForm.court_no}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, court_no: e.target.value })}
+                      placeholder="e.g. Court Room 4 / Bench 2"
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Presiding Judge Name
+                    </label>
+                    <input
+                      type="text"
+                      value={detailsForm.judge_name}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, judge_name: e.target.value })}
+                      placeholder="e.g. Hon'ble Justice S.K. Sahoo"
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      District
+                    </label>
+                    <input
+                      type="text"
+                      value={detailsForm.district}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, district: e.target.value })}
+                      placeholder="e.g. Cuttack, Khordha"
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      State / UT
+                    </label>
+                    <select
+                      value={detailsForm.state}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, state: e.target.value })}
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10 bg-white cursor-pointer"
+                    >
+                      <option value="">Select State / UT</option>
+                      {STATE_OPTIONS.map((st) => (
+                        <option key={st} value={st}>{st}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Case & Filing Identity */}
+              <div className="space-y-3.5 pt-2">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <Hash className="w-4 h-4 text-[#4a1c40]" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                    Filing & Case Identity
+                  </h4>
+                </div>
+
+                <div>
+                  <CaseTypeSelect
+                    label="Case Type *"
+                    required
+                    value={detailsForm.case_type}
+                    onChange={(val) => setDetailsForm({ ...detailsForm, case_type: val })}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Case Registration Status
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setDetailsForm({ ...detailsForm, is_registered: true })}
+                      className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${detailsForm.is_registered
+                          ? 'bg-white text-emerald-700 shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                    >
+                      ✓ Registered Case
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDetailsForm({ ...detailsForm, is_registered: false })}
+                      className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${!detailsForm.is_registered
+                          ? 'bg-white text-amber-700 shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                    >
+                      ⏳ Unregistered (Diary Stage)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Case Number (Advocate Ref)
+                    </label>
+                    <input
+                      type="text"
+                      value={detailsForm.case_number}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, case_number: e.target.value })}
+                      placeholder="e.g. CRLMP/124/2026"
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      {detailsForm.is_registered ? 'Court Registration No.' : 'Court Diary Number'}
+                    </label>
+                    <input
+                      type="text"
+                      value={detailsForm.registration_number}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, registration_number: e.target.value })}
+                      placeholder={detailsForm.is_registered ? 'e.g. REG/2026/8921' : 'e.g. D_2026_101'}
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      CNR Number (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={16}
+                      value={detailsForm.cnr_number}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, cnr_number: e.target.value.toUpperCase() })}
+                      placeholder="16-digit CNR"
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 uppercase outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Filing Date *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={detailsForm.filing_date}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, filing_date: e.target.value })}
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Next Hearing Date
+                    </label>
+                    <input
+                      type="date"
+                      value={detailsForm.next_hearing_date}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, next_hearing_date: e.target.value })}
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10 bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Parties & Representation */}
+              <div className="space-y-3.5 pt-2">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <Users className="w-4 h-4 text-[#4a1c40]" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                    Parties & Opposing Details
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Petitioner / Complainant
+                    </label>
+                    <input
+                      type="text"
+                      value={detailsForm.petitioner_name}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, petitioner_name: e.target.value })}
+                      placeholder="e.g. Client name"
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Respondent / Opposing Party
+                    </label>
+                    <input
+                      type="text"
+                      value={detailsForm.respondent_name}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, respondent_name: e.target.value })}
+                      placeholder="e.g. Opposite party name"
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Opposing Counsel
+                    </label>
+                    <input
+                      type="text"
+                      value={detailsForm.opposing_counsel}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, opposing_counsel: e.target.value })}
+                      placeholder="e.g. Adv. R.K. Mohanty"
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Representing Client As
+                    </label>
+                    <select
+                      value={detailsForm.representing}
+                      onChange={(e) => setDetailsForm({ ...detailsForm, representing: e.target.value })}
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10 bg-white cursor-pointer"
+                    >
+                      <option value="petitioner">Petitioner / Complainant</option>
+                      <option value="respondent">Respondent / Accused</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4: Matter Description */}
+              <div className="space-y-3.5 pt-2">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <FileText className="w-4 h-4 text-[#4a1c40]" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                    Brief Case Description
+                  </h4>
+                </div>
+                <div>
+                  <textarea
+                    rows={3}
+                    value={detailsForm.description}
+                    onChange={(e) => setDetailsForm({ ...detailsForm, description: e.target.value })}
+                    placeholder="Brief background of the dispute, prayer, relief sought, or matter notes..."
+                    className="w-full p-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-none focus:border-[#4a1c40] focus:ring-2 focus:ring-[#4a1c40]/10 resize-none"
+                  />
+                </div>
+              </div>
+            </form>
+
+            {/* Modal Footer */}
+            <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={handleSkip}
+                className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
+              >
+                Skip for now
+              </button>
+
+              <button
+                type="submit"
+                form="case-details-form"
+                disabled={savingDetails}
+                className="px-5 py-2.5 bg-[#4a1c40] hover:bg-[#381430] text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {savingDetails ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Saving Details...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Save & Continue</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

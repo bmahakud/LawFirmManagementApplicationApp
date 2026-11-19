@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Scale, LayoutDashboard, Briefcase, FileText,
-  UserCheck, Bell, MessageSquare, LogOut, ChevronRight, Users, ChevronDown, User, Settings, X, Calendar, CreditCard, BarChart3, PanelLeftClose, PanelLeftOpen
+  UserCheck, Bell, MessageSquare, LogOut, ChevronRight, Users, ChevronDown, User, Settings, X, Calendar, CreditCard, BarChart3, PanelLeftClose, PanelLeftOpen, Target
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTopbar } from '@/components/platform/TopbarContext';
@@ -14,6 +14,7 @@ import { API } from '@/lib/api';
 
 const topNavItems = [
   { label: 'Dashboard', path: '/firm-admin/dashboard', icon: LayoutDashboard },
+  { label: 'CRM & Leads', path: '/firm-admin/crm', icon: Target },
   { label: 'Calendar', path: '/firm-admin/calendar', icon: Calendar },
   { label: 'Cases', path: '/firm-admin/cases', icon: Briefcase },
   { label: 'Drafts', path: '/firm-admin/drafts', icon: UserCheck },

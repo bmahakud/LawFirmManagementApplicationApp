@@ -157,7 +157,17 @@ export const API = {
     LIST: "/api/users/?user_type=client",
     DETAIL: (uuid: string) => `/api/clients/${uuid}/`,
     MY_CLIENTS: "/api/clients/my-clients/",
-    CLIENT_DOCUMENTS: (uuid: string) => `/api/clients/${uuid}/documents/`
+    CLIENT_DOCUMENTS: (uuid: string) => `/api/clients/${uuid}/documents/`,
+    CLIENT_CASES: (uuid: string) => `/api/clients/${uuid}/cases/`
+  },
+  LEADS: {
+    LIST: "/api/leads/",
+    CREATE: "/api/leads/",
+    DETAIL: (id: string) => `/api/leads/${id}/`,
+    UPDATE: (id: string) => `/api/leads/${id}/`,
+    DELETE: (id: string) => `/api/leads/${id}/`,
+    CONVERT: (id: string) => `/api/leads/${id}/convert/`,
+    PIPELINE_STATS: "/api/leads/pipeline-stats/",
   },
   PARALEGALS: {
     MY_PARALEGALS: "/api/users/my_paralegals/",

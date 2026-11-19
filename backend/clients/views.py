@@ -3,8 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import Q
-from .models import Client
-from .serializers import ClientSerializer, AdvocateListSerializer
+from .models import Client, Lead
+from .serializers import ClientSerializer, AdvocateListSerializer, LeadSerializer
 from accounts.models import CustomUser
 from documents.models import UserDocument
 from documents.serializers import UserDocumentListSerializer
@@ -82,6 +82,7 @@ class ClientViewSet(viewsets.ModelViewSet):
             user_account.set_unusable_password()
             user_account.save()
         
+        client = None
         # When admin/super_admin adds a client, assigned_advocate is REQUIRED
         if user.user_type in ['admin', 'super_admin']:
             advocate_id = self.request.data.get('assigned_advocate')
@@ -94,15 +95,68 @@ class ClientViewSet(viewsets.ModelViewSet):
             except CustomUser.DoesNotExist:
                 raise PermissionDenied("Invalid advocate. The advocate must belong to your firm.")
             
-            serializer.save(firm=user.firm, user_account=user_account, assigned_advocate=advocate)
-            return
+            client = serializer.save(firm=user.firm, user_account=user_account, assigned_advocate=advocate)
+        elif user.user_type == 'advocate':
+            # When advocate adds a client, auto-assign themselves
+            client = serializer.save(firm=user.firm, user_account=user_account, assigned_advocate=user)
+        else:
+            client = serializer.save(firm=user.firm, user_account=user_account)
+
+        # Auto-generate a Lead in CRM when a client is created
+        create_lead = self.request.data.get('create_lead', True)
+        if str(create_lead).lower() in ['true', '1', 'yes']:
+            lead_title = (
+                self.request.data.get('lead_title') or
+                self.request.data.get('matter_title') or
+                (f"{client.first_name}'s Legal Matter" if client.first_name else "New Legal Intake")
+            )
+            brief_summary = self.request.data.get('brief_summary', '')
+            category = self.request.data.get('lead_category') or self.request.data.get('category') or 'court_case'
+            case_type = self.request.data.get('lead_case_type') or self.request.data.get('case_type') or ''
+            opposing_party = self.request.data.get('lead_opposing_party') or self.request.data.get('opposing_party') or ''
+            estimated_fee = self.request.data.get('lead_estimated_fee') or self.request.data.get('estimated_fee') or None
+            source = self.request.data.get('lead_source') or 'walk_in'
+            priority = self.request.data.get('lead_priority') or 'medium'
+
+            Lead.objects.create(
+                firm=client.firm,
+                client=client,
+                assigned_advocate=client.assigned_advocate,
+                title=lead_title,
+                category=category,
+                case_type=case_type,
+                opposing_party=opposing_party,
+                brief_summary=brief_summary,
+                estimated_fee=estimated_fee if estimated_fee != '' else None,
+                source=source,
+                priority=priority,
+                status='new'
+            )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        if user.user_type not in ['admin', 'super_admin', 'advocate', 'platform_owner']:
+            raise PermissionDenied("Only Admins or Advocates can update client details.")
         
-        # When advocate adds a client, auto-assign themselves
-        if user.user_type == 'advocate':
-            serializer.save(firm=user.firm, user_account=user_account, assigned_advocate=user)
-            return
-        
-        serializer.save(firm=user.firm, user_account=user_account)
+        client = serializer.save()
+        if client.user_account:
+            ua = client.user_account
+            updated = False
+            if client.first_name and ua.first_name != client.first_name:
+                ua.first_name = client.first_name
+                updated = True
+            if client.last_name and ua.last_name != client.last_name:
+                ua.last_name = client.last_name
+                updated = True
+            if client.email and ua.email != client.email:
+                if not CustomUser.objects.filter(email=client.email).exclude(id=ua.id).exists():
+                    ua.email = client.email
+                    updated = True
+            if client.phone_number and ua.phone_number != client.phone_number:
+                ua.phone_number = client.phone_number
+                updated = True
+            if updated:
+                ua.save()
 
     @action(detail=False, methods=['get'], url_path='advocates', url_name='advocate-list')
     def list_advocates(self, request):
@@ -458,3 +512,224 @@ class ClientViewSet(viewsets.ModelViewSet):
             'cases': serializer.data,
             'total_cases': cases.count()
         })
+
+
+class LeadViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing Legal CRM Leads, pipeline stages, and conversion to Case Files.
+    """
+    queryset = Lead.objects.all()
+    serializer_class = LeadSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'title', 'case_type', 'opposing_party', 'brief_summary',
+        'prospect_name', 'prospect_phone', 'prospect_email',
+        'client__first_name', 'client__last_name', 'client__phone_number', 'client__email'
+    ]
+    ordering_fields = ['created_at', 'status', 'priority', 'consultation_date', 'estimated_fee']
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.user_type == 'platform_owner':
+            qs = Lead.objects.all()
+        elif user.user_type == 'client':
+            qs = Lead.objects.filter(client__user_account=user)
+        elif user.user_type == 'advocate':
+            qs = Lead.objects.filter(
+                Q(firm=user.firm) | Q(assigned_advocate=user)
+            ).distinct()
+        else:
+            qs = Lead.objects.filter(firm=user.firm)
+
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            qs = qs.filter(status=status_param)
+
+        client_id = self.request.query_params.get('client_id')
+        if client_id:
+            qs = qs.filter(client_id=client_id)
+
+        category = self.request.query_params.get('category')
+        if category:
+            qs = qs.filter(category=category)
+
+        return qs.select_related('client', 'assigned_advocate', 'converted_case')
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        client_id = self.request.data.get('client')
+        prospect_name = (self.request.data.get('prospect_name') or '').strip()
+        prospect_phone = (self.request.data.get('prospect_phone') or '').strip()
+        prospect_email = (self.request.data.get('prospect_email') or '').strip()
+
+        client = None
+        firm = user.firm
+
+        if client_id:
+            try:
+                client = Client.objects.get(id=client_id)
+                firm = client.firm or firm
+            except Client.DoesNotExist:
+                raise PermissionDenied("Selected client not found.")
+        elif not prospect_name and not prospect_phone:
+            raise PermissionDenied("Either select an existing client or enter the prospect client name and phone number.")
+
+        assigned_advocate = client.assigned_advocate if client else None
+        if user.user_type == 'advocate':
+            assigned_advocate = user
+
+        serializer.save(
+            firm=firm,
+            client=client,
+            prospect_name=prospect_name if not client else '',
+            prospect_phone=prospect_phone if not client else '',
+            prospect_email=prospect_email if not client else '',
+            assigned_advocate=assigned_advocate
+        )
+
+    def perform_update(self, serializer):
+        lead = self.get_object()
+        if lead.status == 'converted' or lead.converted_case:
+            raise PermissionDenied("Finalized leads cannot be edited because an official case file has already been opened.")
+        
+        prospect_name = self.request.data.get('prospect_name')
+        prospect_phone = self.request.data.get('prospect_phone')
+        prospect_email = self.request.data.get('prospect_email')
+
+        # If lead is linked to an existing client, also update the client record if name/phone were edited
+        if lead.client:
+            client = lead.client
+            if prospect_name and prospect_name.strip():
+                parts = prospect_name.strip().split(' ', 1)
+                client.first_name = parts[0]
+                client.last_name = parts[1] if len(parts) > 1 else ''
+            if prospect_phone is not None:
+                client.phone_number = prospect_phone.strip()
+            if prospect_email is not None:
+                client.email = prospect_email.strip()
+            client.save()
+            serializer.save()
+        else:
+            update_kwargs = {}
+            if prospect_name is not None:
+                update_kwargs['prospect_name'] = prospect_name.strip()
+            if prospect_phone is not None:
+                update_kwargs['prospect_phone'] = prospect_phone.strip()
+            if prospect_email is not None:
+                update_kwargs['prospect_email'] = prospect_email.strip()
+            serializer.save(**update_kwargs)
+
+    @action(detail=False, methods=['get'], url_path='pipeline-stats')
+    def pipeline_stats(self, request):
+        qs = self.get_queryset()
+        from django.db.models import Sum
+        stats = {
+            'total_leads': qs.count(),
+            'new': qs.filter(status='new').count(),
+            'contacted': qs.filter(status='contacted').count(),
+            'consultation': qs.filter(status='consultation').count(),
+            'assessment': qs.filter(status='assessment').count(),
+            'proposal': qs.filter(status='proposal').count(),
+            'converted': qs.filter(status='converted').count(),
+            'lost': qs.filter(status='lost').count(),
+            'total_estimated_value': float(qs.aggregate(total=Sum('estimated_fee'))['total'] or 0),
+        }
+        return Response(stats)
+
+    @action(detail=True, methods=['post'], url_path='convert')
+    def convert(self, request, pk=None):
+        from django.db import transaction
+        from django.utils import timezone
+        from cases.models import Case
+
+        lead = self.get_object()
+
+        if lead.status == 'converted' and lead.converted_case:
+            return Response(
+                {
+                    'error': 'This lead is already converted to an active case file.',
+                    'case_id': str(lead.converted_case.id),
+                    'case_title': lead.converted_case.case_title
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        data = request.data
+        case_title = data.get('case_title') or lead.title
+        case_type = data.get('case_type') or lead.case_type or 'General Legal Matter'
+        category = data.get('category') or lead.category or 'court_case'
+        billing_type = data.get('billing_type') or 'retainer'
+        total_fee = data.get('total_fee') or lead.estimated_fee
+        opposing_counsel = data.get('opposing_counsel') or ''
+        court_name = data.get('court_name') or ''
+        court_no = data.get('court_no') or ''
+        judge_name = data.get('judge_name') or ''
+        district = data.get('district') or ''
+        state = data.get('state') or ''
+        respondent_name = data.get('respondent_name') or lead.opposing_party
+        petitioner_name = data.get('petitioner_name') or (lead.client.get_full_name() if lead.client else (lead.prospect_name or 'Client'))
+
+        with transaction.atomic():
+            client = lead.client
+            # If lead was an unregistered prospect, automatically create official Client record!
+            if not client:
+                full_name = (lead.prospect_name or 'Prospective Client').strip()
+                name_parts = full_name.split(' ', 1)
+                first_name = name_parts[0]
+                last_name = name_parts[1] if len(name_parts) > 1 else ''
+
+                client = Client.objects.create(
+                    firm=lead.firm or request.user.firm,
+                    first_name=first_name,
+                    last_name=last_name,
+                    phone_number=lead.prospect_phone or '',
+                    email=lead.prospect_email or '',
+                    assigned_advocate=lead.assigned_advocate or (request.user if request.user.user_type == 'advocate' else None),
+                    brief_summary=lead.brief_summary or lead.title
+                )
+                lead.client = client
+                lead.save(update_fields=['client'])
+
+            new_case = Case.objects.create(
+                firm=lead.firm or (client.firm if client else None),
+                client=client,
+                assigned_advocate=lead.assigned_advocate or (request.user if request.user.user_type == 'advocate' else None),
+                solo_advocate=request.user if (not lead.firm and request.user.user_type == 'advocate') else None,
+                case_title=case_title,
+                case_type=case_type,
+                category=category,
+                status='open',
+                stage='initial_consultation',
+                petitioner_name=petitioner_name or (client.get_full_name() if client else ''),
+                respondent_name=respondent_name,
+                opposing_counsel=opposing_counsel,
+                court_name=court_name,
+                court_no=court_no,
+                judge_name=judge_name,
+                district=district,
+                state=state,
+                description=lead.brief_summary,
+                case_summary=lead.intake_notes or lead.brief_summary,
+                billing_type=billing_type,
+                total_fee=total_fee if total_fee != '' else None,
+            )
+
+            lead.status = 'converted'
+            lead.converted_case = new_case
+            lead.converted_at = timezone.now()
+            lead.save()
+
+        return Response(
+            {
+                'status': 'success',
+                'message': 'Lead successfully finalized and converted into official Case File.',
+                'case_id': str(new_case.id),
+                'case_title': new_case.case_title,
+                'case_number': new_case.case_number or '',
+                'client_id': str(client.id) if client else None,
+                'client_name': client.get_full_name() if client else lead.prospect_name
+            },
+            status=status.HTTP_201_CREATED
+        )
+

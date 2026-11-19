@@ -134,9 +134,11 @@ function MetricGrid({ accent, metrics }: AccentProps & { metrics: Metric[] }) {
 function DataTable({
   columns,
   rows,
+  topSlot,
 }: {
   columns: TableColumn[];
   rows: TableRow[];
+  topSlot?: ReactNode;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -159,6 +161,11 @@ function DataTable({
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col w-full">
+      {topSlot ? (
+        <div className="border-b border-slate-100">
+          {topSlot}
+        </div>
+      ) : null}
       {/* Top Filter & Inline Pagination Control Bar */}
       <div className="p-4 border-b border-slate-100 flex flex-wrap justify-between items-center gap-3 bg-slate-50/50">
         {/* Search input */}
@@ -667,7 +674,16 @@ export function CasesPage({
   primaryLabel,
   viewBase,
   filterByAssignedAdvocate,
-}: AccentProps & { title: string; description: string; primaryHref?: string; primaryLabel?: string; viewBase?: string; filterByAssignedAdvocate?: boolean }) {
+  framelessHeader = true,
+}: AccentProps & {
+  title: string;
+  description: string;
+  primaryHref?: string;
+  primaryLabel?: string;
+  viewBase?: string;
+  filterByAssignedAdvocate?: boolean;
+  framelessHeader?: boolean;
+}) {
   const [cases, setCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -804,107 +820,120 @@ export function CasesPage({
     };
   });
 
+  const registrationToolbar = (
+    <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3.5 bg-white">
+      {/* Registration Quick Filter Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl overflow-x-auto no-scrollbar">
+        <button
+          type="button"
+          onClick={() => setRegistrationFilter('all')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            registrationFilter === 'all'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          All Matters
+          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded-full bg-slate-200/70 text-slate-700">
+            {totalCount}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setRegistrationFilter('registered')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            registrationFilter === 'registered'
+              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
+              : 'text-slate-600 hover:text-emerald-700'
+          }`}
+        >
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Registered Cases
+          <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-full ${
+            registrationFilter === 'registered' ? 'bg-emerald-700 text-white' : 'bg-slate-200/70 text-slate-700'
+          }`}>
+            {registeredCount}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setRegistrationFilter('unregistered')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            registrationFilter === 'unregistered'
+              ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/20'
+              : 'text-slate-600 hover:text-amber-700'
+          }`}
+        >
+          <Hash className="w-3.5 h-3.5" />
+          Unregistered (Diary)
+          <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-full ${
+            registrationFilter === 'unregistered' ? 'bg-amber-700 text-white' : 'bg-slate-200/70 text-slate-700'
+          }`}>
+            {unregisteredCount}
+          </span>
+        </button>
+      </div>
+
+      {/* Sort Dropdown */}
+      <div className="flex items-center gap-2 justify-end">
+        <label htmlFor="cases-sort" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
+          <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+          Sort:
+        </label>
+        <div className="relative">
+          <select
+            id="cases-sort"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="appearance-none pl-3 pr-8 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer shadow-sm"
+          >
+            <option value="date_desc">Date: Newest First</option>
+            <option value="date_asc">Date: Oldest First</option>
+            <option value="hearing_asc">Next Hearing: Earliest</option>
+            <option value="reg_first">Registered Cases First</option>
+            <option value="unreg_first">Unregistered (Diary) First</option>
+            <option value="matter_asc">Matter: A to Z</option>
+            <option value="matter_desc">Matter: Z to A</option>
+            <option value="number_asc">Case Number</option>
+          </select>
+          <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <PageSection
         title={title}
         description={description}
+        frameless={framelessHeader}
         actions={primaryHref && primaryLabel ? <ActionLink href={primaryHref} label={primaryLabel} /> : undefined}
       />
 
-      {/* Registration Status Filter & Sort Toolbar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm">
-        {/* Registration Quick Filter Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl overflow-x-auto no-scrollbar">
-          <button
-            type="button"
-            onClick={() => setRegistrationFilter('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              registrationFilter === 'all'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            All Matters
-            <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded-full bg-slate-200/70 text-slate-700">
-              {totalCount}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setRegistrationFilter('registered')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              registrationFilter === 'registered'
-                ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
-                : 'text-slate-600 hover:text-emerald-700'
-            }`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Registered Cases
-            <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-full ${
-              registrationFilter === 'registered' ? 'bg-emerald-700 text-white' : 'bg-slate-200/70 text-slate-700'
-            }`}>
-              {registeredCount}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setRegistrationFilter('unregistered')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              registrationFilter === 'unregistered'
-                ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/20'
-                : 'text-slate-600 hover:text-amber-700'
-            }`}
-          >
-            <Hash className="w-3.5 h-3.5" />
-            Unregistered (Diary)
-            <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-full ${
-              registrationFilter === 'unregistered' ? 'bg-amber-700 text-white' : 'bg-slate-200/70 text-slate-700'
-            }`}>
-              {unregisteredCount}
-            </span>
-          </button>
-        </div>
-
-        {/* Sort Dropdown */}
-        <div className="flex items-center gap-2 justify-end">
-          <label htmlFor="cases-sort" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
-            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
-            Sort:
-          </label>
-          <div className="relative">
-            <select
-              id="cases-sort"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="appearance-none pl-3 pr-8 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer shadow-sm"
-            >
-              <option value="date_desc">Date: Newest First</option>
-              <option value="date_asc">Date: Oldest First</option>
-              <option value="hearing_asc">Next Hearing: Earliest</option>
-              <option value="reg_first">Registered Cases First</option>
-              <option value="unreg_first">Unregistered (Diary) First</option>
-              <option value="matter_asc">Matter: A to Z</option>
-              <option value="matter_desc">Matter: Z to A</option>
-              <option value="number_asc">Case Number</option>
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          </div>
-        </div>
-      </div>
-
       <div>
         {loading ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 flex items-center justify-center shadow-sm">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            <p className="ml-3 text-sm font-semibold text-slate-500">Loading cases...</p>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col w-full">
+            <div className="border-b border-slate-100">
+              {registrationToolbar}
+            </div>
+            <div className="p-12 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              <p className="ml-3 text-sm font-semibold text-slate-500">Loading cases...</p>
+            </div>
           </div>
         ) : error ? (
-          <div className="bg-white rounded-2xl border border-red-200 p-12 text-center shadow-sm">
-            <p className="text-sm font-semibold text-red-600">{error}</p>
+          <div className="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden flex flex-col w-full">
+            <div className="border-b border-slate-100">
+              {registrationToolbar}
+            </div>
+            <div className="p-12 text-center">
+              <p className="text-sm font-semibold text-red-600">{error}</p>
+            </div>
           </div>
         ) : (
           <DataTable
+            topSlot={registrationToolbar}
             columns={[
               { key: 'matter', label: 'Matter' },
               { key: 'number', label: 'Case Number' },

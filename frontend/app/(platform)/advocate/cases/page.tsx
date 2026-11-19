@@ -10,6 +10,7 @@ export default function AdvocateCasesPage() {
       primaryHref="/advocate/cases/new"
       primaryLabel="Create Case"
       filterByAssignedAdvocate={true}
+      framelessHeader={true}
     />
   );
 }

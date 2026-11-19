@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Link2, Copy, UserPlus, Loader2, AlertCircle, User } from 'lucide-react';
+import { Link2, Copy, UserPlus, Loader2, AlertCircle, User, Scale, ArrowRight, IndianRupee, Sparkles } from 'lucide-react';
 import { customFetch } from '@/lib/fetch';
 import { API } from '@/lib/api';
 import { useRouter } from 'next/navigation';
@@ -18,7 +18,7 @@ export default function AdvocateAddClientPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Manual form state
+  // Manual form state including Legal Matter / CRM Lead details
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -30,6 +30,15 @@ export default function AdvocateAddClientPage() {
     state: '',
     postal_code: '',
     brief_summary: '',
+    // CRM Lead details
+    create_lead: true,
+    lead_title: '',
+    lead_category: 'court_case',
+    lead_case_type: 'Civil Suit',
+    lead_opposing_party: '',
+    lead_estimated_fee: '',
+    lead_priority: 'medium',
+    lead_source: 'walk_in',
   });
 
   useEffect(() => {
@@ -116,9 +125,6 @@ export default function AdvocateAddClientPage() {
       }
 
       setSuccess(true);
-      setTimeout(() => {
-        router.push('/advocate/clients');
-      }, 1500);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -126,19 +132,40 @@ export default function AdvocateAddClientPage() {
     }
   };
 
-  const updateField = (field: string, value: string) => {
+  const updateField = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   if (success) {
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-2xl border border-emerald-100 shadow-sm p-12 text-center">
-          <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
-            <UserPlus className="w-8 h-8 text-emerald-500" />
+        <div className="bg-white rounded-2xl border border-emerald-100 shadow-sm p-10 text-center space-y-6">
+          <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto">
+            <CheckCircle2 className="w-8 h-8 text-emerald-500" />
           </div>
-          <h3 className="text-xl font-bold text-gray-900">Client Added Successfully!</h3>
-          <p className="text-sm text-gray-400 mt-2">Redirecting to clients list...</p>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">Client Added & CRM Lead Created!</h3>
+            <p className="text-xs text-gray-500 mt-2 max-w-md mx-auto">
+              A new contact profile and initial CRM intake lead have been generated in your pipeline. You can manage consultation stages or finalize directly into an official Case File.
+            </p>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <button
+              onClick={() => router.push('/advocate/crm')}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#4a1c40] text-white text-xs font-bold rounded-xl shadow-xs hover:bg-[#3a1530] transition-colors"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              Open CRM Pipeline
+            </button>
+            <button
+              onClick={() => router.push('/advocate/clients')}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 border border-gray-200 text-gray-700 text-xs font-bold rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              <User className="w-4 h-4" />
+              View Clients List
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -333,6 +360,108 @@ export default function AdvocateAddClientPage() {
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-900 outline-none focus:border-[#4a1c40] focus:bg-white transition-all resize-none"
                 placeholder="Brief description of the client's case..."
               />
+            </div>
+
+            {/* CRM Lead / Intake Section */}
+            <div className="pt-6 border-t border-gray-100 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-purple-50 text-[#4a1c40] flex items-center justify-center">
+                    <Scale className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">Intake Matter & CRM Lead</h3>
+                    <p className="text-xs text-gray-400">Creates an intake card on your CRM pipeline to track and convert into a Case File</p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.create_lead}
+                    onChange={(e) => updateField('create_lead', e.target.checked)}
+                    className="w-4 h-4 rounded text-[#4a1c40] accent-[#4a1c40] cursor-pointer"
+                  />
+                  <span>Generate CRM Lead</span>
+                </label>
+              </div>
+
+              {formData.create_lead && (
+                <div className="space-y-4 bg-purple-50/40 border border-purple-100 p-5 rounded-2xl">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                        Matter / Inquiry Title
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.lead_title}
+                        onChange={(e) => updateField('lead_title', e.target.value)}
+                        placeholder={formData.first_name ? `${formData.first_name}'s Legal Matter` : "e.g. Property Dispute with Tenant"}
+                        className="w-full h-11 px-4 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-900 outline-none focus:border-[#4a1c40] transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                        Opposing Party / Respondent
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.lead_opposing_party}
+                        onChange={(e) => updateField('lead_opposing_party', e.target.value)}
+                        placeholder="e.g. ABC Builder Ltd."
+                        className="w-full h-11 px-4 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-900 outline-none focus:border-[#4a1c40] transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                        Category
+                      </label>
+                      <select
+                        value={formData.lead_category}
+                        onChange={(e) => updateField('lead_category', e.target.value)}
+                        className="w-full h-11 px-3 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-900 outline-none focus:border-[#4a1c40]"
+                      >
+                        <option value="court_case">Court Case</option>
+                        <option value="pre_litigation">Pre-Litigation</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                        Estimated Fee (₹)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">₹</span>
+                        <input
+                          type="number"
+                          value={formData.lead_estimated_fee}
+                          onChange={(e) => updateField('lead_estimated_fee', e.target.value)}
+                          placeholder="e.g. 50000"
+                          className="w-full h-11 pl-8 pr-4 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-900 outline-none focus:border-[#4a1c40]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                        Priority
+                      </label>
+                      <select
+                        value={formData.lead_priority}
+                        onChange={(e) => updateField('lead_priority', e.target.value)}
+                        className="w-full h-11 px-3 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-900 outline-none focus:border-[#4a1c40]"
+                      >
+                        <option value="high">High Priority</option>
+                        <option value="medium">Medium Priority</option>
+                        <option value="low">Low Priority</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

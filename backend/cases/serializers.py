@@ -32,6 +32,22 @@ class CaseSerializer(serializers.ModelSerializer):
     branch_name = serializers.CharField(source='branch.branch_name', read_only=True)
     solo_advocate_name = serializers.CharField(source='solo_advocate.get_full_name', read_only=True)
     
+    is_lead_converted = serializers.SerializerMethodField()
+    originating_lead_id = serializers.SerializerMethodField()
+
+    def get_is_lead_converted(self, obj):
+        try:
+            return bool(getattr(obj, 'originating_lead', None))
+        except Exception:
+            return False
+
+    def get_originating_lead_id(self, obj):
+        try:
+            lead = getattr(obj, 'originating_lead', None)
+            return str(lead.id) if lead else None
+        except Exception:
+            return None
+
     activities = CaseActivitySerializer(many=True, read_only=True)
     hearings = HearingSerializer(many=True, read_only=True)
     drafts = CaseDraftSerializer(many=True, read_only=True)
@@ -49,6 +65,7 @@ class CaseSerializer(serializers.ModelSerializer):
             'petitioner_name', 'respondent_name', 'opposing_counsel', 'court_name', 'court_no',
             'judge_name', 'district', 'state', 'representing', 'cnr_number',
             'filing_date', 'next_hearing_date', 'created_at', 'updated_at',
+            'is_lead_converted', 'originating_lead_id',
             'activities', 'hearings', 'drafts', 'service_attempts'
         ]
-        read_only_fields = ['id', 'firm', 'solo_advocate', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'firm', 'solo_advocate', 'created_at', 'updated_at', 'is_lead_converted', 'originating_lead_id']
